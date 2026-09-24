@@ -6,9 +6,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 
+// npm run dev → http://localhost:5183/; npm run dev:lan → BASE_URL=https://localhost:5183/
+const BASE = process.env.BASE_URL || 'http://localhost:5183/'
 const shots = process.env.SMOKE_SHOTS || tmpdir()
 const browser = await chromium.launch({ channel: 'chrome' })
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
 
@@ -31,7 +33,7 @@ await page.route('**/api/config', (route) => route.fulfill({ json: { available: 
 await page.route('**/api/photo-card', (route) => { cardRequest = route.request().postDataJSON(); return route.fulfill({ json: card }) })
 
 try {
-  await page.goto('http://localhost:5183/', { waitUntil: 'networkidle' })
+  await page.goto(BASE, { waitUntil: 'networkidle' })
   // A JPEG with no EXIF, named the way WeChat saves images
   const dir = mkdtempSync(join(tmpdir(), 'pw-card-'))
   const file = join(dir, '微信图片_20260924133610_300_56.jpg')

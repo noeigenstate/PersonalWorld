@@ -8,13 +8,15 @@ import { chromium } from 'playwright'
 import { makeLifeFixtures } from './fixtures.mjs'
 
 process.loadEnvFile(new URL('../.env', import.meta.url))
+// npm run dev → http://localhost:5183/; npm run dev:lan → BASE_URL=https://localhost:5183/
+const BASE = process.env.BASE_URL || 'http://localhost:5183/'
 const key = process.env.AMAP_JS_KEY
 const code = process.env.AMAP_JS_SECURITY_CODE
 if (!key || !code) { console.log('跳过：.env 中没有 AMAP_JS_KEY / AMAP_JS_SECURITY_CODE'); process.exit(0) }
 
 const shots = process.env.SMOKE_SHOTS || tmpdir()
 const browser = await chromium.launch({ channel: 'chrome' })
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
 
@@ -31,7 +33,7 @@ await page.route('**/_AMapService/**', async (route) => {
 })
 
 try {
-  await page.goto('http://localhost:5183/', { waitUntil: 'networkidle' })
+  await page.goto(BASE, { waitUntil: 'networkidle' })
   await page.locator('.life-map-amap .amap-layer, .life-map-amap canvas').first().waitFor({ timeout: 20000 })
   const files = await makeLifeFixtures(page, mkdtempSync(join(tmpdir(), 'pw-amap-')))
   await page.getByRole('button', { name: '导入第一批影像' }).click()

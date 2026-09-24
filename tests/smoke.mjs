@@ -5,9 +5,11 @@ import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { fakeGeocode, makeLifeFixtures } from './fixtures.mjs'
 
+// npm run dev → http://localhost:5183/; npm run dev:lan → BASE_URL=https://localhost:5183/
+const BASE = process.env.BASE_URL || 'http://localhost:5183/'
 const shots = process.env.SMOKE_SHOTS || tmpdir()
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] })
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['microphone'] })
+const context = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 }, permissions: ['microphone'] })
 const page = await context.newPage()
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
@@ -66,7 +68,7 @@ await page.route('**/api/butler', (route) => {
 const placeLabel = (name) => page.locator('.map-label.place').filter({ hasText: name })
 
 try {
-  await page.goto('http://localhost:5183/', { waitUntil: 'networkidle' })
+  await page.goto(BASE, { waitUntil: 'networkidle' })
   assert.equal(await page.title(), 'Personal World · 人生地图')
   // Registration: username and password only
   await page.getByRole('heading', { name: '创建你的账户' }).waitFor()

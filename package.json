@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "node --watch server/index.mjs",
-    "dev:web": "vite --host 127.0.0.1",
+    "dev:web": "vite",
+    "dev:lan": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web-lan\"",
+    "dev:web-lan": "vite --mode lan",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test:smoke": "node tests/smoke.mjs",
@@ -30,6 +32,7 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@types/three": "^0.186.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "6.1.1",
     "concurrently": "10.0.5",
     "piexifjs": "^1.0.6",

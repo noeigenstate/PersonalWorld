@@ -7,9 +7,11 @@ import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { fakeGeocode, makeLifeFixtures } from './fixtures.mjs'
 
+// npm run dev → http://localhost:5183/; npm run dev:lan → BASE_URL=https://localhost:5183/
+const BASE = process.env.BASE_URL || 'http://localhost:5183/'
 const shots = process.env.SMOKE_SHOTS || tmpdir()
 const browser = await chromium.launch({ channel: 'chrome' })
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
 
@@ -29,7 +31,7 @@ await page.route('**/api/photo-context', (route) => {
 })
 
 try {
-  await page.goto('http://localhost:5183/', { waitUntil: 'networkidle' })
+  await page.goto(BASE, { waitUntil: 'networkidle' })
   const files = await makeLifeFixtures(page, mkdtempSync(join(tmpdir(), 'pw-context-')))
   await page.getByRole('button', { name: '导入第一批影像' }).click()
   await page.locator('input[type="file"]').setInputFiles(files)

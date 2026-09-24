@@ -1,9 +1,15 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 
-export default defineConfig({
-  plugins: [react()],
+// `npm run dev` serves this computer only over HTTP.
+// `npm run dev:lan` (mode "lan") serves the local network over HTTPS with a self-signed
+// certificate: other devices need a secure context for the microphone, crypto.randomUUID
+// and SHA-256 duplicate detection, none of which work on plain http://192.168.x.x.
+export default defineConfig(({ mode }) => ({
+  plugins: [react(), ...(mode === 'lan' ? [basicSsl({ name: 'personal-world' })] : [])],
   server: {
+    host: mode === 'lan' ? '0.0.0.0' : '127.0.0.1',
     port: 5183,
     strictPort: true,
     proxy: {
@@ -11,4 +17,4 @@ export default defineConfig({
       '/_AMapService': 'http://127.0.0.1:8787',
     },
   },
-})
+}))
