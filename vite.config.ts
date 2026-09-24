@@ -8,6 +8,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       '/api': 'http://127.0.0.1:8787',
+      '/_AMapService': 'http://127.0.0.1:8787',
     },
   },
 })

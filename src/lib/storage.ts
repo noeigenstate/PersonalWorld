@@ -11,8 +11,23 @@ const database = openDB('memory-agent-local', 1, {
 export async function loadMemory(): Promise<MemoryState> {
   const db = await database
   const state = (await db.get('state', 'current')) as MemoryState | undefined
-  if (!state) return { assets: [], events: [] }
-  return { ...state, events: state.events.map((event) => ({ ...event, visibleText: event.visibleText || '' })) }
+  if (!state) return { assets: [], events: [], placeRoles: {} }
+  // Older saves lack the fields added with places
+  const assets = state.assets.map(({ favorite: _favorite, ...asset }: MemoryState['assets'][number] & { favorite?: boolean }) => asset)
+  return {
+    assets,
+    placeRoles: state.placeRoles || {},
+    events: state.events.map((event) => {
+      const photos = assets.filter((asset) => event.assetIds.includes(asset.id) && asset.latitude !== undefined && asset.longitude !== undefined)
+      return {
+        ...event,
+        visibleText: event.visibleText || '',
+        timeSource: event.timeSource || assets.find((asset) => asset.id === event.assetIds[0])?.dateSource || 'file',
+        lat: event.lat ?? (photos.length ? photos.reduce((sum, asset) => sum + asset.latitude!, 0) / photos.length : undefined),
+        lng: event.lng ?? (photos.length ? photos.reduce((sum, asset) => sum + asset.longitude!, 0) / photos.length : undefined),
+      }
+    }),
+  }
 }
 
 export async function saveMemory(state: MemoryState): Promise<void> {
