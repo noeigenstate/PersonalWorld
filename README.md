@@ -19,8 +19,8 @@ npm run dev
 |---|---|---|
 | `STEPFUN_API_KEY`、`STEPFUN_MODEL` | 事件分析与人生管家（模型需支持图片，如 `step-3.7-flash`） | 用 AI 时必填 |
 | `STEPFUN_ASR_MODEL`、`STEPFUN_TTS_MODEL`、`STEPFUN_TTS_VOICE` | 语音识别 / 合成，默认 `stepaudio-2.5-asr`、`stepaudio-2.5-tts`、`cixingnansheng` | 否 |
-| `AMAP_WEB_SERVICE_KEY` | 高德逆地理编码：把照片 GPS 识别成城市和地点 | 自动上图时必填 |
-| `AMAP_JS_KEY`、`AMAP_JS_SECURITY_CODE` | 高德 JS API（下一步叠加真实底图）；安全密钥经本机 `/_AMapService` 代理，不进浏览器 | 否 |
+| `AMAP_JS_KEY`、`AMAP_JS_SECURITY_CODE` | 高德 3D 真实底图，以及在浏览器里把照片 GPS 识别成城市；安全密钥经本机 `/_AMapService` 代理，不进浏览器 | 用真实地图时必填 |
+| `AMAP_WEB_SERVICE_KEY` | 可选：改由服务端做逆地理编码 | 否 |
 
 修改后重启 `npm run dev`。所有密钥只由本机 API 服务读取。
 
@@ -36,8 +36,8 @@ npm run dev
 
 1. **导入**：JPG、PNG、WebP、GIF 或浏览器能播放的视频，保存在浏览器 IndexedDB。读取拍摄时间与 GPS，按 SHA-256 跳过完全相同的文件。
 2. **整理成事件**：同一天、6 小时内、50 km 内的照片为一件事；离开常住地的连续多天（最长 30 天）合并为一次旅行。
-3. **定位**：配置高德 Web 服务 Key 后，带 GPS 的事件自动识别城市（WGS-84 先转 GCJ-02）。没有 GPS 的事件可用 StepFun 分析推断城市（地图上显示为虚线，待确认），或手动填写。
-4. **人生地图**：3D 卡通地图。停留超过半年且有 3 件以上事的城市成为人生据点，按迁徙顺序连成空间线；其余为途经地点。点击地点，镜头拉近并亮起这个地点的故事线。
+3. **定位**：配置高德 Key 后，带 GPS 的事件自动识别城市（WGS-84 先转 GCJ-02）。没有 GPS 的事件可用 StepFun 分析推断城市（地图上显示为虚线，待确认），或手动填写。
+4. **人生地图**：高德 3D 真实底图（马卡龙配色）上叠加卡通建筑；没有高德 Key 时用卡通底板。停留超过半年且有 3 件以上事的城市成为人生据点，按迁徙顺序连成空间线；其余为途经地点。点击地点，镜头拉近到这座城市，故事线按事件的真实位置串起来。
 5. **人生管家**：点击地点或顶栏「人生管家」打开。按住说话（StepFun 语音识别），管家依据事件记忆回答，附照片，推断内容带虚线下划线，可朗读（StepFun 语音合成）。据点角色（老家 / 求学 / 工作 / 居住）由管家询问确认。
 6. **事件详情**：点击故事线节点或时间线圆点打开，可用 StepFun 分析、手动修改并确认。
 
@@ -48,14 +48,14 @@ npm run dev
 ```powershell
 npm run build
 npm run test:api     # 模拟 StepFun 与高德，检查所有接口
-npm run test:smoke   # 需先 npm run dev；生成 35 张带 EXIF 的虚构照片，走完导入→地图→故事线→语音提问
+npm run test:smoke   # 需先 npm run dev；生成 35 张带 EXIF 的虚构照片，走完注册→导入→地图→故事线→语音提问
+npm run test:amap    # 需先 npm run dev 和高德 Key；在真实高德底图上识别城市、画地图和故事线
 ```
 
 冒烟测试需要本机安装 Chrome，使用独立浏览器会话，不修改你日常浏览器中的数据。
 
 ## 当前边界
 
-- 地图底板是卡通示意，地点按真实经纬度摆放，但还没有真实海岸线和道路；填好高德 JS Key 后叠加高德 3D 底图。
-- 没有高德 Web 服务 Key 时，带 GPS 的照片不会自动上图。
+- 同一城市里事件很密时，部分标签会叠放或暂时隐藏，放大地图后会显示。
 - 去重仅识别完全相同的文件；HEIC 尚未支持。
 - 幻灯片电影尚未实现。

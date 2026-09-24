@@ -1,8 +1,8 @@
 import * as THREE from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
-import type { MemoryEvent, Place, PlaceRole } from '../types'
+import type { MemoryEvent, Place } from '../types'
 import { wgs84ToGcj02 } from '../lib/geo'
-import { cityLabel, formatYearMonth, roleLabels } from '../lib/memory'
+import { LAND, PY, adder, arrowHead, box, building, createLabels, dim, eventLabel, placeLabel, seeded, toon, tree, tube } from './objects'
 
 // Life map rendered as a cartoon diorama. Places sit at their real (projected) positions;
 // a selected city's story line is laid out schematically around it, keeping each event's
@@ -21,26 +21,8 @@ export interface LifeMapCallbacks {
   onOpenEvent: (id: string) => void
 }
 
-const LAND = 0.45
-const PY = LAND + 0.34
 const SPAN = 18 // scene units covered by the bases' bounding box
 const MIN_GAP = 3.2 // places closer than this are pushed apart
-
-const roleColors: Record<PlaceRole, number> = {
-  home: 0xf5b98b,
-  study: 0x8fb8ea,
-  work: 0x8fd3a8,
-  residence: 0xc9b8ea,
-  travel: 0xffc98a,
-}
-
-const tones = new Uint8Array([110, 185, 255])
-const gradient = new THREE.DataTexture(tones, 3, 1, THREE.RedFormat)
-gradient.minFilter = gradient.magFilter = THREE.NearestFilter
-gradient.needsUpdate = true
-
-const toon = (color: number) => new THREE.MeshToonMaterial({ color, gradientMap: gradient })
-const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d)
 
 function mercator(lat: number, lng: number) {
   const gcj = wgs84ToGcj02({ lat, lng })
@@ -49,114 +31,8 @@ function mercator(lat: number, lng: number) {
   return new THREE.Vector2(x, -y) // north is -z so the camera looks north
 }
 
-function seeded(seed: number) {
-  let s = seed
-  return () => (s = (s * 16807) % 2147483647) / 2147483647
-}
 
-interface AddOptions { outline?: boolean; shadow?: boolean; rot?: [number, number, number]; scale?: [number, number, number]; outlineScale?: number }
 
-function adder(parent: THREE.Object3D) {
-  return (geo: THREE.BufferGeometry, color: number, pos: [number, number, number], opts: AddOptions = {}) => {
-    const { outline = true, shadow = true, rot, scale, outlineScale = 1.06 } = opts
-    const mesh = new THREE.Mesh(geo, toon(color))
-    mesh.position.set(...pos)
-    if (rot) mesh.rotation.set(...rot)
-    if (scale) mesh.scale.set(...scale)
-    mesh.castShadow = shadow
-    mesh.receiveShadow = true
-    if (outline) {
-      const line = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x3a3548, side: THREE.BackSide }))
-      line.scale.setScalar(outlineScale)
-      line.userData.outline = true
-      mesh.add(line)
-    }
-    parent.add(mesh)
-    return mesh
-  }
-}
-
-function tree(add: ReturnType<typeof adder>, x: number, z: number, s: number, rnd: () => number) {
-  add(new THREE.CylinderGeometry(0.05 * s, 0.07 * s, 0.3 * s, 6), 0x9a6b4f, [x, LAND + 0.15 * s, z], { outline: false })
-  add(new THREE.ConeGeometry(0.28 * s, 0.75 * s, 7), rnd() > 0.5 ? 0x6fbf73 : 0x82c97d, [x, LAND + 0.62 * s, z])
-}
-
-function platform(add: ReturnType<typeof adder>, r: number, rim: number) {
-  add(new THREE.CylinderGeometry(r, r * 1.05, 0.28, 48), rim, [0, LAND + 0.14, 0], { outlineScale: 1.04 })
-  add(new THREE.CylinderGeometry(r * 0.86, r * 0.86, 0.04, 48), 0xfffaf0, [0, PY - 0.01, 0], { outline: false })
-}
-
-// One small building per life-base role; returns the height used for the label
-function building(group: THREE.Group, role: PlaceRole, rnd: () => number): number {
-  const add = adder(group)
-  if (role === 'travel') {
-    add(new THREE.CylinderGeometry(0.34, 0.36, 0.1, 28), 0xffffff, [0, LAND + 0.05, 0], { outlineScale: 1.05 })
-    add(new THREE.CylinderGeometry(0.025, 0.025, 1.1, 6), 0x6a6a72, [0, LAND + 0.6, 0], { outline: false })
-    const tri = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(0.5, -0.16), new THREE.Vector2(0, -0.34)])
-    add(new THREE.ExtrudeGeometry(tri, { depth: 0.03, bevelEnabled: false }), 0xff8a65, [0.02, LAND + 1.12, 0], { outline: false })
-    return LAND + 1.25
-  }
-  platform(add, 1.3, roleColors[role])
-  if (role === 'home') {
-    add(box(1.0, 0.72, 0.85), 0xfff1d6, [0.15, PY + 0.36, 0])
-    add(new THREE.ConeGeometry(0.84, 0.6, 4), 0xe86f55, [0.15, PY + 1.02, 0], { rot: [0, Math.PI / 4, 0] })
-    add(box(0.15, 0.32, 0.15), 0xc9624f, [0.42, PY + 1.12, -0.12])
-    add(box(0.22, 0.38, 0.02), 0x8a5a44, [0.15, PY + 0.19, 0.43], { outline: false })
-    for (const x of [-0.18, 0.48]) add(box(0.2, 0.18, 0.02), 0xbfe3f5, [x, PY + 0.44, 0.43], { outline: false })
-    tree(add, -0.75, 0.2, 1.0, rnd)
-    return PY + 1.6
-  }
-  if (role === 'study') {
-    add(box(1.7, 0.8, 0.8), 0xf6e7c8, [0, PY + 0.4, 0.15])
-    add(box(1.8, 0.12, 0.9), 0x5d8fd6, [0, PY + 0.86, 0.15])
-    add(box(0.5, 1.7, 0.5), 0xf6e7c8, [0, PY + 0.85, -0.05])
-    add(new THREE.ConeGeometry(0.42, 0.5, 4), 0x5d8fd6, [0, PY + 1.95, -0.05], { rot: [0, Math.PI / 4, 0] })
-    add(new THREE.CylinderGeometry(0.16, 0.16, 0.04, 24), 0xffffff, [0, PY + 1.35, 0.21], { rot: [Math.PI / 2, 0, 0] })
-    for (const x of [-0.65, -0.4, 0.4, 0.65]) add(box(0.17, 0.2, 0.02), 0xbfe3f5, [x, PY + 0.45, 0.56], { outline: false })
-    return PY + 2.4
-  }
-  if (role === 'work') {
-    for (const [dx, dz, w, h, c] of [[-0.35, 0.3, 0.55, 2.0, 0xbfd7f2], [0.3, -0.3, 0.66, 2.8, 0xd9d2f2], [0.75, 0.45, 0.5, 1.4, 0xf2ede4]] as const) {
-      add(box(w, h, w), c, [dx, PY + h / 2, dz])
-      add(box(w * 0.7, 0.14, w * 0.7), 0x8c95b8, [dx, PY + h + 0.07, dz])
-      for (let y = 0.35; y < h - 0.2; y += 0.32) add(box(w * 0.78, 0.07, 0.01), 0x9fc3e6, [dx, PY + y, dz + w / 2 + 0.006], { outline: false, shadow: false })
-    }
-    return PY + 3.2
-  }
-  // residence: a pair of apartment blocks
-  for (const [dx, h, c] of [[-0.35, 1.3, 0xf3e3f0], [0.4, 1.0, 0xe6ddf6]] as const) {
-    add(box(0.62, h, 0.7), c, [dx, PY + h / 2, 0])
-    add(new THREE.ConeGeometry(0.52, 0.34, 4), 0x9b86c9, [dx, PY + h + 0.17, 0], { rot: [0, Math.PI / 4, 0] })
-    for (let y = 0.3; y < h - 0.1; y += 0.3) add(box(0.4, 0.1, 0.01), 0xbfe3f5, [dx, PY + y, 0.356], { outline: false, shadow: false })
-  }
-  return PY + 1.9
-}
-
-function tube(points: THREE.Vector3[], radius: number, color: number) {
-  const mesh = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), Math.max(24, points.length * 4), radius, 10), toon(color))
-  mesh.castShadow = true
-  return mesh
-}
-
-function arrowHead(curve: THREE.Curve<THREE.Vector3>, at: number, radius: number, color: number) {
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(radius * 2.8, radius * 6, 16), toon(color))
-  cone.position.copy(curve.getPointAt(at))
-  cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), curve.getTangentAt(at).normalize())
-  return cone
-}
-
-function dim(object: THREE.Object3D, amount: number) {
-  object.traverse((child) => {
-    const mesh = child as THREE.Mesh
-    if (!mesh.material) return
-    const material = mesh.material as THREE.Material
-    material.transparent = amount < 1
-    material.opacity = amount
-    material.depthWrite = amount >= 1
-  })
-}
-
-interface Label { el: HTMLElement; anchor: THREE.Vector3 }
 
 export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallbacks) {
   const canvas = document.createElement('canvas')
@@ -190,7 +66,7 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
   const world = new THREE.Group()
   scene.add(world)
 
-  let labels: Label[] = []
+  const labels = createLabels(labelLayer)
   let insets = { right: 0, bottom: 0 }
   let size = { w: 1, h: 1 }
   let positions = new Map<string, THREE.Vector3>()
@@ -200,22 +76,6 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
   const raycaster = new THREE.Raycaster()
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  function label(className: string, anchor: THREE.Vector3, build: (el: HTMLElement) => void, onClick?: () => void) {
-    const el = document.createElement(onClick ? 'button' : 'div')
-    el.className = `map-label ${className}`
-    build(el)
-    if (onClick) el.addEventListener('click', (event) => { event.stopPropagation(); onClick() })
-    labelLayer.append(el)
-    labels.push({ el, anchor })
-  }
-
-  const line = (el: HTMLElement, tag: string, text: string, className = '') => {
-    const child = document.createElement(tag)
-    if (className) child.className = className
-    child.textContent = text
-    el.append(child)
-    return child
-  }
 
   function placeLayout(places: Place[]) {
     const raw = new Map(places.filter((p) => p.lat !== undefined && p.lng !== undefined).map((p) => [p.city, mercator(p.lat!, p.lng!)]))
@@ -288,8 +148,7 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
       material?.dispose()
     })
     world.clear()
-    labelLayer.replaceChildren()
-    labels = []
+    labels.clear()
     focusPoints = []
     placesCache = data.places
     positions = placeLayout(data.places)
@@ -371,10 +230,8 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
       if (selected && !isSelected && !place.isBase) continue
       const anchor = new THREE.Vector3(pos.x, (tops.get(place.city) || PY) + 0.2, pos.z)
       if (!selected || isSelected) focusPoints.push(anchor, pos.clone().setY(LAND))
-      label(`place${place.isBase ? '' : ' small'}${isSelected ? ' selected' : ''}${selected && !isSelected ? ' faded' : ''}${place.roleConfirmed || !place.isBase ? '' : ' unsure'}`, anchor, (el) => {
-        line(el, 'strong', `${cityLabel(place.city)}${place.isBase || place.roleConfirmed ? ` · ${place.roleConfirmed || place.role !== 'residence' ? roleLabels[place.role] : '生活过'}` : ''}`)
-        line(el, 'small', `${formatYearMonth(place.firstAt)}${place.firstAt.slice(0, 7) !== place.lastAt.slice(0, 7) ? ` – ${formatYearMonth(place.lastAt)}` : ''} · ${place.eventIds.length} 件事`)
-      }, () => callbacks.onSelectCity(place.city))
+      const spec = placeLabel(place, selected)
+      labels.add(spec.className, anchor, spec.lines, () => callbacks.onSelectCity(place.city), spec.priority)
     }
 
     // Story line of the selected city
@@ -423,11 +280,8 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
           }
         }
         focusPoints.push(pos.clone(), new THREE.Vector3(pos.x, LAND + 0.5, pos.z))
-        label(`event${now ? ' now' : ''}${unsure ? ' unsure' : ''}${event.status === 'draft' ? ' draft' : ''}`, new THREE.Vector3(pos.x, LAND + 0.5, pos.z), (el) => {
-          line(el, 'time', formatYearMonth(event.occurredAt))
-          line(el, 'strong', event.title)
-          el.dataset.eventId = event.id
-        }, () => callbacks.onOpenEvent(event.id))
+        const spec = eventLabel(event, now, unsure)
+        labels.add(spec.className, new THREE.Vector3(pos.x, LAND + 0.5, pos.z), spec.lines, () => callbacks.onOpenEvent(event.id), spec.priority)
       }
     }
 
@@ -514,13 +368,7 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
     camera.setViewOffset(w, h, insets.right / 2, insets.bottom / 2, w, h)
     camera.updateProjectionMatrix()
     renderer.render(scene, camera)
-    const v = new THREE.Vector3()
-    for (const { el, anchor } of labels) {
-      v.copy(anchor).project(camera)
-      const hidden = v.z > 1
-      el.style.transform = `translate(${((v.x + 1) / 2) * w}px, ${((1 - v.y) / 2) * h}px) translate(-50%, -100%)`
-      el.style.visibility = hidden ? 'hidden' : 'visible'
-    }
+    labels.place(camera, w, h)
   }
 
   function resize() {

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>AMap + Three.js Red Cube</title>
+<style>
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+  #map { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #three-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+</style>
+<script>
+  // Security key: set before the AMap loader script executes.
+  window._AMapSecurityConfig = { securityJsCode: '__AMAP_CODE__' };
+</script>
+<script src="https://webapi.amap.com/maps?v=2.0&key=__AMAP_KEY__"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="map"></div>
+<canvas id="three-canvas"></canvas>
+
+<script type="module">
+import * as THREE from 'three';
+
+// -----------------------------------------------------------------------
+// WGS-84 -> GCJ-02 conversion (phone GPS is WGS-84; AMap needs GCJ-02).
+// -----------------------------------------------------------------------
+const A = 6378245.0;
+const EE = 0.00669342162296594323;
+
+function outOfChina(lat, lng) {
+  return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271;
+}
+function transformLat(x, y) {
+  let r = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  r += ((20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2) / 3;
+  r += ((20 * Math.sin(y * Math.PI) + 40 * Math.sin((y / 3) * Math.PI)) * 2) / 3;
+  r += ((160 * Math.sin((y / 12) * Math.PI) + 320 * Math.sin((y * Math.PI) / 30)) * 2) / 3;
+  return r;
+}
+function transformLng(x, y) {
+  let r = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  r += ((20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2) / 3;
+  r += ((20 * Math.sin(x * Math.PI) + 40 * Math.sin((x / 3) * Math.PI)) * 2) / 3;
+  r += ((150 * Math.sin((x / 12) * Math.PI) + 300 * Math.sin((x / 30) * Math.PI)) * 2) / 3;
+  return r;
+}
+function wgs84ToGcj02(lat, lng) {
+  if (outOfChina(lat, lng)) return [lng, lat];
+  const dLat = transformLat(lng - 105, lat - 35);
+  const dLng = transformLng(lng - 105, lat - 35);
+  const radLat = (lat / 180) * Math.PI;
+  const magic = 1 - EE * Math.sin(radLat) ** 2;
+  const sqrtMagic = Math.sqrt(magic);
+  const mLat = lat + (dLat * 180) / (((A * (1 - EE)) / (magic * sqrtMagic)) * Math.PI);
+  const mLng = lng + (dLng * 180) / ((A / sqrtMagic) * Math.cos(radLat) * Math.PI);
+  return [mLng, mLat];
+}
+
+// -----------------------------------------------------------------------
+// The Bund (外滩), phone GPS / WGS-84 coordinates given in the task.
+// -----------------------------------------------------------------------
+const BUND_WGS84 = { lat: 31.2397, lng: 121.4998 };
+const BUND_GCJ02 = wgs84ToGcj02(BUND_WGS84.lat, BUND_WGS84.lng); // [lng, lat]
+
+// A generic Shanghai city-center point (GCJ-02) just to center/zoom the map view.
+const SHANGHAI_CENTER_GCJ02 = wgs84ToGcj02(31.2304, 121.4737);
+
+// -----------------------------------------------------------------------
+// AMap 3D map.
+// -----------------------------------------------------------------------
+const map = new AMap.Map('map', {
+  viewMode: '3D',
+  pitch: 50,
+  zoom: 13,
+  center: SHANGHAI_CENTER_GCJ02,
+  showBuildingBlock: false,
+  showLabel: true,
+});
+// Expose for test scripts.
+window.map = map;
+
+// -----------------------------------------------------------------------
+// Three.js overlay. AMap's WebGL context is WebGL1; three r186 needs WebGL2,
+// so three gets its own transparent canvas stacked on top, and GLCustomLayer
+// is only used as the per-frame hook that supplies the synced camera.
+// -----------------------------------------------------------------------
+const canvas = document.getElementById('three-canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera();
+
+// The origin used for customCoords conversions: fixed at the cube's location.
+const origin = BUND_GCJ02;
+
+// Pure red cube (#ff0000, MeshBasicMaterial so it needs no lighting).
+const PX_PER_UNIT = 40; // desired constant on-screen width, in pixels
+const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+
+// Wrapper group so the cube can be scaled every frame to hold a constant
+// pixel size, and positioned at the converted Web-Mercator-metres coordinate.
+const wrapper = new THREE.Group();
+wrapper.add(cube);
+scene.add(wrapper);
+
+function unitMetres(zoom) {
+  // Metres per pixel at this zoom, times the desired pixel width per scene unit.
+  return (156543.034 / 2 ** zoom) * PX_PER_UNIT;
+}
+
+let size = { w: 1, h: 1 };
+
+function placeCube() {
+  map.customCoords.setCenter(origin);
+  const [x, y] = map.customCoords.lngLatsToCoords([origin])[0];
+  // z is up in AMap's frame; lift the cube by half its (unscaled) height so it
+  // sits on the ground rather than being centered through it.
+  wrapper.position.set(x, y, 0.5);
+}
+placeCube();
+
+function draw() {
+  const cc = map.customCoords;
+  cc.setCenter(origin);
+  const { near, far, fov, up, lookAt, position } = cc.getCameraParams();
+  camera.near = near;
+  camera.far = far;
+  camera.fov = fov;
+  camera.aspect = size.w / size.h;
+  camera.position.set(position[0], position[1], position[2]);
+  camera.up.set(up[0], up[1], up[2]);
+  camera.lookAt(lookAt[0], lookAt[1], lookAt[2]);
+  camera.updateProjectionMatrix();
+
+  const unit = unitMetres(map.getZoom());
+  wrapper.scale.setScalar(unit);
+
+  renderer.render(scene, camera);
+}
+
+const glLayer = new AMap.GLCustomLayer({
+  zIndex: 120,
+  init() {},
+  render: draw,
+});
+map.add(glLayer);
+
+function resize() {
+  size = { w: Math.max(1, window.innerWidth), h: Math.max(1, window.innerHeight) };
+  renderer.setSize(size.w, size.h, false);
+  draw();
+}
+window.addEventListener('resize', resize);
+resize();
+
+map.on('complete', () => {
+  draw();
+});
+</script>
+</body>
+</html>

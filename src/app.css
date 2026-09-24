@@ -20,12 +20,17 @@ body{overflow:hidden}
 .stage{position:relative;flex:1;min-height:0;overflow:hidden;background:linear-gradient(180deg,#bfe2f3 0%,#dcf0f8 45%,#e7f4f8 100%)}
 .life-map{position:absolute;inset:0}
 .life-map-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.life-map-amap{position:absolute;inset:0}
+.life-map-canvas.overlay{pointer-events:none}
 .life-map-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 
 .map-label{position:absolute;left:0;top:0;pointer-events:auto;background:#fff;border:2px solid #3a3548;border-radius:12px;padding:6px 11px 7px;box-shadow:0 6px 18px #1d3b5a26;white-space:nowrap;text-align:left;font:inherit;color:var(--ink);cursor:pointer}
 .map-label:after{content:'';position:absolute;left:50%;bottom:-7px;width:10px;height:10px;background:inherit;border-right:inherit;border-bottom:inherit;transform:translateX(-50%) rotate(45deg)}
 .map-label strong{display:block;font-size:14px}
 .map-label small{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.map-label.lifted:after{display:none}
+.map-label.lifted:before{content:'';position:absolute;left:50%;top:100%;width:1.5px;height:calc(var(--lift) + 2px);background:currentColor;opacity:.55;transform:translateX(-50%)}
+.map-label.event.lifted:before{background:var(--story);opacity:.8}
 .map-label.small{padding:4px 9px 5px;border-width:1.5px;border-radius:9px}
 .map-label.small strong{font-size:12px}
 .map-label.place.selected{border-color:var(--space);box-shadow:0 0 0 4px #16855a2e,0 6px 18px #1d3b5a26}

@@ -20,5 +20,6 @@
 | control-in-app-browser | 引用 · Codex 内置（无本地文件） | 在 Codex 内置浏览器中操作页面 | Codex 阶段的浏览器检查 |
 | artifact-design | 引用 · Claude Code 内置（无本地文件） | HTML 页面的设计规范 | 需求说明书与 3D 效果图 |
 | [stepfun-api](stepfun-api/SKILL.md) | **自建** | StepFun 对话/图片/JSON、语音识别、语音合成的已验证调用方法 | 事件分析、人生管家对话与语音。对比测试：[3/3 vs 2/3](stepfun-api/evals/2026-09-24/README.md) |
+| [amap-threejs](amap-threejs/SKILL.md) | **自建** | 在高德 JS API 2.0 3D 地图上叠加 Three.js：相机同步、坐标单位、GCJ-02、恒定屏幕尺寸、安全密钥代理、浏览器端地理编码、配色与取景 | 人生地图的高德真实底图。对比测试：[用 skill 位置偏差 1 px、尺寸恒定；不用 skill 画不出来](amap-threejs/evals/2026-09-24/README.md) |
 
 内置 skill 随工具提供，本机没有可复制的文件，只在此登记。

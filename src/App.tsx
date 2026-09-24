@@ -4,6 +4,7 @@ import { analyzeEvent, askButler, fetchAiConfig, geocode, speak, transcribe, typ
 import { importFiles } from './lib/import'
 import { baseAt, cityLabel, derivePlaces, firstsOf, formatYearMonth, regroupDrafts, roleLabels, spaceLine, storyLine } from './lib/memory'
 import { startRecording } from './lib/recorder'
+import { geocodeInBrowser } from './map/amap'
 import { loadMemory, removeFile, saveMemory } from './lib/storage'
 import type { AiConfig, MemoryEvent, MemoryState, PlaceRole } from './types'
 import { Butler, type ButlerMessage, type VoiceState } from './components/Butler'
@@ -23,6 +24,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [memory, setMemory] = useState<MemoryState>(initialMemory)
   const [ready, setReady] = useState(false)
   const [aiConfig, setAiConfig] = useState<AiConfig>({ available: false, mode: 'unconfigured', message: '正在检查 AI 连接…', geocode: false })
+  const [configChecked, setConfigChecked] = useState(false)
   const [tab, setTab] = useState<Tab>('map')
   const [selectedCity, setSelectedCity] = useState<string | null>(null)
   const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null)
@@ -44,6 +46,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   useEffect(() => {
     loadMemory().then((data) => { setMemory(data); setReady(true) }).catch(() => setReady(true))
     fetchAiConfig().then(setAiConfig).catch(() => setAiConfig({ available: false, mode: 'unconfigured', message: 'AI 服务未启动；本地整理仍可使用', geocode: false }))
+      .finally(() => setConfigChecked(true))
   }, [])
 
   useEffect(() => { if (ready) saveMemory(memory).catch(() => setNotice('本地存储失败，请检查浏览器可用空间')) }, [memory, ready])
@@ -54,13 +57,15 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     return () => window.clearTimeout(timer)
   }, [notice])
 
-  // Name the city of every located event once
+  // Name the city of every located event once: web-service key on the server,
+  // otherwise the JS API geocoder in the browser
   useEffect(() => {
-    if (!ready || !aiConfig.geocode) return
+    if (!ready || (!aiConfig.geocode && !aiConfig.amapJsKey)) return
     const pending = memory.events.filter((e) => !e.city && e.lat !== undefined && e.lng !== undefined && !geocoded.current.has(e.id))
     if (!pending.length) return
     pending.forEach((e) => geocoded.current.add(e.id))
-    geocode(pending.map((e) => ({ id: e.id, lat: e.lat!, lng: e.lng! })))
+    const points = pending.map((e) => ({ id: e.id, lat: e.lat!, lng: e.lng! }))
+    ;(aiConfig.geocode ? geocode(points) : geocodeInBrowser(aiConfig.amapJsKey!, points))
       .then((results) => setMemory((current) => ({
         ...current,
         events: current.events.map((event) => {
@@ -70,7 +75,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         }),
       })))
       .catch((error) => setNotice(error instanceof Error ? error.message : '地名识别失败'))
-  }, [memory.events, ready, aiConfig.geocode])
+  }, [memory.events, ready, aiConfig.geocode, aiConfig.amapJsKey])
 
   const events = useMemo(() => [...memory.events].sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()), [memory.events])
   const places = useMemo(() => derivePlaces(events, memory.placeRoles), [events, memory.placeRoles])
@@ -284,7 +289,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       </header>
 
       <main className="stage">
-        <LifeMapView
+        {configChecked && <LifeMapView
+          amapKey={aiConfig.amapJsKey}
+          onMapError={setNotice}
           places={places}
           bases={bases}
           story={story}
@@ -294,7 +301,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           insetBottom={events.length ? TIMEBAR_HEIGHT : 0}
           onSelectCity={(city) => selectCity(city)}
           onOpenEvent={setActiveEventId}
-        />
+        />}
 
         {ready && events.length > 0 && (
           <div className="map-heading">
@@ -343,7 +350,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         {ready && events.length > 0 && !places.length && (
           <div className="map-empty compact">
             <h2>还没有可以放上地图的事件</h2>
-            <p>{aiConfig.geocode ? '这些照片没有定位信息。' : '填写高德 Web 服务 Key 后，带定位的照片会自动识别城市。'}也可以打开事件，用 StepFun 分析或手动填写城市。</p>
+            <p>{aiConfig.geocode || aiConfig.amapJsKey ? '这些照片没有定位信息。' : '填写高德 Key 后，带定位的照片会自动识别城市。'}也可以打开事件，用 StepFun 分析或手动填写城市。</p>
             <button className="button button-subtle" onClick={() => setTrayOpen(true)}>查看待整理的事件</button>
           </div>
         )}
