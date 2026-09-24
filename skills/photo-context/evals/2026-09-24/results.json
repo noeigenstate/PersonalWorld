@@ -1,0 +1,1020 @@
+{
+  "cases": [
+    {
+      "name": "same-room",
+      "note": "目标是房间下半部分；R1 是同一房间上半部分（有定位：杭州）；R2 白墙空房间（上海）；R3 东方明珠（上海）"
+    },
+    {
+      "name": "landmark",
+      "note": "目标是东方明珠（无定位）；R1 黄鹤楼（武汉）；R2 用户房间（杭州）"
+    },
+    {
+      "name": "landmark-same-place",
+      "note": "目标是东方明珠 A（无定位）；R1 东方明珠 B（上海，有定位）；R2 黄鹤楼（武汉）"
+    },
+    {
+      "name": "no-evidence",
+      "note": "目标是白墙空房间（无定位）；R1 用户房间（杭州）；R2 黄鹤楼（武汉）。只有\"都是白墙\"，不应补全城市"
+    }
+  ],
+  "results": {
+    "with-skill": {
+      "same-room": [
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "同一场景",
+                "evidence": "吊灯的圆形灯罩、金属安装杆、天花板安装底座与目标照片完全一致；墙面颜色和踢脚线样式也相同",
+                "confidence": 0.95
+              },
+              {
+                "refId": "empty",
+                "relation": "无关",
+                "evidence": "仅能看到空房间、窗户和木地板，没有独特的灯具、装修标识或装饰细节与目标照片匹配，且未显示目标照片中的吊灯",
+                "confidence": 0.3
+              },
+              {
+                "refId": "pearl",
+                "relation": "无关",
+                "evidence": "室外地标东方明珠塔（上海）与目标照片的室内装修场景无任何关联",
+                "confidence": 0.1
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "杭州市",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "与R1是同一场景（同一房间），R1有GPS定位显示为杭州市；目标照片窗户上广告电话区号0571也对应杭州市",
+                "confidence": 0.9
+              },
+              "place": {
+                "value": "西湖区",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "与R1是同一场景，R1 GPS定位显示位于西湖区",
+                "confidence": 0.75
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "同一场景",
+                "evidence": "两者均显示同一装修现场（恒彩家装）的圆形吸顶灯（外罩透明、灯盘白色的造型一致），墙面均为白色且安装有护墙板/踢脚线，窗户玻璃贴有装修防护膜，处于未完工状态",
+                "confidence": 0.8
+              },
+              {
+                "refId": "empty",
+                "relation": "无关",
+                "evidence": "R2窗外为红砖建筑，定位为上海市；目标照片窗户玻璃贴有杭州0571区号的家装广告，且场景为装修现场，与R2无共同独特细节",
+                "confidence": 0.9
+              },
+              {
+                "refId": "pearl",
+                "relation": "无关",
+                "evidence": "R3为上海陆家嘴东方明珠塔户外地标，与目标照片的室内装修场景无任何关联",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "杭州市",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "目标照片窗户玻璃上的广告显示电话号码0571开头（杭州区号），与R1 GPS定位杭州市一致",
+                "confidence": 0.95
+              },
+              "place": {
+                "value": "西湖区",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "R1 GPS定位为西湖区，且与目标照片判断为同一装修场景（同一房间或同一工地）",
+                "confidence": 0.65
+              },
+              "time": null,
+              "event": {
+                "value": "房屋装修现场记录",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "目标照片显示未完工的室内环境（吸顶灯刚装、窗户贴有恒彩家装防护膜），与R1的装修现场特征一致",
+                "confidence": 0.75
+              }
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "同一场景",
+                "evidence": "R1 与目标照片拥有完全相同的吸顶灯/吊扇灯（白色圆形灯罩、透明玻璃边框、天花板安装方式），R1 是该灯具的特写视角，目标照片是该灯具与房间窗户的广角视角，属于同一房间的不同角度",
+                "confidence": 0.95
+              },
+              {
+                "refId": "empty",
+                "relation": "无关",
+                "evidence": "R2 窗外为红砖外墙建筑（纽约风格），目标照片窗外为现代玻璃幕墙建筑；R2 窗户为高侧窗设计，目标照片为落地窗/大窗；R2 地点为上海（GPS），目标照片窗户有杭州区号 0571 的装修公司标识，存在地点矛盾",
+                "confidence": 0.9
+              },
+              {
+                "refId": "pearl",
+                "relation": "无关",
+                "evidence": "R3 为上海东方明珠塔室外景观，目标照片为室内房间场景，无任何共同视觉细节",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "杭州市",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "目标照片窗户上的装修保护膜显示有杭州区号 0571 的装修公司（恒彩家装），且与 R1 为同一场景，R1 GPS 定位显示为杭州市",
+                "confidence": 0.9
+              },
+              "place": {
+                "value": "西湖区",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "R1 GPS 定位显示地点为西湖区，且与目标照片为同一场景",
+                "confidence": 0.85
+              },
+              "time": null,
+              "event": {
+                "value": "室内装修/硬装完工",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "窗户贴有装修公司保护膜（恒彩家装），灯具已安装完成，符合装修现场特征",
+                "confidence": 0.7
+              }
+            },
+            "conflicts": [
+              "R2 GPS 定位为上海市，与目标照片窗户上的杭州区号（0571）及 R1 的杭州定位存在地点冲突"
+            ]
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        }
+      ],
+      "landmark": [
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R1为武汉黄鹤楼壁画，目标照片为上海东方明珠塔，二者分属不同城市、不同建筑，无共同场景或事件关联",
+                "confidence": 0.95
+              },
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "R2为室内天花板灯具（杭州），目标照片为室外超高层地标建筑（上海），场景、地点及类型均无关联",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "landmark"
+                ],
+                "reason": "目标照片清晰可见上海东方明珠广播电视塔，该建筑为上海市标志性地标，可明确识别",
+                "confidence": 0.9
+              },
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "目标照片为上海东方明珠塔，R1为武汉黄鹤楼瓷砖壁画，二者位于不同城市，建筑形态与场景完全不同，无共同可识别的独特细节",
+                "confidence": 0.95
+              },
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "目标照片为户外标志性建筑，R2为室内普通吸顶灯，无任何可建立关联的独特细节或场景特征",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "landmark"
+                ],
+                "reason": "目标照片中清晰可见东方明珠广播电视塔，该建筑是上海市的标志性地标",
+                "confidence": 0.95
+              },
+              "place": {
+                "value": "东方明珠广播电视塔",
+                "fromRefIds": [
+                  "landmark"
+                ],
+                "reason": "目标照片主体为东方明珠塔，该塔位于上海市浦东新区陆家嘴",
+                "confidence": 0.9
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R1为武汉黄鹤楼壁画（来源GPS定位武汉市），目标照片为上海东方明珠塔，二者为不同城市的标志性建筑，场景与地点均无关联",
+                "confidence": 0.95
+              },
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "R2为普通室内吸顶灯，目标照片为室外超高层建筑景观，无共同场景特征或地点关联",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "landmark"
+                ],
+                "reason": "目标照片中清晰可见上海东方明珠广播电视塔这一标志性建筑",
+                "confidence": 0.95
+              },
+              "place": {
+                "value": "东方明珠广播电视塔",
+                "fromRefIds": [
+                  "landmark"
+                ],
+                "reason": "目标照片主体即为东方明珠塔",
+                "confidence": 0.95
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        }
+      ],
+      "landmark-same-place": [
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "pearl",
+                "relation": "同一场景",
+                "evidence": "均为上海东方明珠广播电视塔（Oriental Pearl Tower）的仰拍视角，展示了相同的底部三支柱、下球体及塔身结构，背景为晴朗蓝天，拍摄地点均为塔底广场附近",
+                "confidence": 0.95
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R2为武汉黄鹤楼主题壁画（瓷砖画），与目标照片的现代钢塔建筑上海东方明珠无任何视觉或地点关联",
+                "confidence": 1
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "R1提供GPS定位确认城市为上海市，且目标照片可识别为上海标志性建筑东方明珠广播电视塔",
+                "confidence": 0.95
+              },
+              "place": {
+                "value": "陆家嘴",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "R1的GPS定位地点为陆家嘴，东方明珠广播电视塔位于上海浦东新区陆家嘴",
+                "confidence": 0.9
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "pearl",
+                "relation": "同一地点",
+                "evidence": "两图均以上海东方明珠广播电视塔为主体，展示其下部的三根支柱、中部下球体及上球体结构，底部均悬挂有多面彩旗；R1左侧可见上海国际会议中心（蓝色圆顶建筑），目标照片左侧亦可见相似圆顶建筑轮廓，均位于陆家嘴区域",
+                "confidence": 0.95
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R2为武汉黄鹤楼主题壁画，目标照片为上海东方明珠广播电视塔，分属不同城市、不同建筑，无场景、地点或事件关联",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "pearl",
+                  "landmark"
+                ],
+                "reason": "目标照片中清晰可见东方明珠广播电视塔（上海标志性建筑），R1的GPS定位确认该建筑位于上海市",
+                "confidence": 0.95
+              },
+              "place": {
+                "value": "陆家嘴东方明珠塔",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "R1的GPS定位显示地点为陆家嘴，东方明珠塔正位于该区域",
+                "confidence": 0.9
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "pearl",
+                "relation": "同一地点",
+                "evidence": "两者均拍摄东方明珠广播电视塔（Oriental Pearl Tower），可见相同的三个下球体、三根支柱结构和顶部天线造型，R1明确标注该建筑位于上海市浦东新区陆家嘴（GPS定位）",
+                "confidence": 0.95
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R2为武汉黄鹤楼（可见'黄鹤楼'匾额）的陶瓷壁画图像，而目标照片为上海东方明珠塔，两者建筑、城市及地理位置均完全不同",
+                "confidence": 0.9
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "目标照片拍摄的是东方明珠广播电视塔，R1（GPS定位）确认该建筑位于上海市",
+                "confidence": 0.95
+              },
+              "place": {
+                "value": "陆家嘴",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "东方明珠塔位于上海浦东新区陆家嘴，R1 GPS定位明确标注地点为陆家嘴",
+                "confidence": 0.9
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        }
+      ],
+      "no-evidence": [
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "R1仅为天花板吸顶灯局部特写，未展示房间其他部分（如地板、窗户、踢脚线等），无法与目标照片中的房间场景建立视觉关联，且目标照片未显示天花板部分，无法确认灯具归属",
+                "confidence": 0.9
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R2为武汉黄鹤楼主题瓷砖壁画，属于景点艺术装饰；目标照片为普通室内房间，窗外为城市住宅建筑，与R2的壁画内容及场景无任何关联",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": null,
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "R1仅展示天花板灯具，缺乏窗户、地板、墙面布局等可与目标照片匹配的独特细节，无法确认是同一房间或场景",
+                "confidence": 0
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R2为黄鹤楼壁画，属于室外景点艺术，与目标照片的室内房间场景无关联",
+                "confidence": 0
+              }
+            ],
+            "fills": {
+              "city": null,
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "R1为吸顶灯特写，天花板呈灰色；目标照片为室内房间，天花板为白色，且未显示该灯具，无共同独特细节。",
+                "confidence": 0.9
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R2为武汉黄鹤楼瓷砖壁画，位于公共景区；目标照片为空白墙面的住宅室内，无壁画、地标或装饰性细节，环境与事件均不相关。",
+                "confidence": 0.9
+              }
+            ],
+            "fills": {
+              "city": null,
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        }
+      ]
+    },
+    "without-skill": {
+      "same-room": [
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "同一地点",
+                "evidence": "目标照片中装修公司联系电话区号为0571（杭州市区号），与R1提供的杭州市GPS定位信息一致",
+                "confidence": 0.85
+              },
+              {
+                "refId": "empty",
+                "relation": "无关",
+                "evidence": "目标照片位于杭州市（区号0571），R2定位城市为上海市",
+                "confidence": 0.9
+              },
+              {
+                "refId": "pearl",
+                "relation": "无关",
+                "evidence": "目标照片位于杭州市（区号0571），R3定位城市为上海市陆家嘴",
+                "confidence": 0.9
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "杭州市",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "照片中玻璃上的装修广告显示电话区号0571，该区号为杭州市区号；且与R1的杭州市GPS定位信息吻合",
+                "confidence": 0.9
+              },
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "同一场景",
+                "evidence": "目标照片与R1均展示了完全相同的圆盘形白色吊灯（顶部带环形金属装饰），且目标照片窗户上恒彩家装广告的电话区号0571与R1标注的杭州市吻合，表明为同一室内装修场景",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "杭州市",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "R1通过GPS定位确认城市为杭州市，目标照片中窗户广告电话区号0571亦为杭州区号，两者相互印证",
+                "confidence": 0.95
+              },
+              "place": {
+                "value": "西湖区",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "R1标注地点为西湖区，结合同一场景关系，推断目标照片拍摄地点亦为西湖区",
+                "confidence": 0.85
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": false
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "同一地点",
+                "evidence": "目标照片窗户上的广告牌显示电话区号为0571（杭州区号），与R1标注的杭州市（0571区号）一致",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "杭州市",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "照片中恒彩家装广告电话区号为0571，对应浙江省杭州市，与R1标注的城市一致",
+                "confidence": 0.95
+              },
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": false
+          }
+        }
+      ],
+      "landmark": [
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R1显示武汉黄鹤楼（来源：GPS定位），目标照显示上海东方明珠塔，属于不同城市的不同标志性建筑",
+                "confidence": 0.9
+              },
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "R2为室内吊灯场景（来源：用户确认位于杭州），目标照为上海标志性建筑，无场景或地点关联",
+                "confidence": 0.8
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "landmark"
+                ],
+                "reason": "目标照片中的建筑为东方明珠广播电视塔，是上海市的标志性建筑",
+                "confidence": 0.95
+              },
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R1（第2张图）为武汉市黄鹤楼相关壁画，目标照片（第1张图）为上海市东方明珠塔，二者分属不同城市的标志性建筑，非同一场景、地点或事件",
+                "confidence": 0.95
+              },
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "R2（第3张图）为杭州市室内照明设备场景，与目标照片中的户外地标建筑无空间、场景或事件关联",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "landmark"
+                ],
+                "reason": "目标照片清晰展示上海东方明珠广播电视塔（Oriental Pearl Tower）的独特建筑外观，包括三球塔身结构、三支柱支撑及顶部天线，该建筑为上海市标志性景观，据此可确定拍摄城市为上海",
+                "confidence": 0.95
+              },
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "目标照片为上海东方明珠广播电视塔，R1为武汉黄鹤楼相关壁画，二者地点不同",
+                "confidence": 0.9
+              },
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "目标照片为室外标志性建筑，R2为室内天花板灯具，场景与内容均不符",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "landmark"
+                ],
+                "reason": "目标照片中的建筑为上海东方明珠广播电视塔（东方明珠塔），是上海市标志性建筑，参考照片R1（武汉）与R2（杭州）均不匹配",
+                "confidence": 0.95
+              },
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        }
+      ],
+      "landmark-same-place": [
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "pearl",
+                "relation": "同一地点",
+                "evidence": "目标照片与R1均显示东方明珠广播电视塔，建筑外观特征（三球结构、支柱设计、塔顶天线及周边广场）完全一致",
+                "confidence": 1
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "目标照片建筑为东方明珠广播电视塔，与R1为同一建筑；R1通过GPS定位明确标注城市为上海市",
+                "confidence": 1
+              },
+              "place": {
+                "value": "陆家嘴",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "R1明确标注地点为陆家嘴，东方明珠塔位于上海浦东新区陆家嘴地区",
+                "confidence": 1
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": false
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "pearl",
+                "relation": "同一地点",
+                "evidence": "目标照片与R1均为上海东方明珠广播电视塔（Oriental Pearl Tower），具有完全相同的标志性建筑特征（三球结构、底部支撑柱、顶部天线等），R1明确标注城市为上海市，地点为陆家嘴",
+                "confidence": 1
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R2显示的是武汉市黄鹤楼相关的壁画/建筑（可见'黄鹤楼'字样），与目标照片中的上海东方明珠塔完全不同",
+                "confidence": 0
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "R1通过GPS定位明确标注城市为上海市，且该建筑（东方明珠塔）确为上海陆家嘴的标志性建筑",
+                "confidence": 1
+              },
+              "place": {
+                "value": "陆家嘴",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "R1明确标注地点为陆家嘴，且东方明珠塔位于上海浦东新区陆家嘴地区",
+                "confidence": 1
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "pearl",
+                "relation": "同一地点",
+                "evidence": "目标照片与R1均展示上海东方明珠广播电视塔，为同一标志性建筑，拍摄角度不同",
+                "confidence": 0.95
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R2展示的是武汉黄鹤楼（中式楼阁建筑），与目标照片中的现代电视塔建筑无关联",
+                "confidence": 0.95
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "上海市",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "目标照片中的建筑为东方明珠广播电视塔，R1通过GPS定位确认为上海市，且东方明珠塔是上海的标志性建筑",
+                "confidence": 0.95
+              },
+              "place": {
+                "value": "陆家嘴",
+                "fromRefIds": [
+                  "pearl"
+                ],
+                "reason": "东方明珠塔位于上海市浦东新区陆家嘴，R1明确标注地点为陆家嘴",
+                "confidence": 0.95
+              },
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        }
+      ],
+      "no-evidence": [
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "目标照片展示房间室内全景及窗外红砖建筑，R1为天花板吸顶灯特写，两者场景、拍摄内容及视觉特征均无关联",
+                "confidence": 0.1
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "目标照片为现代室内居住空间，R2为黄鹤楼主题陶瓷壁画（武汉地标），两者无场景、地点或内容上的关联性",
+                "confidence": 0.1
+              }
+            ],
+            "fills": {
+              "city": null,
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "同一场景",
+                "evidence": "目标照片与R1均呈现现代简约风格的室内空间（空置/装修中房间），R1展示天花板灯具，目标照片展示地板、墙面及窗户，二者属于同一房间的不同视角。",
+                "confidence": 0.6
+              }
+            ],
+            "fills": {
+              "city": {
+                "value": "杭州市",
+                "fromRefIds": [
+                  "room"
+                ],
+                "reason": "参考照片R1通过GPS定位确认为杭州市，且其与目标照片的场景特征（现代室内空间）一致，支持该城市归属。",
+                "confidence": 0.6
+              },
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": false,
+            "rightSource": false,
+            "noFalseMatch": false,
+            "coversAllRefs": false
+          }
+        },
+        {
+          "read": {
+            "matches": [
+              {
+                "refId": "room",
+                "relation": "无关",
+                "evidence": "R1展示吸顶灯具（现代风格圆形吊灯），目标照片为室内房间场景，未显示天花板或灯具；两图像无共同地标、家具或场景特征，无法建立场景、地点或事件关联。R1标注城市为杭州，但目标照片窗外红砖建筑为通用建筑风格，无法确认位于杭州。",
+                "confidence": 0
+              },
+              {
+                "refId": "crane",
+                "relation": "无关",
+                "evidence": "R2展示黄鹤楼陶瓷壁画（可见'黄鹤楼'字样），明确对应武汉市地标；目标照片为简约室内房间，无壁画或传统建筑元素，无法建立场景、地点或事件关联。R2标注城市为武汉，但目标照片无特征可确认位于武汉。",
+                "confidence": 0
+              }
+            ],
+            "fills": {
+              "city": null,
+              "place": null,
+              "time": null,
+              "event": null
+            },
+            "conflicts": []
+          },
+          "grade": {
+            "cityCorrect": true,
+            "rightSource": true,
+            "noFalseMatch": true,
+            "coversAllRefs": true
+          }
+        }
+      ]
+    }
+  }
+}

@@ -11,7 +11,10 @@
     "preview": "vite preview --host 127.0.0.1",
     "test:smoke": "node tests/smoke.mjs",
     "test:api": "node tests/api.mjs",
-    "test:amap": "node tests/amap.mjs"
+    "test:amap": "node tests/amap.mjs",
+    "test:card": "node tests/photo-card.mjs",
+    "test:context": "node tests/photo-context.mjs",
+    "test:skills": "node --test skills/*/test.mjs .claude/skills/*/test.mjs"
   },
   "dependencies": {
     "dotenv": "18.0.3",

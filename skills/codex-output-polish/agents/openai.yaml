@@ -1,4 +1,0 @@
-interface:
-  display_name: "Codex Output Polish"
-  short_description: "Make Codex output structured, personable, and emoji-rich."
-  default_prompt: "Use $codex-output-polish to polish Codex responses with tables, task lists, progress visualization, highlighted key points, and personable emoji while preserving technical accuracy."

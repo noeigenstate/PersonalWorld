@@ -1,25 +1,25 @@
-# skills
+# skills（运行时）
 
-这个目录收录 Personal World 开发过程中**引用**和**自建**的所有 skill。
+这里只放 **Personal World 运行时**交给大模型执行的 skill。服务端每次请求都从 `SKILL.md` 读取（去掉 front matter），修改后无需重启即生效。
 
-## 使用原则
+开发这个项目时用到的 skill 不在这里，见 [`.claude/skills/`](../.claude/skills/README.md)。
 
-1. 已有合适的 skill 就用，不重复造轮子。
-2. 没有合适的就自建，放在本目录，并在下表登记。
-3. 能测试的 skill 做对比测试：同一任务分别在"用 skill"和"不用 skill"两种条件下执行，记录结果差异，证明 skill 有效后再依赖它。测试记录放在该 skill 目录下的 `evals/`。
+## 规则
+
+1. 已有合适的 skill 就用；没有就在这里新建一个目录，写 `SKILL.md`。
+2. **每个 skill 都有专门的测试** `test.mjs`：检查 `SKILL.md` 的格式和关键规则、使用它的服务端接口（模拟模型），以及 `LIVE=1` 时对真实模型的一次调用。
+3. 能做对比测试的 skill，在 `evals/<日期>/` 记录"用 skill / 不用 skill"的结果。
+
+```bash
+npm run test:skills             # 离线部分
+LIVE=1 npm run test:skills      # 含真实 StepFun / 高德调用
+```
 
 ## 索引
 
-| Skill | 来源 | 用途 | 本项目中的使用 |
-|---|---|---|---|
-| [apply-gpt-5p6-guidance](apply-gpt-5p6-guidance/SKILL.md) | 引用 · Codex（`~/.codex/skills`） | 按 GPT-5.6 官方提示词指南理解和执行请求 | Codex 阶段每个请求隐式使用 |
-| [codex-output-polish](codex-output-polish/SKILL.md) | 引用 · Codex（`~/.codex/skills`） | 规范面向用户的回复格式 | Codex 阶段的进度汇报与总结 |
-| [frontend-skill](frontend-skill/SKILL.md) | 引用 · Codex（`~/.codex/skills`） | 克制、有层次的界面设计规范 | 首版 Web 界面；人生地图 + 人生管家的 App 布局（主工作区 / 导航 / 上下文面板、单一强调色） |
-| [design-taste-frontend](design-taste-frontend/SKILL.md) | 引用 · Codex（`~/.codex/skills`） | 避免模板化外观的前端设计规范 | 首版 Web 界面 |
-| [agent-reach](agent-reach/SKILL.md) | 引用 · `~/.agents/skills` | 读取网页、搜索等互联网访问 | 查阅 StepFun 文档、核对 GitLab 仓库 |
-| control-in-app-browser | 引用 · Codex 内置（无本地文件） | 在 Codex 内置浏览器中操作页面 | Codex 阶段的浏览器检查 |
-| artifact-design | 引用 · Claude Code 内置（无本地文件） | HTML 页面的设计规范 | 需求说明书与 3D 效果图 |
-| [stepfun-api](stepfun-api/SKILL.md) | **自建** | StepFun 对话/图片/JSON、语音识别、语音合成的已验证调用方法 | 事件分析、人生管家对话与语音。对比测试：[3/3 vs 2/3](stepfun-api/evals/2026-09-24/README.md) |
-| [amap-threejs](amap-threejs/SKILL.md) | **自建** | 在高德 JS API 2.0 3D 地图上叠加 Three.js：相机同步、坐标单位、GCJ-02、恒定屏幕尺寸、安全密钥代理、浏览器端地理编码、配色与取景 | 人生地图的高德真实底图。对比测试：[用 skill 位置偏差 1 px、尺寸恒定；不用 skill 画不出来](amap-threejs/evals/2026-09-24/README.md) |
-
-内置 skill 随工具提供，本机没有可复制的文件，只在此登记。
+| Skill | 用途 | 使用它的接口 | 测试 | 对比测试 |
+|---|---|---|---|---|
+| [event-analysis](event-analysis/SKILL.md) | 从一组照片重建一件事：标题、摘要、类型、地点、城市、画面文字、待确认问题 | `POST /api/analyze` | [test.mjs](event-analysis/test.mjs) | — |
+| [life-butler](life-butler/SKILL.md) | 人生管家：以事件记忆回答问题，推断内容加〔〕，引用事件 | `POST /api/butler` | [test.mjs](life-butler/test.mjs) | — |
+| [photo-card](photo-card/SKILL.md) | 单张照片信息卡：事实与推断分开、地标、带依据的线索、按隐私声明处理号码 | `POST /api/photo-card` | [test.mjs](photo-card/test.mjs) | [44/45 vs 23/45](photo-card/evals/2026-09-24/README.md) |
+| [photo-context](photo-context/SKILL.md) | 多张照片协同判断：与有定位的参考照片比对，补全地点、时间、事件 | `POST /api/photo-context` | [test.mjs](photo-context/test.mjs) | [48/48 vs 40/48](photo-context/evals/2026-09-24/README.md) |

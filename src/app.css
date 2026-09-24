@@ -150,6 +150,83 @@ body{overflow:hidden}
 .auth-local{display:flex;gap:6px;align-items:flex-start;font-size:12px;line-height:1.6;color:var(--muted);border-top:1px solid var(--line);margin:18px 0 0;padding-top:14px}
 .auth-local svg{flex:none;margin-top:2px;color:var(--space)}
 
+/* Privacy statement */
+.auth-consent{display:flex!important;align-items:center;gap:8px;font-size:13px!important;font-weight:400!important;color:#3d424b!important;margin:0 0 12px!important}
+.auth-consent input{width:16px;height:16px;margin:0!important}
+.auth-consent button{border:0;background:none;padding:0 2px;color:var(--blue);font-weight:600}
+.privacy-modal{width:min(560px,100%);max-height:calc(100vh - 40px);overflow-y:auto;background:#fff;border-radius:24px;padding:26px 28px;display:flex;flex-direction:column;gap:14px}
+.privacy-modal .modal-header{margin:0}
+.privacy-modal>.button{align-self:flex-end}
+.privacy-card{width:min(560px,100%)}
+.privacy-text{font-size:13px;line-height:1.75;color:#3d424b}
+.privacy-text h3{font-size:14px;margin:14px 0 4px;color:var(--ink)}
+.privacy-text ul{margin:0;padding-left:18px}
+.privacy-text p{margin:0}
+.privacy-version{font:12px 'JetBrains Mono',Consolas,monospace;color:var(--muted)}
+.privacy-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+
+/* Photo card: facts the app read, then what the model saw and inferred */
+.lightbox-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 420px}
+.lightbox-media{min-width:0;min-height:0;display:flex;flex-direction:column}
+.lightbox-media .lightbox-stage img{max-height:calc(100vh - 140px)}
+.photo-card{background:#fbfbfd;color:var(--ink);overflow-y:auto;padding:26px 26px 30px;border-top-left-radius:22px;display:flex;flex-direction:column;gap:18px}
+.pc-kicker{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--story)}
+.photo-card h2{margin:-10px 0 0;font-size:26px;letter-spacing:-.03em;line-height:1.25;text-wrap:balance}
+.photo-card h2.pc-placeholder{color:#8b8f98}
+.pc-caption{margin:-6px 0 0;font-size:15px;line-height:1.7;color:#3d424b}
+.photo-card section{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:14px}
+.photo-card h3{margin:0;font-size:12px;font-weight:700;color:var(--muted)}
+.photo-card section p{margin:0;font-size:14px;line-height:1.7}
+.pc-facts{margin:0;display:grid;gap:8px}
+.pc-facts div{display:grid;grid-template-columns:44px 1fr;gap:10px}
+.pc-facts dt{font-size:12px;color:var(--muted);padding-top:1px}
+.pc-facts dd{margin:0;font-size:14px}
+.pc-facts small{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.pc-facts small.warn{color:#a35300}
+.pc-file{font:12px 'JetBrains Mono',Consolas,monospace;color:#4f5560;overflow-wrap:anywhere}
+.pc-text{background:#f2f3f6;border-radius:10px;padding:8px 10px}
+.pc-text span{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
+.pc-clues{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.pc-clues li{display:grid;grid-template-columns:auto 1fr 64px;gap:10px;align-items:start}
+.pc-kind{font-size:11px;font-weight:700;color:#fff;background:#8b8f98;border-radius:6px;padding:2px 7px;white-space:nowrap}
+.pc-evidence{color:#3d424b}
+.photo-card .pc-inference{color:#a35300}
+.pc-confidence{position:relative;height:18px;border-radius:9px;background:#eceef2;overflow:hidden;margin-top:2px}
+.pc-confidence i{position:absolute;inset:0 auto 0 0;background:#f5c893}
+.pc-confidence b{position:relative;display:block;text-align:center;font:600 11px/18px 'JetBrains Mono',Consolas,monospace;color:#5c4020}
+.pc-event{display:inline-block;margin-right:8px;font-size:12px;color:var(--story);background:#fdf0e2;border-radius:6px;padding:1px 8px}
+.pc-questions p{position:relative;padding-left:14px}
+.pc-questions p:before{content:'?';position:absolute;left:0;color:var(--blue);font-weight:700}
+.pc-tags{display:flex;flex-wrap:wrap;gap:6px}
+.pc-tags span{font-size:12px;color:#3d424b;background:#eceef2;border-radius:999px;padding:3px 10px}
+.pc-empty{margin:0;font-size:14px;line-height:1.7;color:var(--muted);border-top:1px solid var(--line);padding-top:14px}
+.pc-generate{align-self:flex-start;min-height:38px}
+.pc-hint{margin:-10px 0 0;font-size:12px;color:var(--muted)}
+.pc-landmark{display:grid;grid-template-columns:1fr 64px auto;gap:10px;align-items:center}
+.pc-landmark strong{display:block;font-size:15px}
+.pc-landmark span{font-size:12px;color:var(--muted)}
+.pc-apply{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--space);color:var(--space);background:#fff;border-radius:999px;font-size:12px;font-weight:600;padding:3px 10px;white-space:nowrap}
+.pc-apply:hover{background:#e6f5ed}
+.pc-fills,.pc-matches{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.pc-fills li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start}
+.pc-fill-side{display:flex;flex-direction:column;align-items:flex-end;gap:6px;width:72px}
+.pc-fill-side .pc-confidence{width:64px}
+.pc-sources{display:flex;gap:4px;margin-top:6px}
+.pc-sources img{width:34px;height:34px;border-radius:6px;object-fit:cover}
+.pc-source-tag{font-size:11px;font-weight:700;color:var(--story);background:#fdf0e2;border-radius:6px;padding:2px 7px}
+.pc-matches li{display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:center}
+.pc-matches img{width:44px;height:44px;border-radius:8px;object-fit:cover}
+.pc-matches b{display:block;font-size:12px;color:var(--space)}
+.pc-matches span{font-size:13px;color:#3d424b}
+.pc-muted{font-size:12px!important;color:var(--muted)}
+.pc-conflict{font-size:13px!important;color:#b3261e}
+.tray-batch{width:100%;margin:0 0 10px}
+@media(max-width:900px){
+  .lightbox-body{grid-template-columns:1fr;grid-template-rows:auto auto;overflow-y:auto}
+  .lightbox-media .lightbox-stage img{max-height:55vh}
+  .photo-card{border-radius:22px 22px 0 0;overflow:visible}
+}
+
 /* Notices sit under the top bar so they never cover the time bar or the butler */
 .toast{top:calc(var(--bar) + 12px);bottom:auto}
 

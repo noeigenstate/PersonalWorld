@@ -1,14 +1,20 @@
 import * as exifr from 'exifr'
 import type { MemoryAsset } from '../types'
 import { saveFile } from './storage'
+import { colorSignature } from './peers'
 
 const maxFileSize = 80 * 1024 * 1024
 
+// Also reports the original pixel size, which the photo card shows
+let lastSize: { width: number; height: number } | undefined
+
 function imagePreview(file: File): Promise<string> {
+  lastSize = undefined
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file)
     const image = new Image()
     image.onload = () => {
+      lastSize = { width: image.naturalWidth, height: image.naturalHeight }
       const scale = Math.min(1, 1200 / Math.max(image.naturalWidth, image.naturalHeight))
       const canvas = document.createElement('canvas')
       canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
@@ -68,6 +74,20 @@ function validDate(value: unknown): Date | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date
 }
 
+// Chat apps strip EXIF but keep a save time in the name: 微信图片_20260924133610,
+// mmexport1695547890123, IMG_20260924_133610, Screenshot_2026-09-24-13-36-10 …
+export function timeFromFileName(name: string): Date | undefined {
+  const epoch = name.match(/(?:mmexport|wx_camera_)(\d{13})/)
+  const date = epoch
+    ? new Date(Number(epoch[1]))
+    : (() => {
+        const m = name.match(/(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})[-_ T]?(\d{2})[-_.:]?(\d{2})[-_.:]?(\d{2})/)
+        return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6])) : undefined
+      })()
+  if (!date || Number.isNaN(date.getTime())) return undefined
+  return date.getFullYear() >= 2000 && date.getTime() <= Date.now() + 86400000 ? date : undefined
+}
+
 async function hashFile(file: File): Promise<string> {
   const bytes = await file.arrayBuffer()
   const digest = await crypto.subtle.digest('SHA-256', bytes)
@@ -108,7 +128,8 @@ export async function importFiles(files: File[], existingHashes: string[]): Prom
         gps = (await exifr.gps(file).catch(() => null)) || {}
       }
       const captureDate = validDate(exif.DateTimeOriginal) || validDate(exif.CreateDate) || validDate(exif.ModifyDate)
-      const date = captureDate || new Date(file.lastModified || Date.now())
+      const namedDate = captureDate ? undefined : timeFromFileName(file.name)
+      const date = captureDate || namedDate || new Date(file.lastModified || Date.now())
       const name = file.name.toLowerCase()
       const kind = isVideo ? 'video' : /screenshot|screen shot|截屏|截图|屏幕快照/.test(name) ? 'screenshot' : 'image'
       const preview = isVideo ? await videoPreview(file) : await imagePreview(file)
@@ -123,7 +144,10 @@ export async function importFiles(files: File[], existingHashes: string[]): Prom
         mimeType: file.type,
         size: file.size,
         capturedAt: date.toISOString(),
-        dateSource: captureDate ? 'exif' : 'file',
+        dateSource: captureDate ? 'exif' : namedDate ? 'filename' : 'file',
+        signature: preview ? await colorSignature(preview).catch(() => undefined) : undefined,
+        width: isVideo ? undefined : lastSize?.width,
+        height: isVideo ? undefined : lastSize?.height,
         latitude: gps.latitude,
         longitude: gps.longitude,
         preview,

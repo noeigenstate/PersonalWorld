@@ -1,4 +1,6 @@
-import type { AiConfig, AnalysisResult, GeocodeResult, MemoryAsset, MemoryEvent, Place } from '../types'
+import type { AiConfig, AnalysisResult, GeocodeResult, MemoryAsset, MemoryEvent, PhotoCard, PhotoContext, Place } from '../types'
+import type { Reference } from './peers'
+import type { PhotoFacts } from './photoFacts'
 
 const headers = { 'Content-Type': 'application/json', 'X-Memory-Agent': 'web' }
 
@@ -13,7 +15,7 @@ async function jsonResponse<T>(response: Response): Promise<T> {
 
 const post = (path: string, body: unknown) => fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })
 
-export interface Account { id: string; username: string; createdAt: string }
+export interface Account { id: string; username: string; createdAt: string; privacyAccepted: boolean }
 
 export async function fetchAccount(): Promise<Account | null> {
   const response = await fetch('/api/auth/me')
@@ -22,11 +24,16 @@ export async function fetchAccount(): Promise<Account | null> {
 }
 
 export async function signUp(username: string, password: string): Promise<Account> {
-  return (await jsonResponse<{ user: Account }>(await post('/api/auth/register', { username, password }))).user
+  // Only called after the user ticked the privacy statement box
+  return (await jsonResponse<{ user: Account }>(await post('/api/auth/register', { username, password, acceptPrivacy: true }))).user
 }
 
 export async function signIn(username: string, password: string): Promise<Account> {
   return (await jsonResponse<{ user: Account }>(await post('/api/auth/login', { username, password }))).user
+}
+
+export async function acceptPrivacy(): Promise<Account> {
+  return (await jsonResponse<{ user: Account }>(await post('/api/auth/privacy', {}))).user
 }
 
 export async function signOut(): Promise<void> {
@@ -51,6 +58,21 @@ export async function analyzeEvent(event: MemoryEvent, assets: MemoryAsset[]): P
     }))
   if (!images.length) throw new Error('这个事件还没有可分析的图片预览')
   return jsonResponse<AnalysisResult>(await post('/api/analyze', { images, context: { city: event.city, address: event.place } }))
+}
+
+export async function generatePhotoCard(asset: MemoryAsset, facts: PhotoFacts): Promise<Omit<PhotoCard, 'createdAt'>> {
+  if (!asset.preview) throw new Error('这张照片没有可用的预览图')
+  return jsonResponse(await post('/api/photo-card', {
+    image: { dataUrl: asset.preview },
+    facts: { fileName: facts.fileName, time: asset.capturedAt, timeSource: facts.timeSource, latitude: facts.latitude, longitude: facts.longitude, city: facts.city, address: facts.address, size: facts.size },
+  }))
+}
+
+export async function inferFromPeers(target: MemoryAsset, targetKnown: Reference['known'], refs: Reference[]): Promise<Omit<PhotoContext, 'createdAt'>> {
+  return jsonResponse(await post('/api/photo-context', {
+    target: { dataUrl: target.preview, known: targetKnown },
+    refs: refs.map((r) => ({ id: r.asset.id, dataUrl: r.asset.preview, known: r.known })),
+  }))
 }
 
 export async function geocode(points: { id: string; lat: number; lng: number }[]): Promise<GeocodeResult[]> {

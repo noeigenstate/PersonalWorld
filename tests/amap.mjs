@@ -18,7 +18,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
 
-await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'amap-test', username: '测试', createdAt: '2026-09-24T00:00:00Z' } } }))
+await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'amap-test', username: '测试', createdAt: '2026-09-24T00:00:00Z', privacyAccepted: true } } }))
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: false, mode: 'unconfigured', message: '测试', geocode: false, amapJsKey: key } }))
 // Same mapping as server/amap.mjs, done here so the test needs no signed-in session
 await page.route('**/_AMapService/**', async (route) => {

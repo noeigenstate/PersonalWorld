@@ -7,16 +7,59 @@ export interface MemoryAsset {
   mimeType: string
   size: number
   capturedAt: string
-  dateSource: 'exif' | 'file'
+  // exif = taken at; filename = saved at (chat apps); file = file modified at
+  dateSource: 'exif' | 'filename' | 'file'
+  width?: number
+  height?: number
   // WGS-84, as stored in the photo's EXIF
   latitude?: number
   longitude?: number
   preview: string
   hash: string
+  // 4×4 colour layout of the preview, used to rank similar photos
+  signature?: number[]
+  card?: PhotoCard
+  context?: PhotoContext
+}
+
+export interface ContextFill {
+  value: string
+  fromRefIds: string[]
+  reason: string
+  confidence: number
+}
+
+// Written by the photo-context runtime skill
+export interface PhotoContext {
+  matches: { refId: string; relation: string; evidence: string; confidence: number }[]
+  fills: { city: ContextFill | null; place: ContextFill | null; time: ContextFill | null; event: ContextFill | null }
+  conflicts: string[]
+  createdAt: string
+}
+
+export interface PhotoClue {
+  kind: string
+  evidence: string
+  inference: string
+  confidence: number
+}
+
+// Written by the photo-card runtime skill; facts are read by the app, not the model
+export interface PhotoCard {
+  title: string
+  caption: string
+  scene: string
+  visibleText: string
+  clues: PhotoClue[]
+  landmark?: { name: string; city: string; confidence: number } | null
+  eventGuess: { type: string; reason: string }
+  tags: string[]
+  questions: string[]
+  createdAt: string
 }
 
 export type EventStatus = 'draft' | 'analyzed' | 'confirmed'
-export type ValueSource = 'exif' | 'file' | 'gps' | 'ai' | 'user'
+export type ValueSource = 'exif' | 'filename' | 'file' | 'gps' | 'ai' | 'user'
 
 export interface MemoryEvent {
   id: string

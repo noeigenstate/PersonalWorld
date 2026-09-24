@@ -3,7 +3,10 @@ import { fileURLToPath } from 'node:url'
 import { config as loadEnv } from 'dotenv'
 import { amapConfig, proxyAmapService, reverseGeocode } from './amap.mjs'
 import { chat, parseJsonAnswer, speak, stepfunConfig, transcribe } from './stepfun.mjs'
-import { SESSION_COOKIE, createUserStore, readCookie, sessionCookie } from './users.mjs'
+import { PRIVACY_VERSION, SESSION_COOKIE, createUserStore, publicUser, readCookie, sessionCookie } from './users.mjs'
+import { loadSkill } from './skills.mjs'
+import { maskDeep } from './privacy.mjs'
+import { contextMessages, readContext } from './photoContext.mjs'
 
 loadEnv({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
@@ -31,17 +34,6 @@ async function readBody(req, limit) {
 const readJson = async (req) => JSON.parse((await readBody(req, 22 * 1024 * 1024)).toString('utf8'))
 const strings = (value, max) => (Array.isArray(value) ? value.filter((v) => typeof v === 'string').slice(0, max) : [])
 
-const analyzePrompt = `你是 Personal World 的影像事件整理助手。你的任务是从用户提供的照片和确切元数据中重建生活事件。只把画面可见或元数据明确提供的信息当成事实，不猜测真实人名、人物关系、精确地址、疾病或私人经历。不确定的信息放在 questions，供用户确认。用简体中文，严格输出 JSON 对象，不要 Markdown。字段：title（12字内）、summary（1到2句）、type（旅行/聚会/日常/工作/庆祝/其他之一）、place（具体地点，如"外滩"，不能确定则空字符串）、city（所在城市，如"上海市"；元数据已给出城市时照抄，不能确定则空字符串）、people（仅已知名字，未知不要编造）、visibleText（画面中清晰可读的主要文字，最多200字；看不清则空字符串）、tags（最多4个）、questions（最多2个明确问题）、confidence（0到1，表示事件判断把握程度）。`
-
-const butlerPrompt = `你是用户的「人生管家」。你的记忆就是下面提供的个人世界模型：用户经历过的事件，以及这些事件发生的城市。
-规则：
-1. 只依据记忆回答，不补造经历、人物、关系或地点。记忆里没有的，直接说不知道，并告诉用户需要补充什么照片或信息。
-2. status 为 confirmed 的事件是用户确认过的事实。其他事件的标题、地点、人物都是推断：回答中凡是来自推断的内容，用〔〕包起来，并在最后用一句话请用户确认。
-3. 提到"第一次"时，只使用事件的 firsts 字段，说成"照片记录中的第一次"。不要主动提起任何"最后一次"，除非用户明确问到。
-4. 如果提供了 focus，用户说的"这里""那时候"默认指 focus 的城市和时间范围。
-5. 用第二人称"你"，语气温暖、简洁，像记得一切的老朋友。回答会被朗读，不超过 120 字，不用列表和 Markdown。
-严格输出 JSON 对象：{"answer": "回答文字", "eventIds": ["回答中用到的事件 id，按提到的顺序"]}`
-
 function compactEvent(event) {
   return {
     id: String(event.id || ''),
@@ -62,7 +54,8 @@ function compactEvent(event) {
 }
 
 const routes = {
-  async 'POST /api/analyze'(body) {
+  async 'POST /api/analyze'(body, user) {
+    const consented = user.privacyVersion === PRIVACY_VERSION
     const images = Array.isArray(body.images) ? body.images.slice(0, 6) : []
     if (!images.length) return [400, { error: '请先选择至少一张可分析的图片' }]
     if (images.some((item) => typeof item.dataUrl !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,/i.test(item.dataUrl))) {
@@ -71,12 +64,14 @@ const routes = {
     const known = body.context && typeof body.context === 'object' ? body.context : {}
     const context = images.map((item, index) => `${index + 1}. ${String(item.name || '未命名')}；拍摄时间：${String(item.capturedAt || '未知')}；坐标：${item.latitude && item.longitude ? `${item.latitude},${item.longitude}` : '未知'}`).join('\n')
     const place = known.city ? `\n根据坐标查到的位置：${String(known.city)} ${String(known.address || '')}` : ''
+    const privacy = `\n隐私声明：${consented ? '用户已同意' : '用户未同意'}`
     const content = [
-      { type: 'text', text: `请判断这些影像属于什么事件。元数据如下：\n${context}${place}\n\n如多张图片无法证明同一事件，应降低 confidence，并提问确认。` },
+      { type: 'text', text: `请判断这些影像属于什么事件。元数据如下：\n${context}${place}${privacy}\n\n如多张图片无法证明同一事件，应降低 confidence，并提问确认。` },
       ...images.map((item) => ({ type: 'image_url', image_url: { url: item.dataUrl } })),
     ]
-    const answer = parseJsonAnswer(await chat(stepfun, [{ role: 'system', content: analyzePrompt }, { role: 'user', content }], { json: true }))
-    return [200, {
+    const answer = parseJsonAnswer(await chat(stepfun, [{ role: 'system', content: loadSkill('event-analysis') }, { role: 'user', content }], { json: true }))
+    const reveal = consented ? (value) => value : maskDeep
+    return [200, reveal({
       title: typeof answer.title === 'string' ? answer.title : '',
       summary: typeof answer.summary === 'string' ? answer.summary : '',
       type: typeof answer.type === 'string' ? answer.type : '其他',
@@ -87,7 +82,58 @@ const routes = {
       tags: strings(answer.tags, 4),
       questions: strings(answer.questions, 2),
       confidence: typeof answer.confidence === 'number' ? Math.max(0, Math.min(1, answer.confidence)) : undefined,
-    }]
+    })]
+  },
+
+  async 'POST /api/photo-card'(body, user) {
+    const consented = user.privacyVersion === PRIVACY_VERSION
+    const image = body.image && typeof body.image === 'object' ? body.image : {}
+    if (typeof image.dataUrl !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,/i.test(image.dataUrl)) return [400, { error: '图片格式不受支持' }]
+    const facts = body.facts && typeof body.facts === 'object' ? body.facts : {}
+    const metadata = [
+      `文件名：${String(facts.fileName || '未知').slice(0, 120)}`,
+      `时间：${String(facts.time || '未知')}（来源：${String(facts.timeSource || '未知')}）`,
+      `GPS：${facts.latitude && facts.longitude ? `${facts.latitude},${facts.longitude}` : '无'}`,
+      `城市：${String(facts.city || '未知')} ${String(facts.address || '')}`.trim(),
+      `尺寸：${String(facts.size || '未知')}`,
+      `隐私声明：${consented ? '用户已同意' : '用户未同意'}`,
+    ].join('\n')
+    const answer = parseJsonAnswer(await chat(stepfun, [
+      { role: 'system', content: loadSkill('photo-card') },
+      { role: 'user', content: [{ type: 'text', text: `为这张照片写信息卡。程序读出的元数据：\n${metadata}` }, { type: 'image_url', image_url: { url: image.dataUrl } }] },
+    ], { json: true }))
+    const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '')
+    const clues = (Array.isArray(answer.clues) ? answer.clues : []).slice(0, 5).map((c) => ({
+      kind: text(c?.kind, 8), evidence: text(c?.evidence, 120), inference: text(c?.inference, 120),
+      confidence: typeof c?.confidence === 'number' ? Math.max(0, Math.min(1, c.confidence)) : 0.5,
+    })).filter((c) => c.evidence && c.inference)
+    // Numbers are shown as-is only after the user accepted the privacy statement
+    const reveal = consented ? (value) => value : maskDeep
+    return [200, reveal({
+      title: text(answer.title, 20),
+      caption: text(answer.caption, 120),
+      scene: text(answer.scene, 160),
+      visibleText: text(answer.visibleText, 200),
+      clues,
+      landmark: answer.landmark && typeof answer.landmark === 'object' && text(answer.landmark.name, 30)
+        ? { name: text(answer.landmark.name, 30), city: text(answer.landmark.city, 20), confidence: typeof answer.landmark.confidence === 'number' ? Math.max(0, Math.min(1, answer.landmark.confidence)) : 0.5 }
+        : null,
+      eventGuess: { type: text(answer.eventGuess?.type, 10), reason: text(answer.eventGuess?.reason, 120) },
+      tags: strings(answer.tags, 5),
+      questions: strings(answer.questions, 2),
+    })]
+  },
+
+  async 'POST /api/photo-context'(body, user) {
+    const consented = user.privacyVersion === PRIVACY_VERSION
+    const isImage = (v) => typeof v === 'string' && /^data:image\/(jpeg|png|webp|gif);base64,/i.test(v)
+    const target = body.target && typeof body.target === 'object' ? body.target : {}
+    const refs = (Array.isArray(body.refs) ? body.refs : []).filter((r) => typeof r?.id === 'string' && isImage(r.dataUrl)).slice(0, 4)
+    if (!isImage(target.dataUrl)) return [400, { error: '图片格式不受支持' }]
+    if (!refs.length) return [400, { error: '没有可以对比的参考照片' }]
+    const answer = parseJsonAnswer(await chat(stepfun, contextMessages({ system: loadSkill('photo-context'), target, refs, consented }), { json: true }))
+    const reveal = consented ? (value) => value : maskDeep
+    return [200, reveal(readContext(answer, refs))]
   },
 
   async 'POST /api/geocode'(body) {
@@ -114,7 +160,7 @@ const routes = {
       .map((m) => ({ role: m.role, content: m.content.slice(0, 600) }))
     const memory = JSON.stringify({ today: new Date().toISOString().slice(0, 10), focus, places, events })
     const answer = parseJsonAnswer(await chat(stepfun, [
-      { role: 'system', content: `${butlerPrompt}\n\n记忆：${memory}` },
+      { role: 'system', content: `${loadSkill('life-butler')}\n\n记忆：${memory}` },
       ...history,
       { role: 'user', content: question },
     ], { json: true }))
@@ -136,10 +182,15 @@ async function authRoute(req, res, path) {
   const token = readCookie(req, SESSION_COOKIE)
   if (req.method === 'GET' && path === '/api/auth/me') {
     const user = users.userForToken(token)
-    return user ? send(res, 200, { user: { id: user.id, username: user.username, createdAt: user.createdAt } }) : send(res, 401, { error: '请先登录' })
+    return user ? send(res, 200, { user: publicUser(user) }) : send(res, 401, { error: '请先登录' })
   }
   if (req.method !== 'POST') return send(res, 404, { error: '接口不存在' })
   if (req.headers['x-memory-agent'] !== 'web') return send(res, 403, { error: '请求来源未通过校验' })
+  if (path === '/api/auth/privacy') {
+    const user = users.userForToken(token)
+    if (!user) return send(res, 401, { error: '请先登录' })
+    return send(res, 200, { user: users.acceptPrivacy(user.id) })
+  }
   if (path === '/api/auth/logout') {
     users.logout(token)
     res.setHeader('Set-Cookie', sessionCookie('', 0))
@@ -159,7 +210,8 @@ const server = http.createServer(async (req, res) => {
   try {
     if (path.startsWith('/api/auth/')) return await authRoute(req, res, path)
     // Everything below spends StepFun or AMap quota, so it needs a signed-in user
-    const signedIn = () => Boolean(users.userForToken(readCookie(req, SESSION_COOKIE)))
+    const currentUser = () => users.userForToken(readCookie(req, SESSION_COOKIE))
+    const signedIn = () => Boolean(currentUser())
     if (path.startsWith('/_AMapService/')) return signedIn() ? await proxyAmapService(amap, req, res) : send(res, 401, { error: '请先登录' })
     if (req.method === 'GET' && path === '/api/config') {
       const ready = Boolean(stepfun.apiKey && stepfun.model)
@@ -183,7 +235,7 @@ const server = http.createServer(async (req, res) => {
       if (audio.length < 44 || audio.toString('ascii', 0, 4) !== 'RIFF') return send(res, 400, { error: '请上传 WAV 格式的录音' })
       return send(res, 200, { text: await transcribe(stepfun, audio) })
     }
-    const [status, result] = await handler(await readJson(req))
+    const [status, result] = await handler(await readJson(req), currentUser())
     if (status === 'audio') {
       res.writeHead(200, { 'Content-Type': 'audio/mpeg', 'Cache-Control': 'no-store' })
       return res.end(result)

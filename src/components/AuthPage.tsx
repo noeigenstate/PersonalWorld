@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Aperture, ArrowRight, ShieldCheck } from 'lucide-react'
+import { Aperture, ArrowRight, ShieldCheck, X } from 'lucide-react'
 import { signIn, signUp, type Account } from '../lib/api'
+import { PrivacyStatement } from './PrivacyStatement'
 
 const HINT_KEY = 'pw:has-account'
 
@@ -14,11 +15,14 @@ export function AuthPage({ onSignedIn, notice }: { onSignedIn: (account: Account
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [agreed, setAgreed] = useState(false)
+  const [showPrivacy, setShowPrivacy] = useState(false)
   const registering = mode === 'register'
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (busy) return
+    if (registering && !agreed) { setError('请先阅读并同意隐私声明'); return }
     setBusy(true)
     setError('')
     try {
@@ -49,12 +53,27 @@ export function AuthPage({ onSignedIn, notice }: { onSignedIn: (account: Account
           <input id="auth-username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required minLength={2} maxLength={20} />
           <label htmlFor="auth-password">密码</label>
           <input id="auth-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={registering ? 'new-password' : 'current-password'} required minLength={registering ? 6 : 1} placeholder={registering ? '至少 6 位' : ''} />
+          {registering && (
+            <label className="auth-consent" htmlFor="auth-consent">
+              <input id="auth-consent" type="checkbox" checked={agreed} onChange={(e) => { setAgreed(e.target.checked); setError('') }} />
+              <span>我已阅读并同意<button type="button" onClick={() => setShowPrivacy(true)}>隐私声明</button></span>
+            </label>
+          )}
           {error && <p className="auth-error" role="alert">{error}</p>}
           <button className="button button-primary auth-submit" type="submit" disabled={busy}>{busy ? '请稍候…' : registering ? '注册' : '登录'}<ArrowRight size={17} /></button>
         </form>
         <p className="auth-switch">{registering ? '已有账户？' : '还没有账户？'}<button type="button" onClick={switchMode}>{registering ? '登录' : '注册'}</button></p>
         <p className="auth-local"><ShieldCheck size={15} />照片和记忆只保存在这台设备的浏览器里，按账户分开存放，不会上传。</p>
       </section>
+      {showPrivacy && (
+        <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowPrivacy(false) }}>
+          <section className="privacy-modal" role="dialog" aria-modal="true" aria-label="隐私声明">
+            <div className="modal-header"><h2>隐私声明</h2><button className="icon-button" onClick={() => setShowPrivacy(false)} aria-label="关闭隐私声明"><X size={20} /></button></div>
+            <PrivacyStatement />
+            <button className="button button-primary" onClick={() => { setAgreed(true); setShowPrivacy(false); setError('') }}>同意</button>
+          </section>
+        </div>
+      )}
     </main>
   )
 }

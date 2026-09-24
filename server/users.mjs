@@ -10,10 +10,12 @@ const SESSION_DAYS = 30
 const MAX_FAILURES = 5
 const LOCK_MS = 60_000
 export const SESSION_COOKIE = 'pw_session'
+// Bump when the privacy statement changes; users then accept it again
+export const PRIVACY_VERSION = '2026-09-24'
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 
-async function hashPassword(password, salt = randomBytes(16)) {
+export async function hashPassword(password, salt = randomBytes(16)) {
   const key = await scryptAsync(password, salt, 64)
   return `scrypt$${salt.toString('hex')}$${key.toString('hex')}`
 }
@@ -26,7 +28,7 @@ async function verifyPassword(password, stored) {
 }
 
 export function publicUser(user) {
-  return { id: user.id, username: user.username, createdAt: user.createdAt }
+  return { id: user.id, username: user.username, createdAt: user.createdAt, privacyAccepted: user.privacyVersion === PRIVACY_VERSION }
 }
 
 export function validateRegistration({ username, password }) {
@@ -71,15 +73,18 @@ export function createUserStore(file) {
   return {
     sessionMaxAge: SESSION_DAYS * 86400,
 
-    async register({ username, password }) {
+    async register({ username, password, acceptPrivacy }) {
       const problem = validateRegistration({ username, password })
       if (problem) return { status: 400, error: problem }
+      if (acceptPrivacy !== true) return { status: 400, error: '请先阅读并同意隐私声明' }
       if (findByName(username)) return { status: 409, error: '这个用户名已被注册' }
       const user = {
         id: randomUUID(),
         username: String(username).trim(),
         passwordHash: await hashPassword(String(password)),
         createdAt: new Date().toISOString(),
+        privacyVersion: PRIVACY_VERSION,
+        privacyAcceptedAt: new Date().toISOString(),
       }
       data.users.push(user)
       save()
@@ -108,6 +113,15 @@ export function createUserStore(file) {
       const session = data.sessions[sha256(token)]
       if (!session || session.expiresAt < Date.now()) return null
       return data.users.find((u) => u.id === session.userId) || null
+    },
+
+    acceptPrivacy(userId) {
+      const user = data.users.find((u) => u.id === userId)
+      if (!user) return null
+      user.privacyVersion = PRIVACY_VERSION
+      user.privacyAcceptedAt = new Date().toISOString()
+      save()
+      return publicUser(user)
     },
 
     logout(token) {

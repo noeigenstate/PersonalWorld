@@ -1,0 +1,643 @@
+{
+  "with-skill": [
+    {
+      "card": {
+        "title": "新房装修收尾阶段",
+        "caption": "房间天花板上新安装的吸顶灯已就位，落地窗贴有装修公司保护膜〔，这是位于杭州的新房装修现场〕",
+        "scene": "室内房间，白色天花板上安装一盏圆形吸顶灯，前方落地窗贴有印有文字的透明保护膜，右侧墙面有挂钩",
+        "visibleText": "恒彩家装 0571-******",
+        "clues": [
+          {
+            "kind": "时间",
+            "evidence": "文件名时间戳 2026-09-24",
+            "inference": "照片文件保存于 2026 年 9 月 24 日，为秋季",
+            "confidence": 0.9
+          },
+          {
+            "kind": "事件",
+            "evidence": "窗户玻璃上的装修保护膜、已安装的吸顶灯",
+            "inference": "房屋处于装修收尾或已完成阶段，灯具已安装完毕",
+            "confidence": 0.8
+          },
+          {
+            "kind": "地点",
+            "evidence": "装修保护膜上装修公司电话的区号 0571",
+            "inference": "装修公司在杭州，房子很可能也在杭州；商家电话不能直接证明照片地点",
+            "confidence": 0.6
+          }
+        ],
+        "landmark": {
+          "name": null,
+          "city": null,
+          "confidence": 0
+        },
+        "eventGuess": {
+          "type": "搬家装修",
+          "reason": "窗户贴有装修公司保护膜，房间内灯具已安装，显示房屋处于装修完成或验收阶段"
+        },
+        "tags": [
+          "装修",
+          "吸顶灯",
+          "保护膜",
+          "室内",
+          "家装"
+        ],
+        "questions": [
+          "这是装修完成后验收时拍摄的吗？",
+          "这是恒彩家装在杭州的施工项目吗？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": true,
+        "noCaptureTimeClaim": true,
+        "phoneMasked": true,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": true,
+        "confidenceIsNumber": true,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": true,
+        "asksQuestions": true
+      }
+    },
+    {
+      "card": {
+        "title": "新房装修中的吸顶灯",
+        "caption": "〔杭州〕新房装修现场，吸顶灯已安装，落地窗尚贴保护膜。",
+        "scene": "室内天花板中央安装一盏圆形白色吸顶灯，背景为贴有装修保护膜的落地窗，玻璃反射出楼宇，墙面为白色。",
+        "visibleText": "恒彩家装，0571-****",
+        "clues": [
+          {
+            "kind": "地点",
+            "evidence": "装修保护膜上商家电话区号 0571",
+            "inference": "装修公司位于杭州，房子很可能也在杭州；商家电话不能直接证明照片拍摄地点",
+            "confidence": 0.6
+          },
+          {
+            "kind": "事件",
+            "evidence": "窗户玻璃贴有装修保护膜，印有装修公司名称",
+            "inference": "房屋处于装修阶段或刚完成装修，尚未撕掉窗户保护膜",
+            "confidence": 0.9
+          },
+          {
+            "kind": "时间",
+            "evidence": "文件保存时间为 2026-09-24 13:36:10",
+            "inference": "照片保存于 2026 年 9 月 24 日，此时为秋季",
+            "confidence": 0.8
+          }
+        ],
+        "landmark": null,
+        "eventGuess": {
+          "type": "搬家装修",
+          "reason": "窗户贴有装修保护膜，墙面已完工并安装吸顶灯，处于装修收尾阶段"
+        },
+        "tags": [
+          "装修",
+          "新房",
+          "吸顶灯",
+          "杭州",
+          "秋季"
+        ],
+        "questions": [
+          "这是装修完成后的验收场景吗？",
+          "窗户上的装修保护膜为什么还没有撕掉？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": true,
+        "noCaptureTimeClaim": true,
+        "phoneMasked": true,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": true,
+        "confidenceIsNumber": true,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": true,
+        "asksQuestions": true
+      }
+    },
+    {
+      "card": {
+        "title": "装修收尾的房间",
+        "caption": "房间天花板安装了一盏圆形吸顶灯，窗户贴有装修公司保护膜，〔推测处于装修收尾或刚完工阶段〕。",
+        "scene": "天花板中央悬挂一盏圆形吸顶灯，灯罩为浅色半透明材质；下方窗户玻璃贴有印有文字的透明保护膜；右侧墙壁安装有一个白色小型置物架。",
+        "visibleText": "恒彩家装 0571-5670 ****",
+        "clues": [
+          {
+            "kind": "地点",
+            "evidence": "窗户保护膜上装修公司电话的区号为0571",
+            "inference": "该装修公司位于杭州，照片中的房屋也可能在杭州，但商家电话不能直接确证拍摄地点",
+            "confidence": 0.6
+          },
+          {
+            "kind": "事件",
+            "evidence": "窗户玻璃贴有装修保护膜，吸顶灯已安装完毕，墙面已粉刷",
+            "inference": "房屋正处于装修收尾阶段或刚装修完成，等待保洁",
+            "confidence": 0.8
+          },
+          {
+            "kind": "物品",
+            "evidence": "现代简约风格吸顶灯已安装，墙面已完工",
+            "inference": "硬装工程（水电、泥木、油漆）已基本完成",
+            "confidence": 0.7
+          }
+        ],
+        "landmark": null,
+        "eventGuess": {
+          "type": "搬家装修",
+          "reason": "窗户贴有装修公司保护膜且吸顶灯已安装，显示房屋正处于装修收尾阶段"
+        },
+        "tags": [
+          "装修",
+          "家装",
+          "灯具",
+          "室内",
+          "新房"
+        ],
+        "questions": [
+          "这盏吸顶灯是新安装的吗？",
+          "这套房子位于杭州市吗？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": true,
+        "noCaptureTimeClaim": true,
+        "phoneMasked": false,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": true,
+        "confidenceIsNumber": true,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": true,
+        "asksQuestions": true
+      }
+    },
+    {
+      "card": {
+        "title": "新装房间的圆形吊灯",
+        "caption": "房间天花板已安装好现代风格圆形吊灯，下方窗户贴有装修公司保护膜，〔该房屋可能位于杭州的某新装修住宅〕",
+        "scene": "室内天花板安装一盏现代风格圆形吊灯，下方大窗户贴有透明装修保护膜，可见窗外模糊的建筑物，墙面为白色",
+        "visibleText": "恒彩家装 0571-********",
+        "clues": [
+          {
+            "kind": "时间",
+            "evidence": "文件名为微信图片_20260924133610",
+            "inference": "照片文件保存于2026年9月24日13时36分，非拍摄时间",
+            "confidence": 1
+          },
+          {
+            "kind": "事件",
+            "evidence": "窗户贴有恒彩家装的装修保护膜",
+            "inference": "房屋正处于装修阶段或刚完成装修，处于保护期",
+            "confidence": 0.9
+          },
+          {
+            "kind": "物品",
+            "evidence": "天花板上已安装完成现代风格吊灯",
+            "inference": "装修工程已推进至灯具安装阶段",
+            "confidence": 0.8
+          },
+          {
+            "kind": "地点",
+            "evidence": "装修公司电话区号为0571",
+            "inference": "装修公司注册地在杭州，房屋可能位于杭州，但商家电话不能直接证明房屋具体位置",
+            "confidence": 0.6
+          }
+        ],
+        "landmark": {
+          "name": null,
+          "city": null,
+          "confidence": 0
+        },
+        "eventGuess": {
+          "type": "搬家装修",
+          "reason": "窗户贴有装修公司保护膜，且已安装新灯具，符合新房装修验收阶段特征"
+        },
+        "tags": [
+          "装修",
+          "灯具",
+          "保护膜",
+          "杭州",
+          "新房"
+        ],
+        "questions": [
+          "这是刚装修完成的新房吗？",
+          "房屋具体位于杭州市哪个区域？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": true,
+        "noCaptureTimeClaim": true,
+        "phoneMasked": true,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": true,
+        "confidenceIsNumber": true,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": true,
+        "asksQuestions": true
+      }
+    },
+    {
+      "card": {
+        "title": "新房装修装吊灯",
+        "caption": "这张照片记录了一处〔杭州〕新房装修现场，现代风格吊灯已安装完毕，窗户玻璃上贴着装修公司的广告保护膜。",
+        "scene": "天花板中央安装一盏圆形白色吊灯，下方是贴有广告膜的玻璃窗，玻璃上印有文字，右侧墙壁安装有金属置物架。",
+        "visibleText": "恒彩家装 0571-**** ****",
+        "clues": [
+          {
+            "kind": "事件",
+            "evidence": "窗户玻璃贴有恒彩家装的广告保护膜",
+            "inference": "该房屋正处于装修阶段，尚未入住",
+            "confidence": 0.9
+          },
+          {
+            "kind": "物品",
+            "evidence": "天花板已安装现代风格圆形吊灯",
+            "inference": "装修已进行到灯具安装阶段",
+            "confidence": 0.8
+          },
+          {
+            "kind": "地点",
+            "evidence": "广告上的装修公司电话区号 0571",
+            "inference": "该公司位于杭州，房屋可能也在杭州；商家电话不能直接证明照片拍摄地点",
+            "confidence": 0.6
+          }
+        ],
+        "landmark": {
+          "name": null,
+          "city": null,
+          "confidence": 0
+        },
+        "eventGuess": {
+          "type": "搬家装修",
+          "reason": "窗户上的装修公司广告膜和已安装的灯具表明这是新房装修现场"
+        },
+        "tags": [
+          "装修",
+          "吊灯",
+          "家装",
+          "新房",
+          "照明"
+        ],
+        "questions": [
+          "这是您正在装修的新房吗？",
+          "您选择的是恒彩家装的装修服务吗？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": true,
+        "noCaptureTimeClaim": true,
+        "phoneMasked": true,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": true,
+        "confidenceIsNumber": true,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": true,
+        "asksQuestions": true
+      }
+    }
+  ],
+  "without-skill": [
+    {
+      "card": {
+        "title": "装修中的室内房间 - 已安装吸顶灯",
+        "caption": "室内装修现场，天花板已安装白色吸顶灯，窗户玻璃贴有恒彩家装广告膜，墙面已粉刷完成。",
+        "scene": "室内住宅装修现场",
+        "visibleText": [
+          "恒彩家装",
+          "0571-5670 0000",
+          "0571-5670 0000",
+          "恒彩家装 广告",
+          "0571-5670 0000"
+        ],
+        "clues": [
+          {
+            "kind": "装修公司标识",
+            "evidence": "窗户玻璃上印有'恒彩家装'字样及联系电话",
+            "inference": "该房间正在由恒彩家装公司进行装修施工",
+            "confidence": 0.95
+          },
+          {
+            "kind": "地理位置线索",
+            "evidence": "电话号码以0571开头（杭州区号）",
+            "inference": "装修工程位于中国浙江省杭州市",
+            "confidence": 0.9
+          },
+          {
+            "kind": "装修进度线索",
+            "evidence": "吸顶灯已安装，墙面已粉刷，窗户玻璃贴有保护膜",
+            "inference": "装修处于中期偏后阶段（油漆工程完成，安装工程进行中）",
+            "confidence": 0.85
+          },
+          {
+            "kind": "建筑特征",
+            "evidence": "窗户为黑色边框，天花板有吊顶设计",
+            "inference": "该房间属于现代风格住宅，可能是客厅或主卧",
+            "confidence": 0.7
+          }
+        ],
+        "eventGuess": {
+          "type": "室内装修进度记录",
+          "reason": "图片显示灯具已安装完成，墙面施工完毕，但窗户玻璃仍贴有装修公司广告保护膜，符合装修中期验收节点特征。"
+        },
+        "tags": [
+          "装修",
+          "家装",
+          "室内设计",
+          "恒彩家装",
+          "吸顶灯",
+          "杭州装修",
+          "装修进度",
+          "新房装修"
+        ],
+        "questions": [
+          "该房间的具体面积和户型是什么？",
+          "预计何时完工？",
+          "这是恒彩家装的哪个工地项目？",
+          "吸顶灯的具体型号和品牌是什么？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": true,
+        "noCaptureTimeClaim": true,
+        "phoneMasked": false,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": false,
+        "confidenceIsNumber": true,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": true,
+        "asksQuestions": false
+      }
+    },
+    {
+      "card": {
+        "title": "装修现场室内吸顶灯与恒彩家装窗膜",
+        "caption": "室内装修现场照片，天花板安装有简约吸顶灯，窗户贴有印有杭州恒彩家装联系电话的保护膜，显示房屋正处于装修施工阶段。",
+        "scene": "室内装修现场",
+        "visibleText": "恒彩家装、0571-5670 0000",
+        "clues": [
+          {
+            "kind": "装修保护标识",
+            "evidence": "窗户玻璃上覆有印有'恒彩家装'字样及联系电话'0571-5670 0000'的保护膜",
+            "inference": "该房屋正在由杭州恒彩家装公司进行装修施工，保护膜用于防止窗户在施工过程中被污染或损坏",
+            "confidence": "高"
+          },
+          {
+            "kind": "临时照明设备",
+            "evidence": "天花板中央安装有一盏外观简约的白色吸顶灯，灯体呈现使用痕迹",
+            "inference": "这是装修期间使用的临时照明灯具，而非最终装修完成的固定灯具",
+            "confidence": "中"
+          },
+          {
+            "kind": "未完工状态",
+            "evidence": "墙壁已进行简单粉刷但尚未安装踢脚线，右侧墙面仅有壁灯底座未安装灯罩",
+            "inference": "室内装修处于中期阶段，水电及泥瓦阶段可能已完成，正处于油漆或安装阶段",
+            "confidence": "中"
+          },
+          {
+            "kind": "地理位置信息",
+            "evidence": "电话号码区号为0571",
+            "inference": "装修公司所在地为浙江省杭州市，该房屋也位于杭州地区",
+            "confidence": "高"
+          }
+        ],
+        "eventGuess": {
+          "type": "房屋装修施工",
+          "reason": "综合窗户上的装修公司保护膜、未完工的墙面状态、临时安装的照明灯具以及装修保护期的玻璃贴膜等多项证据，判断该房屋正在进行室内装修或翻新工程。"
+        },
+        "tags": [
+          "装修现场",
+          "恒彩家装",
+          "吸顶灯",
+          "装修保护膜",
+          "杭州",
+          "室内施工",
+          "毛坯房装修"
+        ],
+        "questions": [
+          "该房屋目前的装修处于哪个具体阶段（水电、泥木、油漆或安装阶段）？",
+          "恒彩家装在杭州当地的口碑和规模如何？",
+          "天花板上安装的吸顶灯是装修公司提供的临时照明还是业主已采购的装修材料？",
+          "窗户保护膜上的联系电话0571-5670 0000是否为该公司官方联系方式？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": true,
+        "noCaptureTimeClaim": true,
+        "phoneMasked": false,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": false,
+        "confidenceIsNumber": false,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": true,
+        "asksQuestions": false
+      }
+    },
+    {
+      "card": {
+        "title": "杭州恒彩家装装修中的室内灯具安装场景",
+        "caption": "照片展示了一处正在装修或刚完工的住宅室内空间，天花板中央安装有一盏现代简约风格的圆形吸顶灯，背景可见贴有恒彩家装公司保护膜的落地窗/阳台门，显示房屋正处于装修收尾阶段。",
+        "scene": "室内装修施工现场/新房装修收尾阶段",
+        "visibleText": "恒彩家装、0571-5670 0000、恒彩家装 施工",
+        "clues": [
+          {
+            "kind": "装修公司标识",
+            "evidence": "窗户玻璃上贴有'恒彩家装'字样及电话号码'0571-5670 0000'（多次出现）",
+            "inference": "该项目由恒彩家装公司承接，当前处于施工或完工保护阶段",
+            "confidence": "高"
+          },
+          {
+            "kind": "装修进度",
+            "evidence": "窗户贴有透明保护膜、天花板灯具已安装、墙面已完成粉刷且整洁",
+            "inference": "装修已进入收尾阶段，可能正在进行开荒保洁或准备验收",
+            "confidence": "高"
+          },
+          {
+            "kind": "地理位置",
+            "evidence": "电话号码区号为0571",
+            "inference": "拍摄地点位于中国浙江省杭州市",
+            "confidence": "中"
+          },
+          {
+            "kind": "装修类型",
+            "evidence": "保护膜上的家装广告、已安装的吸顶灯、干净的室内环境",
+            "inference": "这是一处住宅装修项目（毛坯房或旧房改造）",
+            "confidence": "高"
+          }
+        ],
+        "eventGuess": {
+          "type": "装修施工进度记录/工程验收前检查",
+          "reason": "窗户保护膜显示现场仍在装修或刚完工，灯具已安装但保护措施未完全撤除，符合装修收尾阶段的典型特征，很可能是工程监理或业主在记录施工进度。"
+        },
+        "tags": [
+          "装修",
+          "家装",
+          "恒彩家装",
+          "杭州装修",
+          "吸顶灯",
+          "新房装修",
+          "施工记录",
+          "装修保护",
+          "0571"
+        ],
+        "questions": [
+          "这是毛坯房装修还是旧房翻新？",
+          "恒彩家装是否是本次装修的总承包方？",
+          "这盏吸顶灯是否是装修合同内的项目？",
+          "该房间具体功能是什么（卧室/客厅/书房）？",
+          "目前装修是否已进入最终验收阶段？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": false,
+        "noCaptureTimeClaim": true,
+        "phoneMasked": false,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": false,
+        "confidenceIsNumber": false,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": false,
+        "asksQuestions": false
+      }
+    },
+    {
+      "card": {
+        "title": "装修中的房间内景 - 已安装吸顶灯",
+        "caption": "展示了一间处于装修收尾阶段的室内空间，天花板上安装了现代简约风格的吸顶灯（或风扇灯），白色墙面已粉刷完成，窗户玻璃上贴有装修公司的广告保护膜。",
+        "scene": "室内装修现场（住宅）",
+        "visibleText": [
+          "恒彩家装",
+          "0571-5670 0000",
+          "0571-5670 0000",
+          "广告"
+        ],
+        "clues": [
+          {
+            "kind": "装修公司信息",
+            "evidence": "窗户玻璃上重复出现的'恒彩家装'字样及联系电话'0571-5670 0000'",
+            "inference": "该房屋由'恒彩家装'公司负责装修工程；电话区号0571表明地理位置在浙江省杭州市",
+            "confidence": "高"
+          },
+          {
+            "kind": "装修阶段",
+            "evidence": "墙面已粉刷完成、灯具已安装、窗户玻璃贴有保护膜、地面未见家具",
+            "inference": "装修处于硬装收尾阶段，可能已完成或等待最终验收",
+            "confidence": "中"
+          },
+          {
+            "kind": "房间类型",
+            "evidence": "窗户位于墙面中部、房间比例、灯具位置",
+            "inference": "可能是卧室或客厅，面积中等，自然采光一般",
+            "confidence": "低"
+          },
+          {
+            "kind": "时间信息",
+            "evidence": "文件名中的日期信息'20260924'",
+            "inference": "照片拍摄于2026年9月24日（或文件系统时间设置为此日期）",
+            "confidence": "中"
+          }
+        ],
+        "eventGuess": {
+          "type": "装修施工/竣工验收",
+          "reason": "现场显示装修基本完工（墙面完成、灯具安装完成），窗户保护膜尚未清除，可能是施工方阶段性拍照记录或业主正在进行竣工验收。"
+        },
+        "tags": [
+          "装修",
+          "家装",
+          "室内设计",
+          "恒彩家装",
+          "杭州装修",
+          "吸顶灯",
+          "装修现场",
+          "新房装修",
+          "硬装完工"
+        ],
+        "questions": [
+          "这是杭州的具体哪个楼盘或小区？",
+          "装修是否已经全部完工并通过验收？",
+          "窗户玻璃上的广告保护膜何时计划撕除？",
+          "天花板上安装的灯具具体是什么品牌和型号？",
+          "这个房间的实际功能是卧室还是客厅？",
+          "从照片拍摄时间来看，这是2026年的装修项目吗？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": true,
+        "noCaptureTimeClaim": false,
+        "phoneMasked": false,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": false,
+        "confidenceIsNumber": false,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": true,
+        "asksQuestions": false
+      }
+    },
+    {
+      "card": {
+        "title": "正在装修的室内房间 - 恒彩家装保护膜",
+        "caption": "照片展示了一个正在装修或新装修的室内房间，天花板上安装有一盏现代风格的吸顶灯，窗户上贴有恒彩家装的保护膜。",
+        "scene": "室内居住空间（可能是卧室），正在进行或刚完成装修工程",
+        "visibleText": [
+          "恒彩家装",
+          "0571-5670 0000",
+          "0571-5670 0000（多次重复）"
+        ],
+        "clues": [
+          {
+            "kind": "装修状态标识",
+            "evidence": "窗户玻璃上贴有印有'恒彩家装'字样及电话号码的保护膜",
+            "inference": "该房屋正在由恒彩家装公司进行装修或翻新，保护膜用于防止装修过程中污染窗户",
+            "confidence": 0.95
+          },
+          {
+            "kind": "地理位置线索",
+            "evidence": "可见电话号码区号'0571'",
+            "inference": "0571是中国浙江省杭州市的区号，该房屋很可能位于杭州",
+            "confidence": 0.9
+          },
+          {
+            "kind": "装修进度线索",
+            "evidence": "天花板上已安装灯具，但窗户仍有保护膜，墙面和天花板看起来已完成粉刷",
+            "inference": "装修处于收尾阶段，灯具安装完成但窗户保护膜尚未完全清除",
+            "confidence": 0.85
+          },
+          {
+            "kind": "房间类型线索",
+            "evidence": "低窗台设计（飘窗），房间进深与高度比例",
+            "inference": "这很可能是卧室或书房，具有飘窗设计",
+            "confidence": 0.75
+          }
+        ],
+        "eventGuess": {
+          "type": "新房装修/旧房翻新",
+          "reason": "窗户上的装修公司保护膜表明正在施工或刚完工，已安装的吸顶灯和完成的墙面装修显示处于后期阶段"
+        },
+        "tags": [
+          "装修现场",
+          "恒彩家装",
+          "吸顶灯",
+          "窗户保护膜",
+          "杭州（疑似）",
+          "室内装修",
+          "卧室",
+          "飘窗"
+        ],
+        "questions": [
+          "这间房屋具体位于杭州哪个区域？",
+          "装修工程已经完成到什么阶段？保护膜何时拆除？",
+          "图中的吸顶灯是什么品牌？是否为装修公司统一配备？",
+          "这是新房装修还是旧房改造项目？"
+        ]
+      },
+      "grade": {
+        "sceneIsObjective": false,
+        "noCaptureTimeClaim": true,
+        "phoneMasked": false,
+        "hangzhouFromAreaCode": true,
+        "photoCityCautious": false,
+        "confidenceIsNumber": true,
+        "everyClueHasEvidence": true,
+        "titleNoInferredCity": true,
+        "asksQuestions": false
+      }
+    }
+  ]
+}

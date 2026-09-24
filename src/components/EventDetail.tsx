@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { ArrowLeft, ArrowRight, CalendarDays, Check, CircleHelp, Clock3, FileImage, MapPin, Pencil, Play, Sparkles, Trash2, X } from 'lucide-react'
 import type { MemoryAsset, MemoryEvent } from '../types'
 import { cityLabel, eventCover, formatDate } from '../lib/memory'
+import type { PhotoFacts } from '../lib/photoFacts'
+import { PhotoCard, type PeerTools } from './PhotoCard'
 import { getFile } from '../lib/storage'
 
 export function statusLabel(status: MemoryEvent['status']) {
@@ -35,9 +37,12 @@ interface Props {
   onAnalyze: () => void
   onSave: (event: MemoryEvent) => void
   onDeleteAsset: (id: string) => void
+  cardBusyId: string | null
+  onGenerateCard: (asset: MemoryAsset, facts: PhotoFacts) => void
+  peers: PeerTools
 }
 
-export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose, onAnalyze, onSave, onDeleteAsset }: Props) {
+export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose, onAnalyze, onSave, onDeleteAsset, cardBusyId, onGenerateCard, peers }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(event)
   const [activeAssetId, setActiveAssetId] = useState<string | null>(null)
@@ -156,8 +161,13 @@ export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose,
               <button onClick={() => setActiveAssetId(null)} aria-label="关闭影像"><X size={21} /></button>
             </div>
           </div>
-          <div className="lightbox-stage">{activeAsset.kind === 'video' && videoUrl ? <video src={videoUrl} controls autoPlay /> : <AssetImage asset={activeAsset} />}</div>
-          <div className="lightbox-caption"><Clock3 size={16} />{formatDate(activeAsset.capturedAt, { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{activeAsset.dateSource === 'file' && <span>（文件日期）</span>}</div>
+          <div className="lightbox-body">
+            <div className="lightbox-media">
+              <div className="lightbox-stage">{activeAsset.kind === 'video' && videoUrl ? <video src={videoUrl} controls autoPlay /> : <AssetImage asset={activeAsset} />}</div>
+              <div className="lightbox-caption"><Clock3 size={16} />{formatDate(activeAsset.capturedAt, { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{activeAsset.dateSource !== 'exif' && <span>（{activeAsset.dateSource === 'filename' ? '文件名中的保存时间' : '文件时间'}）</span>}</div>
+            </div>
+            <PhotoCard asset={activeAsset} event={event} aiAvailable={aiAvailable} busy={cardBusyId === activeAsset.id} onGenerate={(facts) => onGenerateCard(activeAsset, facts)} peers={peers} />
+          </div>
         </div>
       )}
     </>

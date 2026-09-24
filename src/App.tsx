@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Aperture, ChevronLeft, CircleHelp, LogOut, Plus, Upload, UserRound, X } from 'lucide-react'
-import { analyzeEvent, askButler, fetchAiConfig, geocode, speak, transcribe, type Account, type ButlerFocus, type ButlerTurn } from './lib/api'
+import { analyzeEvent, askButler, fetchAiConfig, generatePhotoCard, geocode, inferFromPeers, speak, transcribe, type Account, type ButlerFocus, type ButlerTurn } from './lib/api'
+import { colorSignature, knownAbout, pickReferences } from './lib/peers'
+import type { PhotoFacts } from './lib/photoFacts'
 import { importFiles } from './lib/import'
 import { baseAt, cityLabel, derivePlaces, firstsOf, formatYearMonth, regroupDrafts, roleLabels, spaceLine, storyLine } from './lib/memory'
 import { startRecording } from './lib/recorder'
 import { geocodeInBrowser } from './map/amap'
 import { loadMemory, removeFile, saveMemory } from './lib/storage'
-import type { AiConfig, MemoryEvent, MemoryState, PlaceRole } from './types'
+import type { AiConfig, MemoryAsset, MemoryEvent, MemoryState, PlaceRole } from './types'
 import { Butler, type ButlerMessage, type VoiceState } from './components/Butler'
 import { EventDetail, statusLabel } from './components/EventDetail'
 import { ImportDialog } from './components/ImportDialog'
@@ -33,6 +35,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [importing, setImporting] = useState(false)
   const [trayOpen, setTrayOpen] = useState(false)
   const [busyEventId, setBusyEventId] = useState<string | null>(null)
+  const [cardBusyId, setCardBusyId] = useState<string | null>(null)
+  const [contextBusyId, setContextBusyId] = useState<string | null>(null)
+  const [batch, setBatch] = useState<{ done: number; total: number } | null>(null)
   const [notice, setNotice] = useState('')
   const [messages, setMessages] = useState<ButlerMessage[]>([])
   const [focus, setFocus] = useState<ButlerFocus | null>(null)
@@ -76,6 +81,20 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       })))
       .catch((error) => setNotice(error instanceof Error ? error.message : '地名识别失败'))
   }, [memory.events, ready, aiConfig.geocode, aiConfig.amapJsKey])
+
+  // Photos imported before signatures existed get one once
+  useEffect(() => {
+    if (!ready) return
+    const missing = memory.assets.filter((a) => !a.signature && a.preview && a.kind !== 'video')
+    if (!missing.length) return
+    let cancelled = false
+    Promise.all(missing.map(async (a) => [a.id, await colorSignature(a.preview).catch(() => undefined)] as const)).then((pairs) => {
+      if (cancelled) return
+      const found = new Map(pairs.filter(([, sig]) => sig))
+      setMemory((current) => ({ ...current, assets: current.assets.map((a) => (found.has(a.id) ? { ...a, signature: found.get(a.id) } : a)) }))
+    })
+    return () => { cancelled = true }
+  }, [memory.assets, ready])
 
   const events = useMemo(() => [...memory.events].sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()), [memory.events])
   const places = useMemo(() => derivePlaces(events, memory.placeRoles), [events, memory.placeRoles])
@@ -158,6 +177,68 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     } finally {
       setBusyEventId(null)
     }
+  }
+
+  async function makePhotoCard(asset: MemoryAsset, facts: PhotoFacts) {
+    if (!aiConfig.available) { setNotice('请先在 .env 中配置 StepFun API Key，重启服务后再生成'); return }
+    setCardBusyId(asset.id)
+    try {
+      const card = await generatePhotoCard(asset, facts)
+      setMemory((current) => ({ ...current, assets: current.assets.map((a) => (a.id === asset.id ? { ...a, card: { ...card, createdAt: new Date().toISOString() } } : a)) }))
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '信息卡生成失败，请重试')
+    } finally {
+      setCardBusyId(null)
+    }
+  }
+
+  const signatures = useMemo(() => new Map(memory.assets.filter((a) => a.signature).map((a) => [a.id, a.signature!])), [memory.assets])
+  const eventOfAsset = (id: string) => memory.events.find((e) => e.assetIds.includes(id))
+
+  async function inferContext(asset: MemoryAsset) {
+    const refs = pickReferences(asset, memory.assets, memory.events, signatures)
+    if (!refs.length) { setNotice('还没有带定位或已确认地点的照片可以对比'); return null }
+    const context = { ...(await inferFromPeers(asset, knownAbout(asset, eventOfAsset(asset.id)), refs)), createdAt: new Date().toISOString() }
+    setMemory((current) => ({ ...current, assets: current.assets.map((a) => (a.id === asset.id ? { ...a, context } : a)) }))
+    return context
+  }
+
+  async function runContext(asset: MemoryAsset) {
+    if (!aiConfig.available) { setNotice('请先在 .env 中配置 StepFun API Key，重启服务后再对比'); return }
+    setContextBusyId(asset.id)
+    try { await inferContext(asset) } catch (error) { setNotice(error instanceof Error ? error.message : '对比失败，请重试') } finally { setContextBusyId(null) }
+  }
+
+  // Adopting a filled value is the user confirming it
+  function applyToEvent(asset: MemoryAsset, field: 'city' | 'place', value: string) {
+    const event = eventOfAsset(asset.id)
+    if (!event) return
+    updateEvent(field === 'city' ? { ...event, city: value, citySource: 'user' } : { ...event, place: value })
+    setNotice(field === 'city' ? `已把这件事放到${cityLabel(value)}` : `地点已更新为「${value}」`)
+  }
+
+  // Unlocated events: compare their cover photo with located photos; confident cities go on the map as unconfirmed
+  async function completeFromPeers() {
+    if (!aiConfig.available) { setNotice('请先在 .env 中配置 StepFun API Key，重启服务后再补全'); return }
+    const targets = memory.events.filter((e) => !e.city).map((e) => memory.assets.find((a) => e.assetIds.includes(a.id) && a.preview && a.kind !== 'video')).filter((a): a is MemoryAsset => Boolean(a))
+    let placed = 0
+    setBatch({ done: 0, total: targets.length })
+    for (const [index, asset] of targets.entries()) {
+      try {
+        const context = await inferContext(asset)
+        const city = context?.fills.city
+        if (city && city.confidence >= 0.75) {
+          placed++
+          setMemory((current) => ({ ...current, events: current.events.map((e) => (e.assetIds.includes(asset.id) && !e.city ? { ...e, city: city.value, citySource: 'ai' } : e)) }))
+        }
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : '补全中断')
+        break
+      }
+      setBatch({ done: index + 1, total: targets.length })
+    }
+    setBatch(null)
+    setNotice(placed ? `${placed} 件事从其他照片补全了城市，地图上以虚线显示，请确认` : '没有找到足够可靠的依据，暂未补全')
   }
 
   async function deleteAsset(id: string) {
@@ -329,7 +410,12 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         {trayOpen && needsWork.length > 0 && (
           <div className="tray" role="dialog" aria-label="待整理的事件">
             <div className="tray-head"><b>待整理的事件</b><button className="icon-button" onClick={() => setTrayOpen(false)} aria-label="关闭"><X size={17} /></button></div>
-            <p>没有城市的事件还不能放上地图。打开事件，用 StepFun 分析或手动填写城市。</p>
+            <p>没有城市的事件还不能放上地图。可以从其他带定位的照片补全，也可以打开事件用 StepFun 分析或手动填写。</p>
+            {needsWork.some((e) => !e.city) && (
+              <button className="button button-primary tray-batch" onClick={() => void completeFromPeers()} disabled={Boolean(batch)}>
+                {batch ? `正在对比 ${batch.done}/${batch.total}…` : `用其他照片补全位置（${needsWork.filter((e) => !e.city).length} 件）`}
+              </button>
+            )}
             <ul>
               {needsWork.map((e) => (
                 <li key={e.id}><button onClick={() => { setActiveEventId(e.id); setTrayOpen(false) }}>
@@ -393,6 +479,15 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           onAnalyze={() => void runAnalysis(activeEvent)}
           onSave={(next) => { updateEvent(next); setNotice('事件已确认并保存') }}
           onDeleteAsset={(id) => void deleteAsset(id)}
+          cardBusyId={cardBusyId}
+          onGenerateCard={(asset, facts) => void makePhotoCard(asset, facts)}
+          peers={{
+            candidateCount: (asset) => pickReferences(asset, memory.assets, memory.events, signatures).length,
+            busyId: contextBusyId,
+            infer: (asset) => void runContext(asset),
+            apply: applyToEvent,
+            assetById: (id) => memory.assets.find((a) => a.id === id),
+          }}
         />
       )}
       {notice && <div className="toast" role="status"><span className="toast-dot" />{notice}<button onClick={() => setNotice('')} aria-label="关闭提示"><X size={16} /></button></div>}

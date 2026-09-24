@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import http from 'node:http'
 import { spawn } from 'node:child_process'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { hashPassword } from '../server/users.mjs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -30,7 +31,9 @@ const mock = http.createServer(async (req, res) => {
   const payload = JSON.parse(raw.toString())
   requests[requests.length - 1].payload = payload
   const system = payload.messages[0].content
-  const output = system.includes('人生管家')
+  const output = system.includes('照片信息卡助手')
+    ? { title: '新居装修', caption: '〔可能在杭州〕', scene: '天花板上的灯', visibleText: '恒彩家装 0571-5670 0000', clues: [{ kind: '地点', evidence: '区号 0571', inference: '装修公司在杭州', confidence: 0.6 }, { kind: '事件', evidence: '', inference: '无依据的线索应被丢弃', confidence: 0.9 }], eventGuess: { type: '搬家装修', reason: '保护膜' }, tags: ['装修'], questions: ['这是你家吗？', '哪一年？', '第三个问题应被截掉'] }
+    : system.includes('人生管家')
     ? { answer: '那是爸妈第一次来〔上海〕看你。', eventIds: ['e2', 'not-a-real-id'] }
     : { title: '海边旅行', summary: '画面显示海边风景。', type: '旅行', place: '', city: '三亚市', people: [], visibleText: '海边', tags: ['海边'], questions: ['同行的人是谁？'], confidence: 0.7 }
   json({ choices: [{ message: { content: JSON.stringify(output) }, finish_reason: 'stop' }] })
@@ -39,6 +42,8 @@ await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve))
 const mockBase = `http://127.0.0.1:${mock.address().port}`
 
 const usersFile = join(mkdtempSync(join(tmpdir(), 'pw-users-')), 'users.json')
+// An account created before the privacy statement existed
+writeFileSync(usersFile, JSON.stringify({ users: [{ id: 'legacy-1', username: '老用户', passwordHash: await hashPassword('oldpass1'), createdAt: '2026-09-01T00:00:00Z' }], sessions: {} }))
 const api = spawn(process.execPath, ['server/index.mjs'], {
   cwd: process.cwd(),
   env: {
@@ -81,14 +86,17 @@ try {
   const anonymous = await post('/api/butler', { question: '你好' })
   assert.equal(anonymous.status, 401, '未登录不能调用人生管家')
   assert.equal((await fetch(`${apiBase}/api/auth/me`)).status, 401)
-  assert.equal((await post('/api/auth/register', { username: 'a', password: '123456' })).status, 400, '用户名太短')
-  assert.equal((await post('/api/auth/register', { username: '小丁', password: '12345' })).status, 400, '密码太短')
-  const registered = await post('/api/auth/register', { username: '小丁', password: 'secret12' })
+  assert.equal((await post('/api/auth/register', { username: 'a', password: '123456', acceptPrivacy: true })).status, 400, '用户名太短')
+  assert.equal((await post('/api/auth/register', { username: '小丁', password: '12345', acceptPrivacy: true })).status, 400, '密码太短')
+  assert.equal((await post('/api/auth/register', { username: '小丁', password: 'secret12' })).status, 400, '必须同意隐私声明')
+  const registered = await post('/api/auth/register', { username: '小丁', password: 'secret12', acceptPrivacy: true })
   assert.equal(registered.status, 201)
-  assert.equal((await registered.json()).user.username, '小丁')
+  const created = (await registered.json()).user
+  assert.equal(created.username, '小丁')
+  assert.equal(created.privacyAccepted, true)
   const setCookie = registered.headers.get('set-cookie')
   assert.match(setCookie, /pw_session=[^;]+; Path=\/; HttpOnly; SameSite=Lax/)
-  assert.equal((await post('/api/auth/register', { username: '小丁', password: 'another1' })).status, 409, '用户名重复')
+  assert.equal((await post('/api/auth/register', { username: '小丁', password: 'another1', acceptPrivacy: true })).status, 409, '用户名重复')
   const stored = readFileSync(usersFile, 'utf8')
   assert.ok(!stored.includes('secret12'), '密码不能明文保存')
   assert.ok(!stored.includes(cookieOf(registered).split('=')[1]), '会话令牌只保存哈希')
@@ -173,6 +181,19 @@ try {
   assert.equal(ttsCall.input, '那是外滩。')
   assert.equal(ttsCall.model, 'stepaudio-2.5-tts')
 
+  // Photo card with consent: numbers as written, clues without evidence dropped, lists capped
+  const photo = { image: { dataUrl: 'data:image/jpeg;base64,/9j/2Q==' }, facts: { fileName: '微信图片_20260924133610.jpg', time: '2026-09-24T05:36:10Z', timeSource: 'filename', size: '1080 × 1920' } }
+  const consentCard = await (await post('/api/photo-card', photo)).json()
+  assert.equal(consentCard.visibleText, '恒彩家装 0571-5670 0000', '同意隐私声明后号码原样显示')
+  assert.equal(consentCard.clues.length, 1)
+  assert.equal(consentCard.questions.length, 2)
+  const cardCall = last('/v1/chat/completions').payload
+  assert.ok(!cardCall.messages[0].content.startsWith('---'), '运行时 skill 不应包含 front matter')
+  assert.match(cardCall.messages[0].content, /照片信息卡助手/)
+  assert.match(cardCall.messages[1].content[0].text, /来源：filename/)
+  assert.match(cardCall.messages[1].content[0].text, /隐私声明：用户已同意/)
+  assert.equal((await post('/api/photo-card', { image: { dataUrl: 'data:text/plain;base64,AA==' } })).status, 400)
+
   const chatRemoved = await post('/api/chat', {})
   assert.equal(chatRemoved.status, 404, '旧的回忆对话接口已移除')
   assert.equal((await fetch(`${apiBase}/_AMapService/v3/log/init`)).status, 401, '未登录不能使用高德代理')
@@ -183,7 +204,18 @@ try {
   assert.equal((await post('/api/auth/logout', {})).status, 200)
   assert.equal((await fetch(`${apiBase}/api/auth/me`, { headers })).status, 401)
   assert.equal((await post('/api/tts', { text: '你好' })).status, 401)
-  console.log('API test passed: accounts, guard, analysis, geocode (GCJ-02), butler, ASR, TTS, AMap proxy, logout.')
+
+  // A legacy account has not accepted the statement: numbers stay masked until it does
+  const legacy = await post('/api/auth/login', { username: '老用户', password: 'oldpass1' })
+  headers.Cookie = cookieOf(legacy)
+  assert.equal((await legacy.json()).user.privacyAccepted, false)
+  const maskedCard = await (await post('/api/photo-card', photo)).json()
+  assert.equal(maskedCard.visibleText, '恒彩家装 0571-********', '未同意时号码被遮挡')
+  assert.match(last('/v1/chat/completions').payload.messages[1].content[0].text, /隐私声明：用户未同意/)
+  const accepted = await (await post('/api/auth/privacy', {})).json()
+  assert.equal(accepted.user.privacyAccepted, true)
+  assert.equal((await (await post('/api/photo-card', photo)).json()).visibleText, '恒彩家装 0571-5670 0000')
+  console.log('API test passed: accounts + privacy consent, guard, analysis, photo card, geocode (GCJ-02), butler, ASR, TTS, AMap proxy, logout.')
 } finally {
   api.kill()
   await new Promise((resolve) => mock.close(resolve))

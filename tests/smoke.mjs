@@ -22,17 +22,20 @@ const silentWav = (() => {
 })()
 
 // Accounts are mocked here; tests/api.mjs covers the real server side
-const accounts = new Map()
+const accounts = new Map([['老用户', 'oldpass1']])
+const consented = new Set()
 let signedIn = null
 await page.route('**/api/auth/**', (route) => {
   const path = new URL(route.request().url()).pathname
   const body = route.request().method() === 'POST' ? route.request().postDataJSON() : {}
-  const user = (name) => ({ user: { id: `id-${encodeURIComponent(name)}`, username: name, createdAt: '2026-09-24T00:00:00Z' } })
+  const user = (name) => ({ user: { id: `id-${encodeURIComponent(name)}`, username: name, createdAt: '2026-09-24T00:00:00Z', privacyAccepted: consented.has(name) } })
   if (path.endsWith('/me')) return signedIn ? route.fulfill({ json: user(signedIn) }) : route.fulfill({ status: 401, json: { error: '请先登录' } })
   if (path.endsWith('/logout')) { signedIn = null; return route.fulfill({ json: { ok: true } }) }
+  if (path.endsWith('/privacy')) { consented.add(signedIn); return route.fulfill({ json: user(signedIn) }) }
   if (path.endsWith('/register')) {
+    if (body.acceptPrivacy !== true) return route.fulfill({ status: 400, json: { error: '请先阅读并同意隐私声明' } })
     if (accounts.has(body.username)) return route.fulfill({ status: 409, json: { error: '这个用户名已被注册' } })
-    accounts.set(body.username, body.password); signedIn = body.username
+    accounts.set(body.username, body.password); consented.add(body.username); signedIn = body.username
     return route.fulfill({ status: 201, json: user(body.username) })
   }
   if (accounts.get(body.username) !== body.password) return route.fulfill({ status: 401, json: { error: '用户名或密码不正确' } })
@@ -42,6 +45,7 @@ await page.route('**/api/auth/**', (route) => {
 async function register(name, password) {
   await page.locator('#auth-username').fill(name)
   await page.locator('#auth-password').fill(password)
+  if (!(await page.locator('#auth-consent').isChecked())) await page.locator('#auth-consent').check()
   await page.getByRole('button', { name: '注册' }).first().click()
 }
 
@@ -66,7 +70,16 @@ try {
   assert.equal(await page.title(), 'Personal World · 人生地图')
   // Registration: username and password only
   await page.getByRole('heading', { name: '创建你的账户' }).waitFor()
-  assert.equal(await page.locator('.auth input').count(), 2, '注册只需要用户名和密码')
+  assert.equal(await page.locator('.auth input:not([type="checkbox"])').count(), 2, '注册只需要用户名和密码')
+  // Without ticking the privacy statement, registration is refused
+  await page.locator('#auth-username').fill('小丁')
+  await page.locator('#auth-password').fill('secret12')
+  await page.getByRole('button', { name: '注册' }).first().click()
+  await page.getByRole('alert').getByText('请先阅读并同意隐私声明').waitFor()
+  await page.getByRole('button', { name: '隐私声明' }).click()
+  await page.getByRole('dialog', { name: '隐私声明' }).getByText('照片里的敏感文字').waitFor()
+  await page.getByRole('dialog', { name: '隐私声明' }).getByRole('button', { name: '同意' }).click()
+  assert.ok(await page.locator('#auth-consent').isChecked(), '在声明里点同意会勾选')
   await page.screenshot({ path: join(shots, 'pw-0-register.png') })
   await register('小丁', 'secret12')
   await page.locator('.account').filter({ hasText: '小丁' }).waitFor()
@@ -163,6 +176,20 @@ try {
   await page.locator('#auth-password').fill('wrong-pass')
   await page.getByRole('button', { name: '登录' }).click()
   await page.getByRole('alert').getByText('用户名或密码不正确').waitFor()
+  await page.locator('#auth-password').fill('secret12')
+  await page.getByRole('button', { name: '登录' }).click()
+  await page.locator('.map-label.place').nth(3).waitFor()
+
+  // An account from before the statement sees it once after signing in
+  await page.getByRole('button', { name: '退出登录' }).click()
+  await page.locator('#auth-username').fill('老用户')
+  await page.locator('#auth-password').fill('oldpass1')
+  await page.getByRole('button', { name: '登录' }).click()
+  await page.getByRole('heading', { name: '请阅读隐私声明' }).waitFor()
+  await page.getByRole('button', { name: '同意并继续' }).click()
+  await page.getByRole('heading', { name: '从照片开始，画出你的人生地图' }).waitFor()
+  await page.getByRole('button', { name: '退出登录' }).click()
+  await page.locator('#auth-username').fill('小丁')
   await page.locator('#auth-password').fill('secret12')
   await page.getByRole('button', { name: '登录' }).click()
   await page.locator('.map-label.place').nth(3).waitFor()
