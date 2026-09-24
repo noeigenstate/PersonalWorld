@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Personal World 需求说明书</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700&family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  color-scheme:light;
+  --paper:#f7f8fa;
+  --surface:#ffffff;
+  --ink:#1d1d1f;
+  --muted:#62656d;
+  --faint:#8b8f98;
+  --line:#dcdfe5;
+  --time:#0068d6;
+  --time-tint:#e9f2fd;
+  --space:#16855a;
+  --space-tint:#e6f5ed;
+  --story:#c96a10;
+  --story-tint:#fdf0e2;
+  --warn:#a35300;
+  --warn-tint:#fdf1e3;
+  --code-bg:#f0f2f5;
+  --serif:'Noto Serif SC','Songti SC','SimSun',serif;
+  --sans:'Noto Sans SC','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+  --mono:'JetBrains Mono','Cascadia Mono',Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --paper:#111214;--surface:#1a1b1f;--ink:#eeeff2;--muted:#a4a7ae;--faint:#7c8088;--line:#2d2f35;
+    --time:#5aa9ff;--time-tint:#15263a;--space:#45c98e;--space-tint:#132b21;--story:#f5a352;--story-tint:#35240f;
+    --warn:#f0a14a;--warn-tint:#33230f;--code-bg:#202227;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --paper:#111214;--surface:#1a1b1f;--ink:#eeeff2;--muted:#a4a7ae;--faint:#7c8088;--line:#2d2f35;
+  --time:#5aa9ff;--time-tint:#15263a;--space:#45c98e;--space-tint:#132b21;--story:#f5a352;--story-tint:#35240f;
+  --warn:#f0a14a;--warn-tint:#33230f;--code-bg:#202227;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.8 var(--sans);-webkit-font-smoothing:antialiased;padding-inline:16px}
+.page{max-width:920px;margin:0 auto;padding-block:56px 96px}
+h1,h2,h3{font-family:var(--serif);text-wrap:balance;margin:0;line-height:1.3}
+h1{font-size:clamp(30px,5vw,44px);letter-spacing:-.01em}
+h2{font-size:26px;margin-bottom:18px}
+h3{font-size:19px;margin:34px 0 12px}
+p{margin:0 0 14px;max-width:68ch}
+a{color:var(--time)}
+a:focus-visible{outline:2px solid var(--time);outline-offset:3px;border-radius:3px}
+.label{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+code{font-family:var(--mono);font-size:.88em;background:var(--code-bg);padding:1px 5px;border-radius:4px}
+.t{color:var(--time);font-weight:700}
+.s{color:var(--space);font-weight:700}
+.o{color:var(--story);font-weight:700}
+
+.doc-head{display:grid;gap:18px;padding-bottom:30px;border-bottom:1px solid var(--line)}
+.doc-head .sub{font-size:18px;color:var(--muted);max-width:none;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:8px 28px;font-size:13px;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:500}
+.toc{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:14px;margin-top:6px}
+.toc a{color:var(--muted);text-decoration:none}
+.toc a:hover{color:var(--ink)}
+.toc span{font-family:var(--mono);color:var(--faint);margin-right:5px;font-size:12px}
+
+section{padding-top:56px}
+.thesis{margin-top:30px;padding:26px 28px;background:var(--surface);border:1px solid var(--line);border-radius:14px}
+.thesis p{font-family:var(--serif);font-size:21px;line-height:1.6;margin:0;max-width:none}
+
+.figure{margin:26px 0 8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 10px 8px}
+.figure .scroll{overflow-x:auto}
+.figure svg{display:block;min-width:720px;width:100%;height:auto}
+.figure.shot{padding:10px}
+.figure.shot img{display:block;width:100%;height:auto;border-radius:8px}
+.figcap{font-size:13px;color:var(--muted);padding:8px 12px 8px;margin:0;max-width:none}
+svg .axis-label{font:700 14px var(--sans);fill:var(--muted)}
+svg .place rect{fill:var(--space-tint);stroke:var(--space)}
+svg .place text{font:500 14px var(--sans);fill:var(--ink)}
+svg .event rect{fill:var(--surface);stroke:var(--ink);stroke-width:1.4}
+svg .event text{font:500 14px var(--sans);fill:var(--ink)}
+svg .to-place{stroke:var(--space);stroke-width:1.5;fill:none}
+svg .to-place.dash{stroke-dasharray:4 5}
+svg .to-time{stroke:var(--time);stroke-width:1.5;stroke-dasharray:3 4}
+svg .axis{stroke:var(--time);stroke-width:2}
+svg .tick{fill:var(--time)}
+svg .year{font:500 12px var(--mono);fill:var(--time)}
+svg .migrate{stroke:var(--space);stroke-width:2;fill:none}
+svg .arrowhead{fill:var(--space)}
+svg .note{font:12px var(--sans);fill:var(--faint)}
+
+.table-wrap{overflow-x:auto;margin:18px 0 8px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;line-height:1.65}
+th,td{text-align:left;vertical-align:top;padding:11px 14px;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font-weight:500;color:var(--muted);font-size:13px;background:var(--paper);white-space:nowrap}
+td.id{font-family:var(--mono);font-size:12.5px;color:var(--muted);white-space:nowrap}
+td.pri{white-space:nowrap}
+td.name{font-weight:700;white-space:nowrap}
+.cmp td:first-child{font-weight:500;white-space:nowrap}
+.cmp .win{background:var(--space-tint)}
+.chip{display:inline-block;font:500 12px/1 var(--mono);padding:4px 7px;border-radius:5px;border:1px solid currentColor}
+.p0{color:var(--warn);background:var(--warn-tint)}
+.p1{color:var(--time);background:var(--time-tint)}
+.p2{color:var(--muted)}
+
+.parts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:22px}
+.part{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px 24px;display:grid;gap:8px;align-content:start}
+.part h3{margin:0;font-size:22px}
+.part p{margin:0;font-size:14px;color:var(--muted)}
+
+ol.steps{list-style:none;padding:0;margin:18px 0;counter-reset:s}
+ol.steps li{counter-increment:s;display:grid;grid-template-columns:40px 1fr;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+ol.steps li:first-child{border-top:0}
+ol.steps li:before{content:counter(s,decimal-leading-zero);font:500 13px/1.9 var(--mono);color:var(--faint)}
+ol.steps b{font-weight:700}
+ol.steps span{display:block;color:var(--muted);font-size:14px}
+
+.callout{border-left:3px solid var(--warn);background:var(--warn-tint);padding:14px 18px;border-radius:0 10px 10px 0;margin:18px 0;font-size:14px}
+.callout p{margin:0;max-width:none}
+ul.plain{margin:10px 0 14px;padding-left:20px}
+ul.plain li{margin:4px 0}
+pre{background:var(--code-bg);border-radius:12px;padding:16px 18px;overflow-x:auto;font:13px/1.7 var(--mono);margin:16px 0}
+pre .c{color:var(--faint)}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.panel h4{margin:0 0 6px;font-size:14px}
+.panel ul{margin:0;padding-left:18px;font-size:14px;color:var(--muted)}
+.foot{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);font-size:13px;color:var(--faint)}
+@media (max-width:640px){
+  .parts,.two{grid-template-columns:1fr}
+  .thesis{padding:20px}
+  .thesis p{font-size:18px}
+  h2{font-size:23px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header class="doc-head">
+  <div class="label">需求说明书 · v0.3 草案</div>
+  <h1>Personal World</h1>
+  <p class="sub">一个人的世界模型：从照片中重建经历过的事，画成一张人生地图，再由一位记得这一切的人生管家陪你回看。</p>
+  <div class="meta">
+    <span>日期 <b>2026-09-24</b></span>
+    <span>用途 <b>2026 英伟达黑客松</b></span>
+    <span>当前形态 <b>Web 预览版</b>（最终形态为手机 App）</span>
+  </div>
+  <nav class="toc" aria-label="目录">
+    <a href="#positioning"><span>1</span>产品定位</a>
+    <a href="#principle"><span>2</span>事件优先</a>
+    <a href="#structure"><span>3</span>产品结构</a>
+    <a href="#flow"><span>4</span>核心交互</a>
+    <a href="#map"><span>5</span>人生地图</a>
+    <a href="#butler"><span>6</span>人生管家</a>
+    <a href="#tech"><span>7</span>技术方案</a>
+    <a href="#base"><span>8</span>现状</a>
+    <a href="#plan"><span>9</span>分阶段计划</a>
+    <a href="#open"><span>10</span>待确认问题</a>
+  </nav>
+</header>
+
+<section id="positioning">
+  <div class="label">1 · 产品定位</div>
+  <h2>把照片变成关于一个人生活的模型</h2>
+  <p>手机里有几万张照片，但相册只能按日期和地点排列文件，回答不了"那几年发生了什么"。Personal World 为每个用户建立一个个人世界模型：他经历过哪些<b>事件</b>，这些事发生在什么<span class="t">时间</span>、什么<span class="s">地方</span>，和谁一起。</p>
+  <p>这个模型有两种呈现方式。<b>人生地图</b>让人看见它：地点、迁徙和每个地点上的故事线。<b>人生管家</b>让人和它对话：管家是一个大模型，把整个世界模型当作自己的记忆，用户可以直接用语音问它"那时候发生了什么"。</p>
+  <div class="thesis"><p>先确定发生了什么事，时间和地点都从事里来。</p></div>
+</section>
+
+<section id="principle">
+  <div class="label">2 · 核心原则</div>
+  <h2>事件优先，时间线和空间线是事件的两个投影</h2>
+  <p>常见相册从时间出发（按日期排列）或从空间出发（把照片按 GPS 钉在地图上）。Personal World 从事件出发：先把照片归入事件，再从事件中分离出<span class="t">时间线</span>和<span class="s">空间线</span>。</p>
+
+  <div class="table-wrap">
+    <table class="cmp">
+      <thead><tr><th></th><th>从时间出发</th><th>从空间出发</th><th>从事件出发（Personal World）</th></tr></thead>
+      <tbody>
+        <tr><td>基本单位</td><td>日期</td><td>坐标点</td><td class="win">一件事</td></tr>
+        <tr><td>缺少元数据时</td><td>截图、转发图、翻拍老照片的时间不准，排错位置</td><td>没有 GPS 的照片无法上图</td><td class="win">可用同一事件里其他照片、画面文字和用户确认来补齐</td></tr>
+        <tr><td>地点的分量</td><td>不体现</td><td>按照片数量：旅行一天拍 300 张，比老家一年拍 5 张更显眼</td><td class="win">按发生过的事：在老家发生的事再少，也是人生据点</td></tr>
+        <tr><td>能回答的问题</td><td>那天拍了什么</td><td>在这里拍了什么</td><td class="win">那几年我在哪里生活、做了什么、第一次来这里是为了什么</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="figure" role="img" aria-label="示意图：五个事件分别向上连接到三个地点构成的空间线，向下连接到时间轴构成的时间线">
+    <div class="scroll">
+      <svg viewBox="0 0 900 380" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="arrowhead" d="M0,0 L10,5 L0,10 z"/></marker>
+        </defs>
+        <text class="axis-label" x="20" y="65">空间线</text>
+        <text class="axis-label" x="20" y="195">事件</text>
+        <text class="axis-label" x="20" y="325">时间线</text>
+        <path class="to-place dash" d="M170,167 L250,80"/>
+        <path class="to-place" d="M170,167 L500,80"/>
+        <path class="to-place" d="M330,167 L500,80"/>
+        <path class="to-place" d="M490,167 L760,80"/>
+        <path class="to-place" d="M650,167 L760,80"/>
+        <path class="to-place" d="M810,167 C810,120 300,125 262,80"/>
+        <line class="to-time" x1="170" y1="213" x2="170" y2="314"/>
+        <line class="to-time" x1="330" y1="213" x2="330" y2="314"/>
+        <line class="to-time" x1="490" y1="213" x2="490" y2="314"/>
+        <line class="to-time" x1="650" y1="213" x2="650" y2="314"/>
+        <line class="to-time" x1="810" y1="213" x2="810" y2="314"/>
+        <path class="migrate" d="M327,60 L421,60" marker-end="url(#arrow)"/>
+        <path class="migrate" d="M577,60 L681,60" marker-end="url(#arrow)"/>
+        <g class="place"><rect x="175" y="40" width="150" height="40" rx="20"/><text x="250" y="65" text-anchor="middle">湘潭 · 老家</text></g>
+        <g class="place"><rect x="425" y="40" width="150" height="40" rx="20"/><text x="500" y="65" text-anchor="middle">武汉 · 求学</text></g>
+        <g class="place"><rect x="685" y="40" width="150" height="40" rx="20"/><text x="760" y="65" text-anchor="middle">上海 · 工作</text></g>
+        <g class="event"><rect x="102" y="167" width="136" height="46" rx="10"/><text x="170" y="195" text-anchor="middle">离家读大学</text></g>
+        <g class="event"><rect x="262" y="167" width="136" height="46" rx="10"/><text x="330" y="195" text-anchor="middle">毕业典礼</text></g>
+        <g class="event"><rect x="422" y="167" width="136" height="46" rx="10"/><text x="490" y="195" text-anchor="middle">入职第一天</text></g>
+        <g class="event"><rect x="582" y="167" width="136" height="46" rx="10"/><text x="650" y="195" text-anchor="middle">父母第一次来沪</text></g>
+        <g class="event"><rect x="742" y="167" width="136" height="46" rx="10"/><text x="810" y="195" text-anchor="middle">回老家过年</text></g>
+        <line class="axis" x1="110" y1="320" x2="880" y2="320"/>
+        <circle class="tick" cx="170" cy="320" r="5"/><text class="year" x="170" y="348" text-anchor="middle">2014.09</text>
+        <circle class="tick" cx="330" cy="320" r="5"/><text class="year" x="330" y="348" text-anchor="middle">2018.06</text>
+        <circle class="tick" cx="490" cy="320" r="5"/><text class="year" x="490" y="348" text-anchor="middle">2018.07</text>
+        <circle class="tick" cx="650" cy="320" r="5"/><text class="year" x="650" y="348" text-anchor="middle">2019.10</text>
+        <circle class="tick" cx="810" cy="320" r="5"/><text class="year" x="810" y="348" text-anchor="middle">2023.01</text>
+        <text class="note" x="880" y="372" text-anchor="end">时间轴按事件先后排列，间距不代表时长</text>
+      </svg>
+    </div>
+    <p class="figcap">示例数据。每个事件向上落到一个地点，向下落到一个时间。地点按人生迁徙顺序连成<span class="s">空间线</span>；虚线表示"出发地"。修改任一事件的时间或地点，两条线同步更新。</p>
+  </div>
+
+  <h3>由此得出的规则</h3>
+  <ul class="plain">
+    <li>事件是唯一的主数据。时间线、空间线、故事线都由事件计算得出，不单独存储、不单独编辑。</li>
+    <li>事件的时间和地点允许是模糊值，例如"2014 年秋""武汉某高校"。每个值都记录<b>精度</b>、<b>来源</b>（照片元数据 / AI 推断 / 用户确认）和<b>置信度</b>。</li>
+    <li>照片的 EXIF 时间和 GPS 只是证据，不直接等于事件的时间和地点。证据冲突时，由事件层判断，必要时由人生管家询问用户。</li>
+    <li>AI 推断必须标明不确定性。人物身份、人物关系和敏感事件（如就医）只有用户确认后才算事实。</li>
+  </ul>
+</section>
+
+<section id="structure">
+  <div class="label">3 · 产品结构</div>
+  <h2>两个部分：人生地图和人生管家</h2>
+  <p>顶栏只有这两项。照片地图、照片说话、第一次和最后一次、幻灯片电影这四个能力不设单独入口，也不做成按钮或标签页，而是融进世界模型，由人生管家在对话中自然用上。</p>
+  <div class="parts">
+    <div class="part">
+      <div class="label">看见</div>
+      <h3>人生地图</h3>
+      <p>3D 卡通风格的地图。人生据点是立体的小建筑，据点之间用迁徙弧线连成空间线；点击一个地点，地图上亮起这个地点的故事线。</p>
+    </div>
+    <div class="part">
+      <div class="label">对话</div>
+      <h3>人生管家</h3>
+      <p>一个把世界模型当作记忆的大模型。用户用语音提问，管家依据事件和照片回答，说不准的地方会标出来并请用户确认。</p>
+    </div>
+  </div>
+
+  <h3>四个能力如何体现</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>能力</th><th>体现方式</th><th>示例</th><th>优先级</th></tr></thead>
+      <tbody>
+        <tr><td class="name">照片地图</td><td>人生地图本身：据点、迁徙、故事线</td><td>点击上海，地图上串起在上海发生的 12 件事</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="name">照片说话</td><td>管家讲述时附上照片，讲的是照片所在的整个事件，而不是单张图的描述</td><td>"10 月 2 日你们去了外滩，晚上在家吃了你做的饭，有 3 张照片拍到了那桌菜。"</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="name">第一次，最后一次</td><td>管家回答时标出"第一次"；故事线上的节点也可带这个标记</td><td>"那是爸妈<b>第一次</b>来上海看你。"</td><td class="pri"><span class="chip p1">P1</span></td></tr>
+        <tr><td class="name">幻灯片电影</td><td>管家在合适时主动提议，用户答应后在对话框中播放</td><td>"如果想，我可以把这三天剪成一段短片。"</td><td class="pri"><span class="chip p2">P2</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="flow">
+  <div class="label">4 · 核心交互</div>
+  <h2>点击地点，问问那时发生了什么</h2>
+  <div class="figure shot">
+    <img src="mockups/3d-cartoon-map.png" alt="效果示意：人生地图拉近到上海，地图上一条橙色故事线串起入职第一天、父母第一次来沪、去杭州玩、搬进新家、黑客松准备日五个事件；右侧人生管家对话框中，用户用语音问 2019 年国庆发生了什么，管家附照片回答">
+    <p class="figcap">效果示意，示例数据。源文件 <code>docs/mockups/3d-cartoon-map.html</code>。</p>
+  </div>
+  <ol class="steps">
+    <li><div><b>点击地图上的一个地点</b><span>镜头平滑拉近到这个地点，其他据点和迁徙线变淡作为背景。</span></div></li>
+    <li><div><b>地图上出现<span class="o">故事线</span></b><span>按时间顺序串起在这个地点发生的事件，线上的箭头表示时间方向。途经的旅行（如从上海去杭州）也挂在线上。未确认的事件用虚线表示。</span></div></li>
+    <li><div><b>弹出人生管家对话框</b><span>管家先开口，概括它记得的内容，例如"你在上海生活了 8 年，我记得这里的 12 件事，想聊哪一段？"</span></div></li>
+    <li><div><b>用户按住说话</b><span>例如"2019 年国庆那会儿发生了什么？"。语音转成文字显示在对话中；也可以切换成键盘输入。</span></div></li>
+    <li><div><b>管家依据记忆回答</b><span>回答附上相关照片，标出"第一次"等信息；故事线上对应的事件高亮，底部时间线同步定位。</span></div></li>
+    <li><div><b>纠正回写</b><span>管家对推断的内容提问确认。用户的回答写回事件，地图、故事线、时间线随之更新。</span></div></li>
+  </ol>
+</section>
+
+<section id="map">
+  <div class="label">5 · 人生地图</div>
+  <h2>人生地图</h2>
+  <p>地图上的每个标记是一个<b>地点</b>，由在那里发生过的事件定义，标记的分量来自事件而不是照片数量。用户在一张图上同时看到<span class="s">空间线</span>（在哪些地方生活过、按什么顺序迁徙）和每个地点上的<span class="o">故事线</span>，底部的<span class="t">时间线</span>与地图联动。</p>
+
+  <h3>核心概念</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>概念</th><th>定义</th></tr></thead>
+      <tbody>
+        <tr><td class="name">事件</td><td>一件有起止时间、有地点、有参与者的事，例如"毕业典礼""搬家到上海"。由若干照片作为证据。</td></tr>
+        <tr><td class="name">地点</td><td>事件发生的位置，有层级：具体地点（某餐厅）、区域、城市、国家。无 GPS 时可以只确定到城市。</td></tr>
+        <tr><td class="name">人生据点</td><td>长期生活的地点，角色为老家、求学、工作、居住。由一段时间内反复发生的事件推断，需用户确认。</td></tr>
+        <tr><td class="name">途经地点</td><td>旅行、出差等短期到访的地点。</td></tr>
+        <tr><td class="name"><span class="t">时间线</span></td><td>全部事件按发生时间排列，按人生阶段（如"大学四年"）分段。</td></tr>
+        <tr><td class="name"><span class="s">空间线</span></td><td>人生据点按迁徙顺序连成的路径。</td></tr>
+        <tr><td class="name"><span class="o">故事线</span></td><td>某个地点上的事件按时间串成的路线，包括以该据点为出发点的短途旅行。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>生成流程</h3>
+  <ol class="steps">
+    <li><div><b>导入并读取证据</b><span>读取 EXIF 时间、GPS、画面内容、画面文字（OCR）。完全相同的文件跳过。</span></div></li>
+    <li><div><b>重建事件</b><span>按时间邻近、画面内容和地点把照片分成事件草稿。允许跨天事件（如一次 5 天的旅行）。</span></div></li>
+    <li><div><b>给事件定位</b><span>优先使用事件内照片的 GPS，经高德逆地理编码得到地名；无 GPS 时依据画面线索（招牌、地标、车票文字）推断；仍不能确定时由管家提问，或暂不上图。</span></div></li>
+    <li><div><b>给事件定时</b><span>优先使用 EXIF 拍摄时间；缺失或冲突时，参考事件内其他照片和画面文字，并记录精度（到分钟 / 天 / 月 / 年 / 季节）。</span></div></li>
+    <li><div><b>投影出时间线、空间线和故事线</b><span>按时间排序并分阶段；把事件按地点聚合，识别人生据点和迁徙顺序；为每个地点生成故事线。</span></div></li>
+  </ol>
+
+  <h3>功能需求</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>编号</th><th>需求</th><th>验收标准</th><th>优先级</th></tr></thead>
+      <tbody>
+        <tr><td class="id">MAP-01</td><td>3D 卡通地图主视图</td><td>高德 3D 视角 + 卡通配色底图；人生据点显示为立体小建筑，大小由事件数和据点角色决定，与照片数量无关</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">MAP-02</td><td>空间线</td><td>据点之间按迁徙顺序显示立体弧线，例如"湘潭 → 武汉 → 上海"</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">MAP-03</td><td>点击地点显示故事线</td><td>镜头拉近到该地点；按时间串起该地点的事件，节点带日期和事件名；其他据点变淡</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">MAP-04</td><td>点击地点同时打开人生管家</td><td>对话框自动带上"正在聊：上海 · 2018.07 至今"的上下文，管家先开口</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">MAP-05</td><td>对话与地图联动</td><td>管家提到某个事件时，故事线上的节点高亮，底部时间线定位到该时间</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">MAP-06</td><td>显示不确定性</td><td>AI 推断、未经确认的地点和事件用虚线标记</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">MAP-07</td><td>修正后同步</td><td>事件的时间或地点被修正后，空间线、故事线、时间线无需刷新即更新</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">MAP-08</td><td>时间线与地图联动</td><td>底部时间线按人生阶段分段；选中一段时，地图显示当时所在的据点</td><td class="pri"><span class="chip p1">P1</span></td></tr>
+        <tr><td class="id">MAP-09</td><td>静止的界面</td><td>建筑、标记和图标保持静止，不漂浮、不抖动；只在切换地点或时间时移动镜头</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="butler">
+  <div class="label">6 · 人生管家</div>
+  <h2>人生管家</h2>
+  <p>人生管家是一个大模型，它的记忆就是用户的世界模型：事件、地点、人物、照片以及用户确认过的信息。它回答问题时只依据这份记忆，记忆里没有的内容直接说不知道，并告诉用户需要补充什么。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>编号</th><th>需求</th><th>验收标准</th><th>优先级</th></tr></thead>
+      <tbody>
+        <tr><td class="id">BTL-01</td><td>语音提问</td><td>按住说话，松开后语音转为文字并显示；支持切换键盘输入</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">BTL-02</td><td>带上下文的对话</td><td>从地图进入时，管家知道当前地点和时间范围；用户可以用"那时候""那次"指代</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">BTL-03</td><td>依据记忆回答</td><td>回答中的事件、时间、地点、人物都能追溯到具体事件和照片；显示"依据：N 个事件 · M 张照片"</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">BTL-04</td><td>照片说话</td><td>回答附上相关照片，讲述照片所在的整个事件</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">BTL-05</td><td>区分事实与推断</td><td>推断的内容在文字中标出，并主动提问确认；确认结果写回事件</td><td class="pri"><span class="chip p0">P0</span></td></tr>
+        <tr><td class="id">BTL-06</td><td>第一次，最后一次</td><td>回答中标出"第一次"；表述为"照片记录中的第一次"；结论能追溯到事件</td><td class="pri"><span class="chip p1">P1</span></td></tr>
+        <tr><td class="id">BTL-07</td><td>语音回答</td><td>管家的回答可以朗读播放</td><td class="pri"><span class="chip p1">P1</span></td></tr>
+        <tr><td class="id">BTL-08</td><td>幻灯片电影</td><td>管家提议后，按事件选片、去除相似照片、配事件字幕，在对话框内播放；地点变化时插入地图移动</td><td class="pri"><span class="chip p2">P2</span></td></tr>
+        <tr><td class="id">BTL-09</td><td>从顶栏直接进入</td><td>不经过地图也能和管家聊，例如"我这几年搬过几次家？"，回答时地图同步展示</td><td class="pri"><span class="chip p1">P1</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout"><p>"最后一次"可能涉及已离世的亲人、结束的关系。管家不主动提起这类"最后一次"，只在用户明确问到时回答，用户也可以要求不再提及。</p></div>
+</section>
+
+<section id="tech">
+  <div class="label">7 · 技术方案</div>
+  <h2>技术方案</h2>
+  <h3>数据模型草案</h3>
+  <pre><span class="c">// 事件是唯一主数据；时间线、空间线、故事线都由它计算</span>
+Event {
+  id, title, summary, type, status: draft | analyzed | confirmed
+  assetIds: string[]                <span class="c">// 证据照片</span>
+  time:  { start, end?, precision: minute | day | month | year | season,
+           source: exif | inferred | user, confidence }
+  placeIds: string[]                <span class="c">// 一个事件可涉及多个地点，如"离家读大学"</span>
+  people: string[]
+  firsts?: string[]                 <span class="c">// 如 "第一次来上海"，由事件计算</span>
+}
+Place {
+  id, name, level: poi | district | city | country
+  coord?: { lat, lng }              <span class="c">// 存 WGS-84 原始坐标</span>
+  role?: home | study | work | residence | travel
+  source: gps | inferred | user, confidence
+}
+<span class="c">// 派生，不存储</span>
+Timeline   = events 按 time.start 排序并分阶段
+SpaceLine  = places 中 role ≠ travel 的据点，按首次事件时间排序
+StoryLine(place) = 该地点及从该地点出发的事件，按时间排序</pre>
+
+  <h3>选型与注意事项</h3>
+  <ul class="plain">
+    <li><b>地图：</b>已选定高德开放平台。个人认证开发者在非商业用途下有免费额度，比赛演示够用；商业化需另购技术服务许可。需要 Web 端 JS API 的 Key 与安全密钥，以及 Web 服务 Key。</li>
+    <li><b>3D 卡通效果：</b>高德 JS API 2.0 的 3D 视角 + 卡通配色主题；据点建筑、迁徙弧线、故事线用 Three.js 叠加在高德地图上。控制 3D 模型数量，保证手机端流畅。</li>
+    <li><b>坐标系：</b>照片 GPS 是 WGS-84，高德使用 GCJ-02，展示前要转换，否则标记会偏移数百米。</li>
+    <li><b>大模型：</b>StepFun <code>step-3.7-flash</code>，负责事件分析和管家对话。密钥只在服务端读取。</li>
+    <li><b>语音：</b>语音识别和语音合成服务待选型。</li>
+    <li><b>隐私：</b>家的精确位置默认只显示到街道或小区一级；照片与位置数据默认保存在本机，发给大模型的是图片预览和事件文字。</li>
+  </ul>
+</section>
+
+<section id="base">
+  <div class="label">8 · 现状</div>
+  <h2>当前 Web 版保留的底座</h2>
+  <p>Web 预览版已删除与新结构无关的功能，只保留事件底座。</p>
+  <div class="two">
+    <div class="panel">
+      <h4>保留</h4>
+      <ul>
+        <li>导入照片、视频、截图；本地 IndexedDB 保存</li>
+        <li>读取 EXIF 拍摄时间与 GPS 坐标</li>
+        <li>按 SHA-256 跳过完全相同的文件</li>
+        <li>按同一天、6 小时内的间隔生成事件草稿</li>
+        <li>StepFun 分析事件，给出标题、摘要、地点线索、画面文字和待确认问题</li>
+        <li>事件详情、手动修改、确认保存；查看与删除影像</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h4>已删除</h4>
+      <ul>
+        <li>工作台首页（概览数字、流程介绍、装饰图形）</li>
+        <li>事件相册页、记忆图谱页</li>
+        <li>回忆对话页及 <code>/api/chat</code> 接口（将由人生管家重新实现）</li>
+        <li>搜索、精选照片、手机底部导航</li>
+      </ul>
+    </div>
+  </div>
+  <h3>底座的已知缺口</h3>
+  <ul class="plain">
+    <li>事件分组只看时间，不能跨天，也不考虑地点和画面内容。</li>
+    <li>地点目前是自由文本，没有地点实体、层级和坐标，也没有接入逆地理编码。</li>
+    <li>只能识别完全相同的文件，不能识别相似照片。</li>
+    <li>不支持 HEIC，iPhone 原图需要转换后才能导入。</li>
+    <li>StepFun 真实调用尚未用真实照片验证，自动化测试只用了模拟接口。</li>
+  </ul>
+</section>
+
+<section id="plan">
+  <div class="label">9 · 计划</div>
+  <h2>分阶段计划</h2>
+  <ol class="steps">
+    <li><div><b>事件底座升级</b><span>引入地点实体和模糊时间；分组加入地点与画面内容，支持跨天事件；接入高德逆地理编码。</span></div></li>
+    <li><div><b>人生地图</b><span>高德 3D 卡通地图、人生据点与空间线、点击地点显示故事线（MAP-01 至 MAP-07）。</span></div></li>
+    <li><div><b>人生管家</b><span>语音提问、带地点上下文的对话、依据记忆回答并附照片、推断确认与回写（BTL-01 至 BTL-05）。完成后用真实测试照片跑通第 4 节的完整交互。</span></div></li>
+    <li><div><b>记忆能力扩展</b><span>第一次和最后一次、语音回答、幻灯片电影。</span></div></li>
+  </ol>
+</section>
+
+<section id="open">
+  <div class="label">10 · 待确认</div>
+  <h2>待确认问题</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>问题</th><th>影响</th></tr></thead>
+      <tbody>
+        <tr><td class="id">Q1</td><td>语音识别、语音合成用哪家服务？</td><td>决定人生管家的语音链路</td></tr>
+        <tr><td class="id">Q2</td><td>比赛演示用谁的照片？是否需要准备一套可公开的示例相册？</td><td>决定隐私处理和演示数据准备</td></tr>
+        <tr><td class="id">Q3</td><td>比赛是否要求使用 NVIDIA 的模型或服务？</td><td>可能影响大模型与语音的选型</td></tr>
+        <tr><td class="id">Q4</td><td>比赛提交 Web 版，还是必须是手机 App？</td><td>决定是否同步开发 App</td></tr>
+        <tr><td class="id">Q5</td><td>人生管家要不要有固定的形象和名字？</td><td>影响对话框设计和语音音色</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer class="foot">Personal World 需求说明书 v0.3 · 2026-09-24 · 示意图与效果图中的城市、事件和照片均为示例数据</footer>
+</div>
+</body>
+</html>

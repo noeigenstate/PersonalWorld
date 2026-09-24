@@ -127,7 +127,6 @@ export async function importFiles(files: File[], existingHashes: string[]): Prom
         latitude: gps.latitude,
         longitude: gps.longitude,
         preview,
-        favorite: false,
         hash,
       }
       await saveFile(asset.id, file)

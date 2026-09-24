@@ -8,9 +8,7 @@ const mock = http.createServer(async (req, res) => {
   for await (const chunk of req) body += chunk.toString()
   const payload = JSON.parse(body)
   requests.push({ url: req.url, auth: req.headers.authorization, payload })
-  const output = requests.length === 1
-    ? JSON.stringify({ title: '海边旅行', summary: '画面显示海边风景。', type: '旅行', place: '', people: [], visibleText: '海边', tags: ['海边'], questions: ['同行的人是谁？'], confidence: 0.7 })
-    : '记录中只有一段海边旅行，尚无确切地点。'
+  const output = JSON.stringify({ title: '海边旅行', summary: '画面显示海边风景。', type: '旅行', place: '', people: [], visibleText: '海边', tags: ['海边'], questions: ['同行的人是谁？'], confidence: 0.7 })
   res.writeHead(200, { 'Content-Type': 'application/json' })
   res.end(JSON.stringify({ choices: [{ message: { content: output }, finish_reason: 'stop' }] }))
 })
@@ -34,7 +32,7 @@ const apiPort = await new Promise((resolve, reject) => {
   const timeout = setTimeout(() => reject(new Error(`测试 API 未启动：${output}`)), 10_000)
   api.stdout.on('data', (chunk) => {
     output += chunk.toString()
-    const match = output.match(/见岁 API running on http:\/\/127\.0\.0\.1:(\d+)/)
+    const match = output.match(/Personal World API running on http:\/\/127\.0\.0\.1:(\d+)/)
     if (match) { clearTimeout(timeout); resolve(Number(match[1])) }
   })
   api.stderr.on('data', (chunk) => { output += chunk.toString() })
@@ -61,15 +59,9 @@ try {
   assert.equal(requests[0].payload.messages[1].content[1].type, 'image_url')
   assert.equal(requests[0].payload.response_format.type, 'json_object')
 
-  const chatted = await fetch(`${apiBase}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Memory-Agent': 'web' },
-    body: JSON.stringify({ question: '地点在哪？', events: [event] }),
-  })
-  assert.equal(chatted.status, 200)
-  assert.match((await chatted.json()).answer, /尚无确切地点/)
-  assert.equal(requests[1].payload.messages[1].content.includes('data:image'), false, '问答不应发送原图')
-  console.log('API test passed: request guard, image payload, JSON parse, chat context.')
+  const chatRemoved = await fetch(`${apiBase}/api/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Memory-Agent': 'web' }, body: '{}' })
+  assert.equal(chatRemoved.status, 404, '回忆对话接口已移除')
+  console.log('API test passed: request guard, image payload, JSON parse.')
 } finally {
   api.kill()
   await new Promise((resolve) => mock.close(resolve))

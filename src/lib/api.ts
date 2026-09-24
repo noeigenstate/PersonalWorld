@@ -30,11 +30,3 @@ export async function analyzeEvent(event: MemoryEvent, assets: MemoryAsset[]): P
   }))
 }
 
-export async function askMemory(question: string, events: MemoryEvent[]): Promise<string> {
-  const response = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Memory-Agent': 'web' },
-    body: JSON.stringify({ question, events }),
-  })
-  return (await jsonResponse<{ answer: string }>(response)).answer
-}

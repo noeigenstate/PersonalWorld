@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal World 3D 人生地图效果示意</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+:root{
+  --ink:#1d1d1f;--muted:#6e6e73;--line:#e3e5ea;--time:#0068d6;--space:#16855a;--story:#f08a24;
+  --home:#f5b98b;--study:#8fb8ea;--work:#8fd3a8;--warn:#d9822b;--blue:#0071e3;
+  --sans:'Noto Sans SC','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+  --mono:'JetBrains Mono',Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+body{font-family:var(--sans);color:var(--ink);background:linear-gradient(180deg,#bfe2f3 0%,#dcf0f8 45%,#e7f4f8 100%)}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+
+.topbar{position:fixed;top:0;left:0;right:0;height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;background:#fafafbe6;border-bottom:1px solid #d2d2d770;backdrop-filter:blur(16px);z-index:5}
+.brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:-.02em;width:200px;white-space:nowrap}
+.brand i{width:22px;height:22px;border-radius:50%;border:2.5px solid var(--ink);display:inline-block;position:relative}
+.brand i:after{content:'';position:absolute;inset:4px;border-radius:50%;background:var(--ink)}
+.tabs{display:flex;gap:30px;height:100%}
+.tabs span{display:flex;align-items:center;font-size:14px;color:#606066;border-bottom:2px solid transparent;padding-top:2px}
+.tabs span.on{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
+.right{width:200px;display:flex;justify-content:flex-end}
+.import{background:var(--blue);color:#fff;border-radius:999px;font-size:12px;font-weight:700;padding:7px 14px}
+
+.heading{position:fixed;top:72px;left:24px;z-index:4;background:#ffffffd9;backdrop-filter:blur(10px);border-radius:18px;padding:12px 16px 14px;box-shadow:0 6px 20px #1d3b5a1f}
+.crumb{font-size:12px;color:#4f5560;margin-bottom:4px}
+.heading h1{margin:0;font-size:32px;letter-spacing:-.04em;line-height:1.1}
+.heading h1 b{color:var(--story)}
+.heading p{margin:6px 0 12px;font-size:13px;color:#4f5560}
+.legend{display:flex;gap:8px;flex-wrap:wrap}
+.legend span{display:flex;align-items:center;gap:6px;background:#f2f3f6;border-radius:999px;padding:5px 11px;font-size:12px;color:#3d424b;box-shadow:0 2px 8px #1d3b5a14}
+.legend em{height:4px;width:16px;border-radius:2px;display:inline-block}
+
+.label{position:fixed;transform:translate(-50%,-100%);z-index:3;background:#fff;border-radius:12px;padding:6px 11px 7px;box-shadow:0 6px 18px #1d3b5a26;white-space:nowrap;border:2px solid #3a3548}
+.label:after{content:'';position:absolute;left:50%;bottom:-7px;width:10px;height:10px;background:#fff;border-right:2px solid #3a3548;border-bottom:2px solid #3a3548;transform:translateX(-50%) rotate(45deg)}
+.label strong{display:flex;align-items:center;gap:6px;font-size:14px}
+.label small{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.label.faded{opacity:.55;transform:translate(-50%,-100%) scale(.9)}
+.label.place{border-color:var(--space);box-shadow:0 0 0 4px #16855a2e,0 6px 18px #1d3b5a26}
+.label.place:after{border-color:var(--space)}
+.label.ev{border-width:1.5px;border-color:var(--story);padding:4px 9px 5px;border-radius:9px}
+.label.ev:after{border-width:1.5px;border-color:var(--story);width:8px;height:8px;bottom:-6px}
+.label.ev strong{font-size:12px}
+.label.ev time{font:500 10px var(--mono);color:var(--story)}
+.label.ev.now{background:var(--story);box-shadow:0 0 0 4px #f08a2438,0 6px 18px #1d3b5a26}
+.label.ev.now:after{background:var(--story)}
+.label.ev.now strong,.label.ev.now time{color:#fff}
+.label.ev.unsure{border-style:dashed;border-color:var(--warn)}
+.label.ev.unsure:after{border-color:var(--warn);border-right-style:dashed;border-bottom-style:dashed}
+.label.ev.unsure time{color:var(--warn)}
+
+/* 人生管家 dialog */
+.chat{position:fixed;top:72px;right:24px;bottom:24px;width:408px;background:#fffffff5;border-radius:24px;box-shadow:0 18px 50px #1d3b5a33;z-index:6;display:flex;flex-direction:column;overflow:hidden}
+.chat-head{display:flex;align-items:center;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--line)}
+.avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#ffcf8a,#f08a24);display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px;flex:none}
+.chat-head b{display:block;font-size:15px}
+.chat-head small{display:block;font-size:12px;color:var(--muted)}
+.chat-head .x{margin-left:auto;color:#a1a1a6;font-size:20px;line-height:1}
+.msgs{flex:1;padding:16px 18px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.bubble{max-width:88%;font-size:14px;line-height:1.65;padding:10px 14px;border-radius:18px}
+.bot{align-self:flex-start;background:#f2f3f6;border-top-left-radius:6px}
+.me{align-self:flex-end;background:var(--blue);color:#fff;border-top-right-radius:6px}
+.voice{display:flex;align-items:center;gap:10px}
+.wave{display:flex;align-items:center;gap:2px;height:18px}
+.wave i{width:3px;border-radius:2px;background:#ffffffd9;display:block}
+.voice time{font:500 11px var(--mono);opacity:.85}
+.me .said{display:block;font-size:13px;margin-top:6px;padding-top:6px;border-top:1px solid #ffffff40}
+.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0 6px}
+.thumbs i{aspect-ratio:1;border-radius:10px;display:block}
+.mark{color:var(--warn);border-bottom:1.5px dashed var(--warn)}
+.first{display:inline-block;font-size:11px;font-weight:700;color:var(--space);background:#e6f5ed;border-radius:6px;padding:1px 6px;margin:0 2px}
+.basis{font-size:11px;color:var(--muted);margin-top:4px}
+.composer{padding:14px 18px 18px;border-top:1px solid var(--line);display:flex;align-items:center;gap:14px}
+.kbd{width:38px;height:38px;border-radius:50%;background:#f2f3f6;display:grid;place-items:center;flex:none}
+.hold{flex:1;height:52px;border-radius:26px;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;font-size:14px;font-weight:700;box-shadow:0 8px 20px #0071e340}
+
+.timebar{position:fixed;left:28px;right:456px;bottom:24px;height:104px;background:#fffffff2;border-radius:20px;box-shadow:0 14px 40px #1d3b5a24;padding:13px 22px 0;z-index:4}
+.timebar-head{display:flex;justify-content:space-between;align-items:baseline}
+.timebar-head b{font-size:14px}
+.timebar-head span{font:500 12px var(--mono);color:var(--story)}
+.track{position:relative;height:30px;margin-top:18px}
+.band{position:absolute;top:8px;height:14px;border-radius:7px;opacity:.4}
+.band.on{opacity:1}
+.band-name{position:absolute;top:-11px;font-size:11px;font-weight:700;color:#8b8f98;transform:translateX(-50%);white-space:nowrap}
+.band-name.on{color:var(--space)}
+.dot{position:absolute;top:11px;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:#9db7d6;border:1.5px solid #fff}
+.dot.story{background:var(--story)}
+.dot.now{top:7px;width:16px;height:16px;margin-left:-8px;background:var(--story);border:3px solid #fff;box-shadow:0 0 0 2px var(--story)}
+.years{position:relative;height:16px;font:500 10px var(--mono);color:#8b8f98}
+.years span{position:absolute;transform:translateX(-50%)}
+.stamp{position:fixed;left:32px;bottom:140px;font-size:11px;color:#4f5560;background:#ffffffb3;border-radius:6px;padding:3px 8px;z-index:4}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<header class="topbar">
+  <div class="brand"><i></i>Personal World</div>
+  <nav class="tabs"><span class="on">人生地图</span><span>人生管家</span></nav>
+  <div class="right"><span class="import">＋ 导入影像</span></div>
+</header>
+
+<div class="heading">
+  <div class="crumb">人生地图 › 上海</div>
+  <h1>上海的故事线<b>.</b></h1>
+  <p>2018.07 至今 · 12 件事，地图上显示其中 5 件</p>
+  <div class="legend">
+    <span><em style="background:var(--story)"></em>故事线</span>
+    <span><em style="background:#2fae76"></em>迁徙</span>
+    <span><em style="background:repeating-linear-gradient(90deg,var(--warn) 0 4px,transparent 4px 7px)"></em>待确认</span>
+  </div>
+</div>
+
+<div id="labels"></div>
+
+<aside class="chat">
+  <div class="chat-head">
+    <div class="avatar">管</div>
+    <div><b>人生管家</b><small>正在聊：上海 · 2018.07 至今</small></div>
+    <span class="x">×</span>
+  </div>
+  <div class="msgs">
+    <div class="bubble bot">你在上海生活了 8 年，我记得这里的 12 件事。地图上亮起的是这段时间的故事线，想聊哪一段？</div>
+    <div class="bubble me">
+      <div class="voice">
+        <div class="wave" id="wave"></div>
+        <time>0:04</time>
+      </div>
+      <span class="said">2019 年国庆那会儿发生了什么？</span>
+    </div>
+    <div class="bubble bot">
+      那是爸妈<span class="first">第一次</span>来上海看你。10 月 2 日你们去了<span class="mark">外滩</span>，晚上在家吃了你做的饭，有 3 张照片拍到了那桌菜。
+      <div class="thumbs">
+        <i style="background:linear-gradient(135deg,#ffd6a5,#fdffb6)"></i>
+        <i style="background:linear-gradient(135deg,#a0c4ff,#bdb2ff)"></i>
+        <i style="background:linear-gradient(135deg,#ffc6ff,#ffadad)"></i>
+      </div>
+      外滩是我从画面判断的，你记得是那里吗？如果想，我可以把这三天剪成一段短片。
+      <div class="basis">依据：1 个事件 · 26 张照片</div>
+    </div>
+  </div>
+  <div class="composer">
+    <span class="kbd"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3d424b" stroke-width="2" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg></span>
+    <div class="hold"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5"/></svg>按住说话</div>
+  </div>
+</aside>
+
+<div class="stamp">效果示意 · 示例数据</div>
+
+<section class="timebar">
+  <div class="timebar-head"><b>时间线</b><span>2019.10 · 父母第一次来沪</span></div>
+  <div class="track" id="track"></div>
+  <div class="years" id="years"></div>
+</section>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three'
+
+// ---------- voice waveform ----------
+const wave = document.getElementById('wave')
+for (const h of [6, 10, 15, 9, 17, 12, 7, 14, 18, 11, 6, 13, 16, 8, 12, 5, 9, 4]) {
+  const i = document.createElement('i'); i.style.height = h + 'px'; wave.appendChild(i)
+}
+
+// ---------- time bar ----------
+const Y0 = 2008, Y1 = 2026.9
+const pct = (y) => ((y - Y0) / (Y1 - Y0)) * 100
+const track = document.getElementById('track')
+const bands = [
+  { from: 2008, to: 2014.7, name: '湘潭 · 老家', color: 'var(--home)' },
+  { from: 2014.7, to: 2018.5, name: '武汉 · 求学', color: 'var(--study)' },
+  { from: 2018.5, to: 2026.9, name: '上海 · 工作', color: 'var(--work)', on: true },
+]
+for (const b of bands) {
+  const el = document.createElement('div')
+  el.className = 'band' + (b.on ? ' on' : '')
+  el.style.left = `calc(${pct(b.from)}% + 2px)`
+  el.style.width = `calc(${pct(b.to) - pct(b.from)}% - 4px)`
+  el.style.background = b.color
+  track.appendChild(el)
+  const n = document.createElement('span')
+  n.className = 'band-name' + (b.on ? ' on' : '')
+  n.style.left = (pct(b.from) + pct(b.to)) / 2 + '%'
+  n.textContent = b.name
+  track.appendChild(n)
+}
+const storyYears = [2018.55, 2019.78, 2020.8, 2021.4, 2026.7]
+for (const y of [2010.2, 2012.8, 2013.6, 2014.7, 2015.4, 2016.1, 2016.9, 2017.5, 2018.45, 2020.3, 2022.1, 2023.05, 2024.9, 2025.6, ...storyYears]) {
+  const d = document.createElement('i')
+  d.className = 'dot' + (y === 2019.78 ? ' now' : storyYears.includes(y) ? ' story' : '')
+  d.style.left = pct(y) + '%'
+  track.appendChild(d)
+}
+const years = document.getElementById('years')
+for (let y = 2008; y <= 2026; y += 2) {
+  const s = document.createElement('span'); s.style.left = pct(y) + '%'; s.textContent = y; years.appendChild(s)
+}
+
+// ---------- scene ----------
+const canvas = document.getElementById('c')
+const W = innerWidth, H = innerHeight
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.setSize(W, H, false)
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.outputColorSpace = THREE.SRGBColorSpace
+
+const scene = new THREE.Scene()
+scene.fog = new THREE.Fog(0xdcf0f8, 22, 40)
+const camera = new THREE.PerspectiveCamera(33, W / H, 0.1, 200)
+// flown in to Shanghai after the place was clicked
+camera.position.set(4.6, 13.5, 9.8)
+camera.lookAt(5.4, 0, -3.3)
+camera.setViewOffset(W, H, 205, -20, W, H) // keep the scene clear of the dialog and the time bar
+
+const tones = new Uint8Array([110, 185, 255])
+const grad = new THREE.DataTexture(tones, 3, 1, THREE.RedFormat)
+grad.minFilter = grad.magFilter = THREE.NearestFilter
+grad.needsUpdate = true
+const toon = (color) => new THREE.MeshToonMaterial({ color, gradientMap: grad })
+const OUTLINE = new THREE.MeshBasicMaterial({ color: 0x3a3548, side: THREE.BackSide })
+
+function add(geo, color, pos, opts = {}) {
+  const { outline = true, shadow = true, rot, scale, parent = scene, outlineScale = 1.06 } = opts
+  const m = new THREE.Mesh(geo, toon(color))
+  m.position.set(...pos)
+  if (rot) m.rotation.set(...rot)
+  if (scale) m.scale.set(...scale)
+  m.castShadow = shadow
+  m.receiveShadow = true
+  if (outline) { const o = new THREE.Mesh(geo, OUTLINE); o.scale.setScalar(outlineScale); m.add(o) }
+  parent.add(m)
+  return m
+}
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xd7e8c8, 1.4))
+const sun = new THREE.DirectionalLight(0xffffff, 2.0)
+sun.position.set(-4, 22, 10)
+sun.target.position.set(5, 0, -3)
+scene.add(sun.target)
+sun.castShadow = true
+sun.shadow.mapSize.set(2048, 2048)
+Object.assign(sun.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16, far: 60 })
+sun.shadow.bias = -0.0006
+scene.add(sun)
+
+// sea
+add(new THREE.PlaneGeometry(120, 120), 0x9fd5ea, [0, 0, 0], { rot: [-Math.PI / 2, 0, 0], outline: false, shadow: false })
+for (const [x, z, r] of [[11.5, -1, 0.3], [10.8, 2.5, 1.2], [12.5, -5, 2], [11, -8.5, 0.5]]) {
+  add(new THREE.TorusGeometry(0.42, 0.05, 6, 20, Math.PI * 0.7), 0xffffff, [x, 0.03, z], { rot: [-Math.PI / 2, 0, r], outline: false, shadow: false })
+}
+
+// land
+const LAND = 0.45
+const coast = [[10.2, -14], [9.9, -7], [9.8, -4.6], [8.9, -2.4], [7.9, 0.2], [6.8, 3.2], [5.3, 6.2], [3.8, 9.2], [2.2, 12.2], [1, 15], [-18, 15], [-18, -14]]
+const shape = new THREE.Shape(coast.map(([x, z]) => new THREE.Vector2(x, -z)))
+const landGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.35, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.14, bevelSegments: 3, curveSegments: 24 })
+landGeo.rotateX(-Math.PI / 2)
+add(landGeo, 0xe9f0cb, [0, 0, 0], { outline: false, shadow: false })
+
+add(new THREE.CylinderGeometry(1, 1, 0.04, 40), 0x9fd5ea, [-0.6, LAND + 0.02, -1.4], { scale: [0.55, 1, 1.0], outline: false, shadow: false })
+add(new THREE.CylinderGeometry(1, 1, 0.04, 40), 0x9fd5ea, [2.2, LAND + 0.02, -2.6], { scale: [0.6, 1, 0.45], outline: false, shadow: false })
+
+// river
+const river = new THREE.CatmullRomCurve3([[-18, -1.4], [-11, -2.2], [-7.5, -3.3], [-4.5, -4.9], [-1, -5.5], [2.5, -4.9], [5.5, -7.3], [8, -7.4], [10.8, -6.8]].map(([x, z]) => new THREE.Vector3(x, LAND + 0.025, z)))
+{
+  const pts = river.getSpacedPoints(240), pos = [], idx = []
+  pts.forEach((p, i) => {
+    const t = river.getTangentAt(i / (pts.length - 1))
+    const n = new THREE.Vector3(-t.z, 0, t.x).normalize()
+    const w = 0.22 + (i / pts.length) * 0.18
+    pos.push(p.x + n.x * w, p.y, p.z + n.z * w, p.x - n.x * w, p.y, p.z - n.z * w)
+    if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2) }
+  })
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals()
+  const m = new THREE.Mesh(g, new THREE.MeshToonMaterial({ color: 0x8fcde6, gradientMap: grad, side: THREE.DoubleSide }))
+  m.receiveShadow = true; scene.add(m)
+}
+
+// hills and trees
+let seed = 7
+const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+for (const [x, z, r, c] of [[-2.5, 6.5, 1.4, 0xbcdca3], [0.5, 1.8, 0.9, 0xb5d99a], [1.8, 5.2, 0.8, 0xa9d38d], [-1.2, -9, 1.2, 0xb5d99a]]) {
+  add(new THREE.SphereGeometry(r, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), c, [x, LAND, z], { scale: [1, 0.75, 1] })
+}
+function tree(x, z, s = 1) {
+  add(new THREE.CylinderGeometry(0.05 * s, 0.07 * s, 0.3 * s, 6), 0x9a6b4f, [x, LAND + 0.15 * s, z], { outline: false })
+  add(new THREE.ConeGeometry(0.28 * s, 0.75 * s, 7), rnd() > 0.5 ? 0x6fbf73 : 0x82c97d, [x, LAND + 0.62 * s, z])
+}
+for (const [cx, cz, n] of [[-1, 3.8, 4], [2.5, 4.2, 3], [1.5, -8.2, 4], [1.6, 0.4, 3], [4.6, 2.6, 3], [-2.5, -2.8, 3], [3, -9.8, 3]]) {
+  for (let i = 0; i < n; i++) tree(cx + (rnd() - 0.5) * 2.2, cz + (rnd() - 0.5) * 1.8, 0.8 + rnd() * 0.4)
+}
+
+function cloud(x, y, z, s) {
+  for (const [dx, dy, r] of [[0, 0, 0.7], [0.75, -0.1, 0.55], [-0.7, -0.12, 0.5], [0.25, 0.3, 0.5]]) {
+    add(new THREE.SphereGeometry(r * s, 16, 12), 0xffffff, [x + dx * s, y + dy * s, z], { scale: [1, 0.72, 0.9], outlineScale: 1.05 })
+  }
+}
+cloud(-3.5, 4.2, -9, 1.0)
+
+// place platforms
+const PY = LAND + 0.34
+function platform(x, z, r, rim) {
+  add(new THREE.CylinderGeometry(r, r * 1.05, 0.28, 48), rim, [x, LAND + 0.14, z], { outlineScale: 1.04 })
+  add(new THREE.CylinderGeometry(r * 0.86, r * 0.86, 0.04, 48), 0xfffaf0, [x, PY - 0.01, z], { outline: false })
+}
+const box = (w, h, d) => new THREE.BoxGeometry(w, h, d)
+
+// 武汉 · 求学 (in the distance)
+const SCHOOL = { x: -3.5, z: -3.0 }
+platform(SCHOOL.x, SCHOOL.z, 1.35, 0x8fb8ea)
+add(box(1.9, 0.8, 0.8), 0xf6e7c8, [SCHOOL.x, PY + 0.4, SCHOOL.z + 0.15])
+add(box(2.0, 0.12, 0.9), 0x5d8fd6, [SCHOOL.x, PY + 0.86, SCHOOL.z + 0.15])
+add(box(0.55, 1.75, 0.55), 0xf6e7c8, [SCHOOL.x, PY + 0.875, SCHOOL.z - 0.05])
+add(new THREE.ConeGeometry(0.45, 0.5, 4), 0x5d8fd6, [SCHOOL.x, PY + 2.0, SCHOOL.z - 0.05], { rot: [0, Math.PI / 4, 0] })
+add(new THREE.CylinderGeometry(0.17, 0.17, 0.04, 24), 0xffffff, [SCHOOL.x, PY + 1.4, SCHOOL.z + 0.24], { rot: [Math.PI / 2, 0, 0] })
+
+// 上海 · 工作 (selected)
+const CITY = { x: 7.3, z: -3.9 }
+platform(CITY.x, CITY.z, 1.6, 0x8fd3a8)
+add(new THREE.TorusGeometry(1.95, 0.05, 8, 64), 0x2fae76, [CITY.x, LAND + 0.05, CITY.z], { rot: [-Math.PI / 2, 0, 0], outline: false, shadow: false })
+for (const [dx, dz, w, h, c] of [[-0.35, 0.35, 0.6, 2.3, 0xbfd7f2], [0.3, -0.3, 0.72, 3.1, 0xd9d2f2], [0.85, 0.5, 0.55, 1.5, 0xf2ede4], [-0.2, -0.75, 0.5, 1.8, 0xf6dcc0]]) {
+  add(box(w, h, w), c, [CITY.x + dx, PY + h / 2, CITY.z + dz])
+  add(box(w * 0.7, 0.14, w * 0.7), 0x8c95b8, [CITY.x + dx, PY + h + 0.07, CITY.z + dz])
+  for (let y = 0.35; y < h - 0.2; y += 0.32) add(box(w * 0.78, 0.07, 0.01), 0x9fc3e6, [CITY.x + dx, PY + y, CITY.z + dz + w / 2 + 0.006], { outline: false, shadow: false })
+}
+const PX = CITY.x - 1.0, PZ = CITY.z + 0.1
+add(new THREE.CylinderGeometry(0.06, 0.09, 2.9, 8), 0xf3c9d6, [PX, PY + 1.45, PZ])
+add(new THREE.SphereGeometry(0.3, 20, 14), 0xef8fb0, [PX, PY + 0.95, PZ])
+add(new THREE.SphereGeometry(0.2, 20, 14), 0xef8fb0, [PX, PY + 2.15, PZ])
+add(new THREE.ConeGeometry(0.05, 0.5, 8), 0xf3c9d6, [PX, PY + 3.1, PZ])
+
+// migration arc arriving from Wuhan (context, thinner)
+{
+  const A = new THREE.Vector3(SCHOOL.x, PY + 0.25, SCHOOL.z), B = new THREE.Vector3(CITY.x, PY + 0.25, CITY.z)
+  const mid = A.clone().add(B).multiplyScalar(0.5); mid.y += 3.6
+  const curve = new THREE.QuadraticBezierCurve3(A, mid, B)
+  const pts = Array.from({ length: 40 }, (_, i) => curve.getPointAt(0.06 + 0.84 * (i / 39)))
+  const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 60, 0.07, 10), toon(0x2fae76))
+  m.castShadow = true; scene.add(m)
+  const tip = curve.getPointAt(0.92), dir = curve.getTangentAt(0.92)
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.42, 16), toon(0x2fae76))
+  cone.position.copy(tip); cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize())
+  scene.add(cone)
+}
+
+// ---------- story line: events at this place, in time order ----------
+const EV = [
+  { x: 6.1, z: -6.5, t: '2018.07', title: '入职第一天' },
+  { x: 4.3, z: -5.0, t: '2019.10', title: '父母第一次来沪', now: true },
+  { x: 3.7, z: -1.3, t: '2020.10', title: '去杭州玩', trip: true },
+  { x: 6.3, z: -0.4, t: '2021.05', title: '搬进新家？', unsure: true },
+  { x: 9.2, z: -6.3, t: '2026.09', title: '黑客松准备日' },
+]
+const SY = LAND + 0.1
+const story = new THREE.CatmullRomCurve3([
+  [EV[0].x, EV[0].z], [5.0, -6.0], [EV[1].x, EV[1].z], [3.6, -3.2], [EV[2].x, EV[2].z], [4.9, -0.4], [EV[3].x, EV[3].z],
+  [8.2, -1.7], [9.1, -3.6], [EV[4].x, EV[4].z],
+].map(([x, z]) => new THREE.Vector3(x, SY, z)), false, 'centripetal')
+{
+  const m = new THREE.Mesh(new THREE.TubeGeometry(story, 400, 0.075, 10), toon(0xf08a24))
+  m.castShadow = true; scene.add(m)
+  // chevrons show direction of time
+  for (let i = 1; i < 18; i++) {
+    const u = i / 18, p = story.getPointAt(u), d = story.getTangentAt(u)
+    const c = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.24, 3), toon(0xffffff))
+    c.position.set(p.x, SY + 0.09, p.z)
+    c.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize())
+    scene.add(c)
+  }
+}
+for (const e of EV) {
+  const color = e.unsure ? 0xf0a14a : 0xf08a24
+  add(new THREE.CylinderGeometry(e.now ? 0.36 : 0.26, e.now ? 0.38 : 0.28, 0.18, 32), 0xffffff, [e.x, LAND + 0.1, e.z], { outlineScale: 1.05 })
+  add(new THREE.CylinderGeometry(e.now ? 0.24 : 0.16, e.now ? 0.24 : 0.16, 0.06, 32), color, [e.x, LAND + 0.21, e.z], { outline: false })
+  if (e.now) add(new THREE.TorusGeometry(0.62, 0.05, 8, 48), 0xf08a24, [e.x, LAND + 0.06, e.z], { rot: [-Math.PI / 2, 0, 0], outline: false, shadow: false })
+  if (e.unsure) {
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2
+      add(box(0.14, 0.03, 0.05), 0xf0a14a, [e.x + Math.cos(a) * 0.52, LAND + 0.03, e.z + Math.sin(a) * 0.52], { rot: [0, -a + Math.PI / 2, 0], outline: false, shadow: false })
+    }
+  }
+  if (e.trip) {
+    add(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 6), 0x6a6a72, [e.x + 0.12, LAND + 0.6, e.z], { outline: false })
+    const tri = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(0.42, -0.14), new THREE.Vector2(0, -0.28)])
+    add(new THREE.ExtrudeGeometry(tri, { depth: 0.03, bevelEnabled: false }), 0xff8a65, [e.x + 0.13, LAND + 1.03, e.z], { outline: false })
+  }
+}
+
+renderer.render(scene, camera)
+
+// ---------- labels projected from 3D ----------
+const labels = [
+  { p: [CITY.x, PY + 3.6, CITY.z], cls: 'place', html: '<strong>上海 · 工作</strong><small>2018.07 至今 · 12 件事</small>' },
+  { p: [SCHOOL.x, PY + 2.4, SCHOOL.z], cls: 'faded', html: '<strong>武汉 · 求学</strong><small>2014.09 – 2018.06</small>' },
+  ...EV.map((e) => ({
+    p: [e.x, LAND + (e.trip ? 1.3 : e.now ? 0.55 : 0.45), e.z],
+    cls: 'ev' + (e.now ? ' now' : '') + (e.unsure ? ' unsure' : ''),
+    html: `<time>${e.t}</time><strong>${e.title}</strong>`,
+  })),
+]
+const host = document.getElementById('labels')
+for (const l of labels) {
+  const v = new THREE.Vector3(...l.p).project(camera)
+  const el = document.createElement('div')
+  el.className = 'label ' + (l.cls || '')
+  el.innerHTML = l.html
+  el.style.left = ((v.x + 1) / 2) * W + 'px'
+  el.style.top = ((1 - v.y) / 2) * H + 'px'
+  host.appendChild(el)
+}
+document.fonts.ready.then(() => { window.__ready = true })
+</script>
+</body>
+</html>

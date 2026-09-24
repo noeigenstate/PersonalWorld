@@ -59,11 +59,6 @@ export function mergeImportedEvents(existing: MemoryEvent[], imported: MemoryEve
 
 export function eventCover(event: MemoryEvent, assets: MemoryAsset[]): MemoryAsset | undefined {
   const group = event.assetIds.map((id) => assets.find((asset) => asset.id === id)).filter((asset): asset is MemoryAsset => Boolean(asset))
-  return group.find((asset) => asset.favorite && asset.preview) || group.find((asset) => Boolean(asset.preview)) || group[0]
+  return group.find((asset) => Boolean(asset.preview)) || group[0]
 }
 
-export function searchEvents(events: MemoryEvent[], query: string): MemoryEvent[] {
-  const normalized = query.trim().toLowerCase()
-  if (!normalized) return events
-  return events.filter((event) => [event.title, event.summary, event.place, event.type, ...event.people, ...event.tags].join(' ').toLowerCase().includes(normalized))
-}

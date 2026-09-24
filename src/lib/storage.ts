@@ -35,9 +35,3 @@ export async function removeFile(id: string): Promise<void> {
   await db.delete('files', id)
 }
 
-export async function clearMemory(): Promise<void> {
-  const db = await database
-  const transaction = db.transaction(['state', 'files'], 'readwrite')
-  await Promise.all([transaction.objectStore('state').clear(), transaction.objectStore('files').clear()])
-  await transaction.done
-}

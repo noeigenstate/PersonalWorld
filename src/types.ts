@@ -11,7 +11,6 @@ export interface MemoryAsset {
   latitude?: number
   longitude?: number
   preview: string
-  favorite: boolean
   hash: string
 }
 
