@@ -14,11 +14,23 @@ export interface LifeMapData {
   story: MemoryEvent[]
   selectedCity: string | null
   highlightedEventId: string | null
+  photos?: MapPhoto[]
 }
 
 export interface LifeMapCallbacks {
   onSelectCity: (city: string | null) => void
   onOpenEvent: (id: string) => void
+  onOpenPhoto?: (id: string) => void
+}
+
+// A photo shown on the map as a thumbnail (the real-map view clusters them like a phone album)
+export interface MapPhoto {
+  id: string
+  name: string
+  gcj: [number, number]
+  preview: string
+  // Place came from the picture or other photos, not the photo's own GPS
+  inferred: boolean
 }
 
 const SPAN = 18 // scene units covered by the bases' bounding box

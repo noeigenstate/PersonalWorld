@@ -24,6 +24,8 @@ export interface MemoryAsset {
   metaPlace?: string
   // Finest known place for this photo; see src/lib/location.ts for the resolution order
   location?: PhotoLocation
+  // Set once the automatic locating queue has looked at this photo's content
+  locateTried?: boolean
   preview: string
   hash: string
   // 4×4 colour layout of the preview, used to rank similar photos
@@ -81,7 +83,8 @@ export interface PhotoCard {
   clues: PhotoClue[]
   landmark?: { name: string; city: string; confidence: number } | null
   // Best text to search on the map for where this was taken, from a landmark or readable place name
-  placeQuery?: { text: string; city: string; from: 'landmark' | 'text'; confidence: number } | null
+  // level: how far the text can place it (a POI, or only a district / city / province)
+  placeQuery?: { text: string; city: string; from: 'landmark' | 'text'; level?: 'poi' | 'district' | 'city' | 'province'; confidence: number } | null
   eventGuess: { type: string; reason: string }
   tags: string[]
   questions: string[]

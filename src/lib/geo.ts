@@ -40,6 +40,16 @@ export function wgs84ToGcj02(point: LatLng): LatLng {
   }
 }
 
+// Inverse of wgs84ToGcj02 by fixed-point iteration; accurate to well under a metre
+export function gcj02ToWgs84(point: LatLng): LatLng {
+  let guess = { ...point }
+  for (let i = 0; i < 4; i++) {
+    const shifted = wgs84ToGcj02(guess)
+    guess = { lat: guess.lat - (shifted.lat - point.lat), lng: guess.lng - (shifted.lng - point.lng) }
+  }
+  return guess
+}
+
 export function distanceKm(a: LatLng, b: LatLng) {
   const rad = Math.PI / 180
   const dLat = (b.lat - a.lat) * rad

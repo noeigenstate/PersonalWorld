@@ -40,12 +40,14 @@ interface Props {
   cardBusyId: string | null
   onGenerateCard: (asset: MemoryAsset, facts: PhotoFacts) => void
   peers: PeerTools
+  // Open straight on this photo (e.g. clicked on the map)
+  initialAssetId?: string | null
 }
 
-export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose, onAnalyze, onSave, onDeleteAsset, cardBusyId, onGenerateCard, peers }: Props) {
+export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose, onAnalyze, onSave, onDeleteAsset, cardBusyId, onGenerateCard, peers, initialAssetId }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(event)
-  const [activeAssetId, setActiveAssetId] = useState<string | null>(null)
+  const [activeAssetId, setActiveAssetId] = useState<string | null>(initialAssetId ?? null)
   const [videoUrl, setVideoUrl] = useState('')
   const activeAsset = assets.find((asset) => asset.id === activeAssetId)
 

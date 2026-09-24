@@ -19,7 +19,9 @@ description: 运行时 skill。为单张照片生成照片信息卡：客观画�
 `placeQuery` 是给地图搜索用的一句话，只在画面里有**能明确读出的地名或能认出的地标**时填写：
 
 - 认出地标：`{"text": "黄鹤楼", "city": "武汉市", "from": "landmark", "confidence": 0.9}`
-- 读出路牌、店招、站名：`{"text": "中山东一路", "city": "", "from": "text", "confidence": 0.7}`，城市不确定就留空。
+- 读出路牌、店招、站名：`{"text": "中山东一路", "city": "", "from": "text", "level": "poi", "confidence": 0.7}`，城市不确定就留空。
+- 读出能确定一个地区的单位名称（工作服、警车、公交车、施工牌上的"青海公路""杭州公交""xx县交警"等）：写这个地区，并用 `level` 标明只能确定到哪一级，例如工作服上的"青海公路" → `{"text": "青海省", "city": "", "from": "text", "level": "province", "confidence": 0.8}`。
+- `level` 取 `poi`（具体地点）、`district`（区县）、`city`（城市）、`province`（省份），按文字实际能证明的范围填，不要往细里猜。
 - 只有地貌、民族文化元素、车牌这类笼统线索时，写 null。车牌永远不作为 `placeQuery`。
 
 ## 读小字：看不清就写"?"
@@ -76,7 +78,7 @@ description: 运行时 skill。为单张照片生成照片信息卡：客观画�
     { "kind": "地点 | 时间 | 事件 | 物品", "evidence": "依据", "inference": "推断", "confidence": 0.5 }
   ],
   "landmark": { "name": "地标名称", "city": "所在城市，如 上海市", "confidence": 0.9 },
-  "placeQuery": { "text": "用于地图搜索的地名", "city": "城市，可空", "from": "landmark | text", "confidence": 0.8 },
+  "placeQuery": { "text": "用于地图搜索的地名", "city": "城市，可空", "from": "landmark | text", "level": "poi | district | city | province", "confidence": 0.8 },
   "eventGuess": { "type": "旅行 | 聚会 | 日常 | 工作 | 庆祝 | 搬家装修 | 其他", "reason": "一句话理由" },
   "tags": ["最多 5 个"],
   "questions": ["最多 2 个，最能帮你确认这件事的问题"]

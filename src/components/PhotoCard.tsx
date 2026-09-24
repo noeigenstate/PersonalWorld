@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, Images, RefreshCw, Sparkles } from 'lucide-react'
+import { Check, Images, MapPinned, RefreshCw, Sparkles } from 'lucide-react'
 import type { ContextFill, MemoryAsset, MemoryEvent, PhotoCard as Card } from '../types'
 import { photoFacts } from '../lib/photoFacts'
 import { getFile } from '../lib/storage'
@@ -10,6 +10,7 @@ export interface PeerTools {
   infer: (asset: MemoryAsset) => void
   apply: (asset: MemoryAsset, field: 'city' | 'place', value: string) => void
   assetById: (id: string) => MemoryAsset | undefined
+  showOnMap?: (asset: MemoryAsset) => void
 }
 
 interface Props {
@@ -70,6 +71,9 @@ export function PhotoCard({ asset, event, aiAvailable, busy, onGenerate, peers }
           <div><dt>尺寸</dt><dd>{facts.size}</dd></div>
           <div><dt>文件</dt><dd className="pc-file">{facts.fileName}</dd></div>
         </dl>
+        {peers.showOnMap && (asset.location || asset.latitude !== undefined) && (
+          <button className="pc-apply pc-show-map" onClick={() => peers.showOnMap!(asset)}><MapPinned size={14} />在地图上看</button>
+        )}
         {facts.stripped && (
           <p className="pc-stripped">这张图不含拍摄信息（时间、定位、设备都已被去掉），常见于微信、QQ 发送的非原图。想要完整信息，请发送时勾选"原图"，或从手机相册用数据线、AirDrop 导出原图后再导入。</p>
         )}

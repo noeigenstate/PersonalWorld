@@ -88,18 +88,27 @@ export async function detailedAddresses(key: string, points: { id: string; lat: 
   const AMap = await loadAmap(key)
   const geocoder = new AMap.Geocoder({ extensions: 'all', radius: 200 })
   const out = new Map<string, PhotoLocation>()
-  // A few lookups at a time: one by one took ~20 s for 35 photos
+  // Two lookups at a time with retries: one by one took ~20 s for 35 photos, while four at once
+  // ran into AMap's per-second limit and silently lost some photos
   const queue = [...points]
+  const failed: string[] = []
   const worker = async () => {
     for (let point = queue.shift(); point; point = queue.shift()) {
       const g = wgs84ToGcj02(point)
       const gcj: [number, number] = [g.lng, g.lat]
-      const regeo = await call((done) => geocoder.getAddress(gcj, done), (r) => r.regeocode, null).catch(() => null)
+      let regeo: any = undefined
+      for (let attempt = 0; attempt < 4 && regeo === undefined; attempt++) {
+        if (attempt) await new Promise((resolve) => setTimeout(resolve, 500 * attempt))
+        regeo = await call((done) => geocoder.getAddress(gcj, done), (r) => r.regeocode, null).catch(() => undefined)
+      }
+      if (regeo === undefined) { failed.push(point.id); continue }
+      // null: AMap has no address there (e.g. abroad), which is an answer, not a failure
       const location = regeo && fromRegeocode(regeo, gcj, 'gps', 1)
       if (location) out.set(point.id, location)
     }
   }
-  await Promise.all(Array.from({ length: 4 }, worker))
+  await Promise.all(Array.from({ length: 2 }, worker))
+  if (failed.length && !out.size) throw new Error(`高德地址查询失败（${failed.length} 张照片），稍后会重试`)
   return out
 }
 
@@ -113,8 +122,25 @@ export async function locateAddress(key: string, address: string): Promise<Photo
   return { source: 'meta', precision: precisionOf(parts, false), gcj: [g.location.lng, g.location.lat], ...parts, label: locationLabel(parts) || address, evidence: address, confidence: 0.9 }
 }
 
-// Level 2: a landmark or readable place name from the picture → AMap place search
-export async function searchPlace(key: string, query: { text: string; city: string; from: 'landmark' | 'text'; confidence: number }): Promise<PhotoLocation | undefined> {
+// Level 2: a landmark or readable place name from the picture → AMap place search; text that only
+// names a region (e.g. "青海公路" on a work jacket) is placed at that region, no finer
+export async function searchPlace(key: string, query: { text: string; city: string; from: 'landmark' | 'text'; level?: 'poi' | 'district' | 'city' | 'province'; confidence: number }): Promise<PhotoLocation | undefined> {
+  if (query.level && query.level !== 'poi') {
+    const region = await locateAddress(key, [query.city, query.text].filter(Boolean).join(''))
+    if (!region) return undefined
+    return {
+      ...region,
+      source: query.from,
+      precision: query.level,
+      street: undefined,
+      number: undefined,
+      district: query.level === 'district' ? region.district : undefined,
+      city: query.level === 'province' ? undefined : region.city,
+      label: query.level === 'province' ? region.province || query.text : [query.level === 'district' ? region.district : '', region.city].filter(Boolean).join(' · ') || query.text,
+      evidence: `画面中的文字「${query.text}」`,
+      confidence: query.confidence,
+    }
+  }
   const AMap = await loadAmap(key)
   const search = new AMap.PlaceSearch({ city: query.city || '全国', citylimit: Boolean(query.city), pageSize: 3 })
   const pois = await call((done) => search.search(query.text, done), (r) => r.poiList?.pois || [], [])

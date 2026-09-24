@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { loadAmap } from '../map/amap'
 import { createAmapLifeMap } from '../map/amapScene'
-import { createLifeMap, type LifeMapData } from '../map/scene'
+import { createLifeMap, type LifeMapData, type MapPhoto } from '../map/scene'
 
 interface Props extends LifeMapData {
   // With a key the cartoon layer sits on the real AMap 3D map; without one, on a cartoon board
@@ -10,22 +10,26 @@ interface Props extends LifeMapData {
   insetBottom: number
   onSelectCity: (city: string | null) => void
   onOpenEvent: (id: string) => void
+  onOpenPhoto: (id: string) => void
   onMapError: (message: string) => void
+  // Changes every time the user asks to see a photo on the map
+  focus?: { photo: MapPhoto; at: number } | null
 }
 
 interface MapApi {
   update: (data: LifeMapData) => void
   setInsets: (insets: { right: number; bottom: number }) => void
   dispose: () => void
+  focusPhoto?: (photo: MapPhoto) => void
 }
 
-export function LifeMapView({ amapKey, insetRight, insetBottom, onSelectCity, onOpenEvent, onMapError, ...data }: Props) {
+export function LifeMapView({ amapKey, insetRight, insetBottom, onSelectCity, onOpenEvent, onOpenPhoto, onMapError, focus, ...data }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const map = useRef<MapApi | null>(null)
   const latest = useRef({ data, insets: { right: insetRight, bottom: insetBottom } })
   latest.current = { data, insets: { right: insetRight, bottom: insetBottom } }
-  const callbacks = useRef({ onSelectCity, onOpenEvent, onMapError })
-  callbacks.current = { onSelectCity, onOpenEvent, onMapError }
+  const callbacks = useRef({ onSelectCity, onOpenEvent, onOpenPhoto, onMapError })
+  callbacks.current = { onSelectCity, onOpenEvent, onOpenPhoto, onMapError }
 
   useEffect(() => {
     const el = host.current
@@ -34,6 +38,7 @@ export function LifeMapView({ amapKey, insetRight, insetBottom, onSelectCity, on
     const handlers = {
       onSelectCity: (city: string | null) => callbacks.current.onSelectCity(city),
       onOpenEvent: (id: string) => callbacks.current.onOpenEvent(id),
+      onOpenPhoto: (id: string) => callbacks.current.onOpenPhoto(id),
     }
     const mount = (api: MapApi) => {
       if (cancelled) { api.dispose(); return }
@@ -60,7 +65,9 @@ export function LifeMapView({ amapKey, insetRight, insetBottom, onSelectCity, on
   useEffect(() => {
     map.current?.update(data)
     // Rebuild only when the data the scene draws actually changes
-  }, [data.places, data.bases, data.story, data.selectedCity, data.highlightedEventId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.places, data.bases, data.story, data.selectedCity, data.highlightedEventId, data.photos]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (focus) map.current?.focusPhoto?.(focus.photo) }, [focus])
 
   return <div className="life-map" ref={host} aria-label="人生地图" />
 }

@@ -55,7 +55,7 @@ export function readCard(answer, { consented }) {
   const query = answer.placeQuery && typeof answer.placeQuery === 'object' ? answer.placeQuery : null
   const queryText = text(query?.text, 40)
   const placeQuery = queryText && !PLATE.test(queryText) && !plateOnly(queryText)
-    ? { text: queryText, city: text(query.city, 20), from: query.from === 'landmark' ? 'landmark' : 'text', confidence: clamp(query.confidence) }
+    ? { text: queryText, city: text(query.city, 20), from: query.from === 'landmark' ? 'landmark' : 'text', level: ['poi', 'district', 'city', 'province'].includes(query.level) ? query.level : 'poi', confidence: clamp(query.confidence) }
     : null
   const card = {
     title: withoutPlateNames(text(answer.title, 20)),

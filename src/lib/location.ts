@@ -1,4 +1,4 @@
-import type { PhotoLocation } from '../types'
+import type { MemoryAsset, MemoryEvent, PhotoLocation } from '../types'
 
 // Where a photo was taken, resolved in this order (first found wins):
 //   1. the photo's own metadata: EXIF GPS → reverse geocoded down to street number / AOI;
@@ -45,6 +45,38 @@ export function precisionOf(parts: Pick<PhotoLocation, 'poi' | 'aoi' | 'street' 
   if (parts.district) return 'district'
   if (parts.city) return 'city'
   return 'province'
+}
+
+// Photos of one event without a place of their own take the place of a located photo from the
+// same event. Events without GPS are grouped by time (same day, gaps under 6 hours), so this is
+// "taken during the same outing", which is why the precision drops to district level at best.
+export function inheritFromEvent(assets: MemoryAsset[], events: MemoryEvent[]): Map<string, PhotoLocation> {
+  const out = new Map<string, PhotoLocation>()
+  for (const event of events) {
+    const members = event.assetIds.map((id) => assets.find((a) => a.id === id)).filter((a): a is MemoryAsset => Boolean(a))
+    const anchor = members
+      .filter((a) => a.location && a.location.source !== 'peer')
+      .sort((a, b) => precisionRank[b.location!.precision] - precisionRank[a.location!.precision] || b.location!.confidence - a.location!.confidence)[0]
+    if (!anchor) continue
+    const from = anchor.location!
+    const coarse = precisionRank[from.precision] > precisionRank.district ? 'district' : from.precision
+    for (const member of members) {
+      if (member.location || member.id === anchor.id) continue
+      out.set(member.id, {
+        source: 'peer',
+        precision: coarse,
+        gcj: from.gcj,
+        province: from.province,
+        city: from.city,
+        district: from.district,
+        // Only as fine as the precision claims: the sibling's exact spot is not this photo's
+        label: [from.district, from.city].filter(Boolean).join(' · ') || from.city || from.label,
+        evidence: `与同一事件中的「${anchor.name}」同一时段拍摄`,
+        confidence: Math.min(0.6, from.confidence),
+      })
+    }
+  }
+  return out
 }
 
 // Keep the finer of two answers; a GPS answer is never replaced by an inferred one

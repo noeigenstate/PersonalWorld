@@ -150,23 +150,27 @@ export function createLabels(layer: HTMLElement) {
       labels.push({ el, anchor, priority })
       return el
     },
-    place(camera: THREE.Camera, w: number, h: number, toScreen?: (anchor: THREE.Vector3) => THREE.Vector3) {
+    // `obstacles` are screen areas already taken (e.g. photo thumbnails) that labels step around
+    place(camera: THREE.Camera, w: number, h: number, toScreen?: (anchor: THREE.Vector3) => THREE.Vector3, obstacles: DOMRect[] = []) {
       const v = new THREE.Vector3()
-      const placed: DOMRect[] = []
+      const placed: DOMRect[] = [...obstacles]
       const order = [...labels].sort((a, b) => b.priority - a.priority)
       const clashes = (rect: DOMRect) => placed.some((r) => rect.left < r.right && rect.right > r.left && rect.top < r.bottom && rect.bottom > r.top)
-      for (const { el, anchor } of order) {
+      for (const { el, anchor, priority } of order) {
         v.copy(toScreen ? toScreen(anchor) : anchor).project(camera)
         const x = ((v.x + 1) / 2) * w
         const y = ((1 - v.y) / 2) * h
         const width = el.offsetWidth
         const height = el.offsetHeight
         // Crowded labels stack upwards with a leader line back to their point
+        const steps = priority >= 3 ? 6 : 4
         let lift = -1
-        for (let step = 0; step < 4 && lift < 0; step++) {
+        for (let step = 0; step < steps && lift < 0; step++) {
           const up = step * (height + 6)
           if (!clashes(new DOMRect(x - width / 2, y - height - 8 - up, width, height + 8))) lift = up
         }
+        // Place labels always show, even when every level is taken
+        if (lift < 0 && priority >= 3) lift = (steps - 1) * (height + 6)
         const visible = v.z <= 1 && lift >= 0
         el.style.visibility = visible ? 'visible' : 'hidden'
         el.classList.toggle('lifted', lift > 0)
@@ -187,7 +191,7 @@ export function placeLabel(place: Place, selected: string | null): LabelSpec {
   return {
     className: `place${place.isBase ? '' : ' small'}${isSelected ? ' selected' : ''}${selected && !isSelected ? ' faded' : ''}${place.roleConfirmed || !place.isBase ? '' : ' unsure'}`,
     lines: [['strong', `${cityLabel(place.city)}${kind}`], ['small', `${span} · ${place.eventIds.length} 件事`]],
-    priority: isSelected ? 5 : place.isBase ? 3 : 1,
+    priority: isSelected ? 5 : place.isBase ? 4 : 3,
   }
 }
 

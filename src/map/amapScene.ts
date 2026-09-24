@@ -6,7 +6,7 @@ import type { MemoryEvent } from '../types'
 import { wgs84ToGcj02 } from '../lib/geo'
 import { LAND, adder, box, building, createLabels, dim, eventLabel, placeLabel, seeded } from './objects'
 import type { AMapNS } from './amap'
-import type { LifeMapCallbacks, LifeMapData } from './scene'
+import type { LifeMapCallbacks, LifeMapData, MapPhoto } from './scene'
 
 // Real AMap 3D base map with the cartoon layer on top.
 // AMap renders with WebGL 1 and three r186 needs WebGL 2, so the cartoon layer uses its own
@@ -24,9 +24,11 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   mapEl.className = 'life-map-amap'
   const canvas = document.createElement('canvas')
   canvas.className = 'life-map-canvas overlay'
+  const photoLayer = document.createElement('div')
+  photoLayer.className = 'life-map-photos'
   const labelLayer = document.createElement('div')
   labelLayer.className = 'life-map-labels'
-  container.append(mapEl, canvas, labelLayer)
+  container.append(mapEl, canvas, photoLayer, labelLayer)
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const map = new AMap.Map(mapEl, {
@@ -205,11 +207,98 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     for (const { object } of scaled) object.scale.setScalar(unit)
     for (const material of lines) material.resolution.set(size.w, size.h)
     renderer.render(scene, camera)
-    labels.place(camera, size.w, size.h, (anchor) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit))
+    const taken = placePhotos()
+    // Overview: place labels step around photos. In a city's story, event labels come first.
+    labels.place(camera, size.w, size.h, (anchor) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit), current?.selectedCity ? [] : taken)
   }
 
   const layer = new AMap.GLCustomLayer({ zIndex: 120, init() {}, render: draw })
   map.add(layer)
+
+  // Photo thumbnails clustered by screen position, with a count badge, like a phone album's map.
+  // Drawn here rather than as AMap markers: AMap keeps its markers inside a stacking context that
+  // sits under this cartoon canvas, so the 3D buildings covered them.
+  let photos: { photo: MapPhoto; at: THREE.Vector3 }[] = []
+  let photoKey = ''
+  let focusedId: string | null = null
+  const shown = new Map<string, HTMLButtonElement>()
+  const CELL = 84
+
+  function setPhotos(next: MapPhoto[] = []) {
+    const key = next.map((p) => `${p.id}:${p.gcj.join(',')}:${p.inferred}`).join('|') + `#${focusedId}`
+    // With no located place yet, the photos themselves anchor the scene
+    if (!origin && next.length) origin = next[0].gcj
+    if (key === photoKey || !origin) return
+    photoKey = key
+    map.customCoords.setCenter(origin)
+    const coords = next.length ? map.customCoords.lngLatsToCoords(next.map((p) => p.gcj)) : []
+    photos = next.map((photo, i) => ({ photo, at: new THREE.Vector3(coords[i][0], coords[i][1], 0) }))
+  }
+
+  function thumb(cover: MapPhoto, members: MapPhoto[]) {
+    const el = document.createElement('button')
+    el.type = 'button'
+    const inferred = members.every((m) => m.inferred)
+    const focused = members.length === 1 && cover.id === focusedId
+    el.className = `map-photo${inferred ? ' inferred' : ''}${focused ? ' focused' : ''}`
+    el.title = inferred ? '位置由画面或其他照片推断' : '照片自带定位'
+    const img = document.createElement('img')
+    img.src = cover.preview
+    img.alt = ''
+    el.append(img)
+    if (members.length > 1) {
+      const badge = document.createElement('b')
+      badge.textContent = String(members.length)
+      el.append(badge)
+      el.setAttribute('aria-label', `这里有 ${members.length} 张照片，点击放大`)
+      el.addEventListener('click', (event) => {
+        event.stopPropagation()
+        const lngs = members.map((m) => m.gcj[0])
+        const lats = members.map((m) => m.gcj[1])
+        const pad = 0.002
+        map.setBounds(new AMap.Bounds([Math.min(...lngs) - pad, Math.min(...lats) - pad], [Math.max(...lngs) + pad, Math.max(...lats) + pad]), false, [150, insets.bottom + 60, 120, insets.right + 120])
+      })
+    } else {
+      el.setAttribute('aria-label', `打开照片 ${cover.name}`)
+      el.addEventListener('click', (event) => { event.stopPropagation(); callbacks.onOpenPhoto?.(cover.id) })
+    }
+    photoLayer.append(el)
+    return el
+  }
+
+  function placePhotos(): DOMRect[] {
+    const taken: DOMRect[] = []
+    const v = new THREE.Vector3()
+    const cells = new Map<string, { x: number; y: number; members: MapPhoto[] }>()
+    for (const { photo, at } of photos) {
+      v.copy(at).project(camera)
+      if (v.z > 1) continue
+      const x = ((v.x + 1) / 2) * size.w
+      const y = ((1 - v.y) / 2) * size.h
+      if (x < -CELL || y < -CELL || x > size.w + CELL || y > size.h + CELL) continue
+      const key = `${Math.floor(x / CELL)}:${Math.floor(y / CELL)}`
+      const cell = cells.get(key)
+      if (cell) cell.members.push(photo)
+      else cells.set(key, { x, y, members: [photo] })
+    }
+    const seen = new Set<string>()
+    for (const { x, y, members } of cells.values()) {
+      // The cover is a photo with its own GPS when there is one
+      const cover = members.find((m) => !m.inferred) || members[0]
+      const id = `${cover.id}|${members.length}|${members.every((m) => m.inferred)}|${cover.id === focusedId}`
+      seen.add(id)
+      const el = shown.get(id) || thumb(cover, members)
+      shown.set(id, el)
+      // A flag: the tip at the bottom-left touches the place, the picture stands to the right
+      const left = Math.round(x) - 10
+      const top = Math.round(y) - el.offsetHeight - 10
+      el.style.transform = `translate(${left}px, ${top}px)`
+      // Count badge sticks out 12 px above and to the right
+      taken.push(new DOMRect(left, top - 12, el.offsetWidth + 12, el.offsetHeight + 22))
+    }
+    for (const [id, el] of shown) if (!seen.has(id)) { el.remove(); shown.delete(id) }
+    return taken
+  }
 
   // Frame the content in the space left by the heading, the time bar and the butler
   function frame(data: LifeMapData, instant: boolean) {
@@ -263,12 +352,20 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       if (!ready) { pending = data; return }
       current = data
       build(data)
+      setPhotos(data.photos)
       const signature = `${data.selectedCity}|${data.places.map((p) => p.city).join()}|${data.story.map((e) => e.id).join()}`
       if (signature !== lastSignature) {
         frame(data, !lastSignature)
         lastSignature = signature
       }
       draw()
+    },
+    // Close enough to see the building it was taken at
+    focusPhoto(photo: MapPhoto) {
+      focusedId = photo.id
+      if (current) setPhotos(current.photos)
+      map.setPitch(60, reduceMotion)
+      map.setZoomAndCenter(17, photo.gcj, reduceMotion)
     },
     setInsets(next: { right: number; bottom: number }) {
       if (next.right === insets.right && next.bottom === insets.bottom) return
@@ -281,6 +378,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       renderer.dispose()
       mapEl.remove()
       canvas.remove()
+      photoLayer.remove()
       labelLayer.remove()
     },
   }

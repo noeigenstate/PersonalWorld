@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Aperture, ChevronLeft, CircleHelp, LogOut, Plus, Upload, UserRound, X } from 'lucide-react'
 import { analyzeEvent, askButler, fetchAiConfig, generatePhotoCard, geocode, inferFromPeers, speak, transcribe, type Account, type ButlerFocus, type ButlerTurn } from './lib/api'
 import { colorSignature, knownAbout, pickReferences } from './lib/peers'
-import { better } from './lib/location'
+import { better, inheritFromEvent } from './lib/location'
+import { gcj02ToWgs84, wgs84ToGcj02 } from './lib/geo'
+import { photoFacts as factsOf } from './lib/photoFacts'
+import type { MapPhoto } from './map/scene'
 import { detailedAddresses, locateAddress, searchPlace } from './map/amap'
 import type { PhotoFacts } from './lib/photoFacts'
 import { importFiles } from './lib/import'
@@ -33,6 +36,10 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [selectedCity, setSelectedCity] = useState<string | null>(null)
   const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null)
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
+  const [openPhotoId, setOpenPhotoId] = useState<string | null>(null)
+  const [mapFocus, setMapFocus] = useState<{ photo: MapPhoto; at: number } | null>(null)
+  const [locating, setLocating] = useState<{ done: number; total: number } | null>(null)
+  const stopLocating = useRef(false)
   const [importOpen, setImportOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [trayOpen, setTrayOpen] = useState(false)
@@ -126,6 +133,67 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const firsts = useMemo(() => firstsOf(events), [events])
   const needsWork = events.filter((e) => !e.city || e.status === 'draft')
   const activeEvent = events.find((e) => e.id === activeEventId)
+  // Every photo with a place, for the map's photo layer
+  const mapPhotos = useMemo<MapPhoto[]>(() => memory.assets.flatMap((a) => {
+    if (!a.preview || a.kind === 'video') return []
+    const gcj = a.location?.gcj || (a.latitude !== undefined && a.longitude !== undefined ? (({ lat, lng }) => [lng, lat] as [number, number])(wgs84ToGcj02({ lat: a.latitude, lng: a.longitude! })) : undefined)
+    if (!gcj) return []
+    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)) }]
+  }), [memory.assets])
+
+  function openPhoto(assetId: string) {
+    const event = memory.events.find((e) => e.assetIds.includes(assetId))
+    if (!event) return
+    setOpenPhotoId(assetId)
+    setActiveEventId(event.id)
+  }
+
+  // Photos without their own place: read the picture (photo card → landmark / place name → map
+  // search), a couple at a time, then let the rest of each event inherit what was found.
+  useEffect(() => {
+    const key = aiConfig.amapJsKey
+    if (!ready || !aiConfig.available || !key || locating) return
+    const queue = memory.assets.filter((a) => !a.location && !a.locateTried && a.latitude === undefined && !a.metaPlace && a.preview && a.kind !== 'video')
+    if (!queue.length) return
+    stopLocating.current = false
+    setLocating({ done: 0, total: queue.length })
+    ;(async () => {
+      let done = 0
+      const worker = async () => {
+        for (let asset = queue.shift(); asset && !stopLocating.current; asset = queue.shift()) {
+          const event = memory.events.find((e) => e.assetIds.includes(asset!.id))
+          try {
+            const card = asset.card || { ...(await generatePhotoCard(asset, factsOf(asset, event))), createdAt: new Date().toISOString() }
+            const found = card.placeQuery ? await searchPlace(key, card.placeQuery).catch(() => undefined) : undefined
+            const id = asset.id
+            setMemory((current) => ({
+              ...current,
+              assets: current.assets.map((a) => (a.id === id ? { ...a, card, locateTried: true, location: better(a.location, found) } : a)),
+              // The event takes the place too (a dashed, unconfirmed city), with coordinates so the map can draw it
+              events: found?.city || found?.province ? current.events.map((e) => {
+                if (!e.assetIds.includes(id) || e.city) return e
+                const wgs = found.gcj ? gcj02ToWgs84({ lng: found.gcj[0], lat: found.gcj[1] }) : undefined
+                return { ...e, city: found.city || found.province, citySource: 'ai', place: e.place || found.label, lat: e.lat ?? wgs?.lat, lng: e.lng ?? wgs?.lng }
+              }) : current.events,
+            }))
+          } catch (error) {
+            stopLocating.current = true
+            setNotice(error instanceof Error ? `自动定位已暂停：${error.message}` : '自动定位已暂停')
+          }
+          done++
+          setLocating((p) => (p ? { ...p, done } : p))
+        }
+      }
+      await Promise.all([worker(), worker()])
+      // Share places within events
+      setMemory((current) => {
+        const inherited = inheritFromEvent(current.assets, current.events)
+        if (!inherited.size) return current
+        return { ...current, assets: current.assets.map((a) => (inherited.has(a.id) ? { ...a, location: inherited.get(a.id) } : a)) }
+      })
+      setLocating(null)
+    })()
+  }, [memory.assets, memory.events, ready, aiConfig.available, aiConfig.amapJsKey, locating]) // eslint-disable-line react-hooks/exhaustive-deps
   const selectedPlace = places.find((p) => p.city === selectedCity)
   const panelOpen = tab === 'butler' || Boolean(selectedCity)
 
@@ -416,6 +484,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           insetBottom={events.length ? TIMEBAR_HEIGHT : 0}
           onSelectCity={(city) => selectCity(city)}
           onOpenEvent={setActiveEventId}
+          onOpenPhoto={openPhoto}
+          photos={mapPhotos}
+          focus={mapFocus}
         />}
 
         {ready && events.length > 0 && (
@@ -437,6 +508,12 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
               <span><em className="lg-migrate" />迁徙</span>
               <span><em className="lg-unsure" />待确认</span>
             </div>
+            {locating && (
+              <div className="locating-chip" role="status">
+                <span>正在从画面识别地点 {locating.done}/{locating.total}</span>
+                <button onClick={() => { stopLocating.current = true }}>停止</button>
+              </div>
+            )}
             {needsWork.length > 0 && <button className="tray-chip" onClick={() => setTrayOpen((open) => !open)}><CircleHelp size={14} />{needsWork.length} 件事待整理</button>}
           </div>
         )}
@@ -509,7 +586,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           firsts={firsts.get(activeEvent.id) || []}
           aiAvailable={aiConfig.available}
           busy={busyEventId === activeEvent.id}
-          onClose={() => setActiveEventId(null)}
+          onClose={() => { setActiveEventId(null); setOpenPhotoId(null) }}
+          initialAssetId={openPhotoId}
           onAnalyze={() => void runAnalysis(activeEvent)}
           onSave={(next) => { updateEvent(next); setNotice('事件已确认并保存') }}
           onDeleteAsset={(id) => void deleteAsset(id)}
@@ -521,6 +599,13 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
             infer: (asset) => void runContext(asset),
             apply: applyToEvent,
             assetById: (id) => memory.assets.find((a) => a.id === id),
+            showOnMap: (asset) => {
+              const photo = mapPhotos.find((p) => p.id === asset.id)
+              if (!photo) return
+              setActiveEventId(null)
+              setOpenPhotoId(null)
+              setMapFocus({ photo, at: Date.now() })
+            },
           }}
         />
       )}

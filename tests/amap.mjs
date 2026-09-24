@@ -25,8 +25,15 @@ page.on('console', (m) => consoleLog.push(`${m.type()}: ${m.text().slice(0, 200)
 
 await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'amap-test', username: '测试', createdAt: '2026-09-24T00:00:00Z', privacyAccepted: true } } }))
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '测试', geocode: false, amapJsKey: key } }))
-// The card itself is mocked; what is tested here is the map search that follows it
-await page.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '东方明珠', caption: '', scene: '电视塔', visibleText: '', clues: [], landmark: { name: '东方明珠', city: '上海市', confidence: 0.95 }, placeQuery: { text: '东方明珠', city: '上海市', from: 'landmark', confidence: 0.9 }, eventGuess: { type: '旅行', reason: '' }, tags: [], questions: [] } }))
+// The card itself is mocked; what is tested here is the map search that follows it.
+// Only the landmark photo "recognises" something; other photos without GPS find nothing.
+const cardRequests = []
+await page.route('**/api/photo-card', (route) => {
+  const fileName = route.request().postDataJSON().facts.fileName
+  cardRequests.push(fileName)
+  const landmark = fileName === 'pearl-a.jpg'
+  return route.fulfill({ json: { title: landmark ? '东方明珠' : '夜晚的截图', caption: '', scene: landmark ? '电视塔' : '室内', visibleText: '', clues: [], landmark: landmark ? { name: '东方明珠', city: '上海市', confidence: 0.95 } : null, placeQuery: landmark ? { text: '东方明珠', city: '上海市', from: 'landmark', confidence: 0.9 } : null, eventGuess: { type: '旅行', reason: '' }, tags: [], questions: [] } })
+})
 // Same mapping as server/amap.mjs, done here so the test needs no signed-in session
 await page.route('**/_AMapService/**', async (route) => {
   const url = new URL(route.request().url())
@@ -47,7 +54,15 @@ try {
   const names = (await page.locator('.map-label.place strong').allInnerTexts()).map((t) => t.split(' · ')[0]).sort()
   assert.deepEqual(names, ['上海', '杭州', '武汉', '湘潭'], '高德浏览器端地理编码应识别出四个城市')
   await page.waitForTimeout(2500)
+  // Photo layer: thumbnails clustered with a count, like a phone album's map
+  await page.locator('.map-photo b').first().waitFor({ timeout: 20000 })
+  const counts = (await page.locator('.map-photo b').allInnerTexts()).map(Number)
+  assert.ok(counts.length >= 3 && counts.every((n) => n > 1), `缩小时照片按位置聚合并显示张数：${counts}`)
+  assert.equal(await page.locator('.map-photo.inferred').count(), 0, '有 GPS 的照片不显示为推断')
   await page.screenshot({ path: join(shots, 'pw-amap-1-overview.png') })
+  // The one fixture photo without GPS was read automatically and found nothing to place it by
+  await page.waitForFunction(() => !document.querySelector('.locating-chip'), null, { timeout: 30000 })
+  assert.deepEqual(cardRequests, ['IMG_029.jpg'], '没有 GPS 的照片自动生成信息卡，有 GPS 的不需要')
 
   await page.locator('.map-label.place').filter({ hasText: '上海' }).click()
   await page.locator('.butler').waitFor()
@@ -72,22 +87,34 @@ try {
   await page.getByRole('button', { name: '关闭影像' }).click()
   await page.getByRole('button', { name: '关闭事件详情' }).click()
 
-  // Level 2: a photo without GPS whose card recognises a landmark is placed by AMap place search
+  // Level 2, automatic: a photo without GPS is read on import; its landmark places it on the map
+  await page.getByRole('button', { name: '关闭人生管家' }).click()
   await page.getByRole('button', { name: '导入影像' }).click()
   await page.locator('input[type="file"]').setInputFiles(fileURLToPath(new URL('../skills/photo-context/evals/2026-09-24/images/pearl-a.jpg', import.meta.url)))
   await page.getByRole('status').getByText(/已导入 1 个影像/).waitFor({ timeout: 30000 })
-  await page.locator('.tray-chip').click()
-  await page.locator('.tray li').filter({ hasText: '未定位' }).first().click()
+  await page.waitForFunction(() => document.querySelector('.locating-chip'), null, { timeout: 15000 }).catch(() => undefined)
+  await page.waitForFunction(() => !document.querySelector('.locating-chip'), null, { timeout: 60000 })
+  assert.deepEqual(cardRequests, ['IMG_029.jpg', 'pearl-a.jpg'], '新导入的无 GPS 照片自动生成信息卡')
+  // The file has no EXIF, so it is the newest event: the last dot on the time bar
+  await page.locator('.timebar .dot').last().click()
   await page.locator('.photo-open').first().click()
-  await page.getByRole('button', { name: '生成信息卡' }).click()
   const landmarkPlace = page.locator('.pc-facts div').filter({ hasText: '地点' })
   await landmarkPlace.getByText('画面中认出地标，经高德地点搜索定位').waitFor({ timeout: 20000 })
   assert.match(await landmarkPlace.innerText(), /东方明珠/)
   assert.match(await landmarkPlace.innerText(), /画面中认出「东方明珠」/)
   console.log('Landmark photo resolved to:', (await landmarkPlace.locator('dd').innerText()).split(String.fromCharCode(10)).join(' | '))
   await page.screenshot({ path: join(shots, 'pw-amap-3-landmark.png') })
+
+  // "Show on map": the map flies in to building level and the photo stands out, drawn as inferred
+  await page.getByRole('button', { name: '在地图上看' }).click()
+  const focused = page.locator('.map-photo.focused.inferred[aria-label="打开照片 pearl-a.jpg"]')
+  await focused.waitFor({ timeout: 20000 })
+  await page.waitForTimeout(2500)
+  await page.screenshot({ path: join(shots, 'pw-amap-4-focus.png') })
+  await focused.click()
+  await page.locator('.photo-card').getByText('画面中认出地标，经高德地点搜索定位').waitFor({ timeout: 10000 })
   assert.equal(errors.length, 0, `浏览器运行时不应报错：${errors.join('; ')}`)
-  console.log('AMap test passed: security proxy, browser geocoding, life map and story line, GPS → street-level address, landmark → place search.')
+  console.log('AMap test passed: security proxy, geocoding, life map, story line, photo clusters, GPS → street number, automatic landmark locating, show photo on map.')
 } finally {
   await browser.close()
 }

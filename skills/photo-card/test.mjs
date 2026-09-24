@@ -36,7 +36,7 @@ test('/api/photo-card 用这个 skill，并整理地标、线索和列表长度'
   assert.equal(call.messages[0].content, loadSkill('photo-card'))
   assert.match(call.messages[1].content[0].text, /来源：filename/)
   assert.deepEqual(json.landmark, { name: '东方明珠', city: '上海市', confidence: 1 })
-  assert.deepEqual(json.placeQuery, { text: '东方明珠', city: '上海市', from: 'landmark', confidence: 0.9 })
+  assert.deepEqual(json.placeQuery, { text: '东方明珠', city: '上海市', from: 'landmark', level: 'poi', confidence: 0.9 })
   assert.equal(json.clues.length, 1, '没有依据的线索被丢弃')
   assert.equal(json.tags.length, 5)
   assert.equal(json.questions.length, 2)
@@ -62,6 +62,18 @@ test('车牌不能决定照片地点：线索降级，标题、描述、标签�
     assert.equal(card.placeQuery, null)
     assert.ok(!card.caption.includes('〔〕'), '空的推断括号应去掉')
   }
+})
+
+test('单位名称只能证明到省：placeQuery 带 level，未知 level 按具体地点处理', async () => {
+  const { readCard } = await importRoot('server/photoCard.mjs')
+  const base = { title: '', caption: '', scene: '', visibleText: '青海公路', clues: [], eventGuess: {}, tags: [], questions: [] }
+  const region = readCard({ ...base, placeQuery: { text: '青海省', city: '', from: 'text', level: 'province', confidence: 0.8 } }, { consented: true })
+  assert.deepEqual(region.placeQuery, { text: '青海省', city: '', from: 'text', level: 'province', confidence: 0.8 })
+  const odd = readCard({ ...base, placeQuery: { text: '外滩', from: 'text', level: 'planet' } }, { consented: true })
+  assert.equal(odd.placeQuery.level, 'poi')
+  const skill = checkSkillFile(dir).body
+  assert.match(skill, /"青海公路"/)
+  assert.match(skill, /`level` 取 `poi`（具体地点）、`district`（区县）、`city`（城市）、`province`（省份）/)
 })
 
 test('真实模型：认出东方明珠并给出有依据的线索', { skip: !live && '设置 LIVE=1 才调用真实模型' }, async () => {
