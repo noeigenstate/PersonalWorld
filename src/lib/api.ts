@@ -1,5 +1,28 @@
 import type { AiConfig, AnalysisResult, GeocodeResult, MemoryAsset, MemoryEvent, PhotoCard, PhotoContext, Place } from '../types'
 import type { Reference } from './peers'
+import { getFile } from './storage'
+import { heicAsJpeg, isHeic } from './import'
+import { formatDate } from './memory'
+
+// The stored preview (1200 px) is too small to read plates and signs; the card gets a sharper
+// copy made from the original file, falling back to the preview
+async function detailImage(asset: MemoryAsset, maxSide = 2560): Promise<string> {
+  const original = await getFile(asset.id).catch(() => undefined)
+  if (!original || asset.kind === 'video') return asset.preview
+  try {
+    const source = isHeic(original) ? await heicAsJpeg(original) : original
+    const bitmap = await createImageBitmap(source)
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    bitmap.close()
+    return canvas.toDataURL('image/jpeg', 0.9)
+  } catch {
+    return asset.preview
+  }
+}
 import type { PhotoFacts } from './photoFacts'
 
 const headers = { 'Content-Type': 'application/json', 'X-Memory-Agent': 'web' }
@@ -63,8 +86,9 @@ export async function analyzeEvent(event: MemoryEvent, assets: MemoryAsset[]): P
 export async function generatePhotoCard(asset: MemoryAsset, facts: PhotoFacts): Promise<Omit<PhotoCard, 'createdAt'>> {
   if (!asset.preview) throw new Error('这张照片没有可用的预览图')
   return jsonResponse(await post('/api/photo-card', {
-    image: { dataUrl: asset.preview },
-    facts: { fileName: facts.fileName, time: asset.capturedAt, timeSource: facts.timeSource, latitude: facts.latitude, longitude: facts.longitude, city: facts.city, address: facts.address, size: facts.size, device: facts.device },
+    image: { dataUrl: await detailImage(asset) },
+    // Local wall-clock time as the camera recorded it; an ISO/UTC string made the model convert time zones
+    facts: { fileName: facts.fileName, time: formatDate(asset.capturedAt, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }), timeSource: facts.timeSource, latitude: facts.latitude, longitude: facts.longitude, city: facts.city, address: facts.address, size: facts.size, device: facts.device, metaPlace: facts.metaPlace },
   }))
 }
 

@@ -1,7 +1,8 @@
 // Loads the AMap JS API 2.0. The security code stays on our server: requests go through
 // /_AMapService, which appends it (see server/amap.mjs).
-import type { GeocodeResult } from '../types'
+import type { GeocodeResult, PhotoLocation } from '../types'
 import { wgs84ToGcj02 } from '../lib/geo'
+import { locationLabel, precisionOf } from '../lib/location'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type AMapNS = any
@@ -18,7 +19,7 @@ export function loadAmap(key: string): Promise<AMapNS> {
   window._AMapSecurityConfig = { serviceHost: `${location.origin}/_AMapService` }
   loading = new Promise((resolve, reject) => {
     const script = document.createElement('script')
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(key)}&plugin=AMap.Geocoder`
+    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(key)}&plugin=AMap.Geocoder,AMap.PlaceSearch`
     script.async = true
     script.onload = () => (window.AMap ? resolve(window.AMap) : reject(new Error('高德地图加载失败')))
     script.onerror = () => { loading = null; reject(new Error('无法连接高德地图，请检查网络')) }
@@ -53,4 +54,80 @@ export async function geocodeInBrowser(key: string, points: { id: string; lat: n
     })
   }
   return results
+}
+
+const call = <T>(run: (done: (status: string, result: any) => void) => void, pick: (result: any) => T, empty: T) =>
+  new Promise<T>((resolve, reject) => run((status, result) => {
+    if (status === 'complete') resolve(pick(result))
+    else if (status === 'no_data') resolve(empty)
+    else reject(new Error(`高德查询失败：${text(result?.info) || status}`))
+  }))
+
+function fromRegeocode(regeo: any, gcj: [number, number], source: PhotoLocation['source'], confidence: number): PhotoLocation | undefined {
+  const part = regeo?.addressComponent || {}
+  const province = text(part.province)
+  const city = text(part.city) || province
+  if (!city) return undefined
+  const nearest = (regeo.pois || []).slice().sort((a: any, b: any) => Number(a.distance) - Number(b.distance))[0]
+  const parts = {
+    province,
+    city,
+    district: text(part.district),
+    township: text(part.township),
+    street: text(part.streetNumber?.street) || text(part.street),
+    number: text(part.streetNumber?.number) || text(part.streetNumber),
+    aoi: text(regeo.aois?.[0]?.name) || text(part.neighborhood) || text(part.building) || undefined,
+    // Only a POI close enough to plausibly be where the photo was taken
+    poi: nearest && Number(nearest.distance) <= 150 ? { name: text(nearest.name), distance: Math.round(Number(nearest.distance)) } : undefined,
+  }
+  return { source, precision: precisionOf(parts, true), gcj, ...parts, label: locationLabel(parts), confidence }
+}
+
+// Level 1: EXIF GPS → the finest address AMap knows (street number, AOI, nearest POI)
+export async function detailedAddresses(key: string, points: { id: string; lat: number; lng: number }[]): Promise<Map<string, PhotoLocation>> {
+  const AMap = await loadAmap(key)
+  const geocoder = new AMap.Geocoder({ extensions: 'all', radius: 200 })
+  const out = new Map<string, PhotoLocation>()
+  // A few lookups at a time: one by one took ~20 s for 35 photos
+  const queue = [...points]
+  const worker = async () => {
+    for (let point = queue.shift(); point; point = queue.shift()) {
+      const g = wgs84ToGcj02(point)
+      const gcj: [number, number] = [g.lng, g.lat]
+      const regeo = await call((done) => geocoder.getAddress(gcj, done), (r) => r.regeocode, null).catch(() => null)
+      const location = regeo && fromRegeocode(regeo, gcj, 'gps', 1)
+      if (location) out.set(point.id, location)
+    }
+  }
+  await Promise.all(Array.from({ length: 4 }, worker))
+  return out
+}
+
+// Level 1: a place name written into the photo's IPTC/XMP metadata → coordinates
+export async function locateAddress(key: string, address: string): Promise<PhotoLocation | undefined> {
+  const AMap = await loadAmap(key)
+  const geocodes = await call((done) => new AMap.Geocoder({}).getLocation(address, done), (r) => r.geocodes || [], [])
+  const g = geocodes[0]
+  if (!g?.location) return undefined
+  const parts = { province: text(g.addressComponent?.province), city: text(g.addressComponent?.city) || text(g.addressComponent?.province), district: text(g.addressComponent?.district), street: text(g.addressComponent?.street), number: text(g.addressComponent?.streetNumber) }
+  return { source: 'meta', precision: precisionOf(parts, false), gcj: [g.location.lng, g.location.lat], ...parts, label: locationLabel(parts) || address, evidence: address, confidence: 0.9 }
+}
+
+// Level 2: a landmark or readable place name from the picture → AMap place search
+export async function searchPlace(key: string, query: { text: string; city: string; from: 'landmark' | 'text'; confidence: number }): Promise<PhotoLocation | undefined> {
+  const AMap = await loadAmap(key)
+  const search = new AMap.PlaceSearch({ city: query.city || '全国', citylimit: Boolean(query.city), pageSize: 3 })
+  const pois = await call((done) => search.search(query.text, done), (r) => r.poiList?.pois || [], [])
+  const poi = pois[0]
+  if (!poi?.location) return undefined
+  const parts = { province: text(poi.pname), city: text(poi.cityname) || query.city, district: text(poi.adname), poi: { name: text(poi.name) } }
+  return {
+    source: query.from,
+    precision: 'poi',
+    gcj: [poi.location.lng, poi.location.lat],
+    ...parts,
+    label: locationLabel(parts),
+    evidence: query.from === 'landmark' ? `画面中认出「${query.text}」` : `画面中的文字「${query.text}」`,
+    confidence: query.confidence,
+  }
 }

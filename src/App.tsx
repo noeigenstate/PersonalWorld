@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Aperture, ChevronLeft, CircleHelp, LogOut, Plus, Upload, UserRound, X } from 'lucide-react'
 import { analyzeEvent, askButler, fetchAiConfig, generatePhotoCard, geocode, inferFromPeers, speak, transcribe, type Account, type ButlerFocus, type ButlerTurn } from './lib/api'
 import { colorSignature, knownAbout, pickReferences } from './lib/peers'
+import { better } from './lib/location'
+import { detailedAddresses, locateAddress, searchPlace } from './map/amap'
 import type { PhotoFacts } from './lib/photoFacts'
 import { importFiles } from './lib/import'
 import { baseAt, cityLabel, derivePlaces, firstsOf, formatYearMonth, regroupDrafts, roleLabels, spaceLine, storyLine } from './lib/memory'
@@ -81,6 +83,26 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       })))
       .catch((error) => setNotice(error instanceof Error ? error.message : '地名识别失败'))
   }, [memory.events, ready, aiConfig.geocode, aiConfig.amapJsKey])
+
+  // Place of each photo, finest first: its own GPS, then place names in its metadata.
+  // (The picture itself is used after a photo card is generated; see makePhotoCard.)
+  const located = useRef(new Set<string>())
+  useEffect(() => {
+    const key = aiConfig.amapJsKey
+    if (!ready || !key) return
+    const withGps = memory.assets.filter((a) => a.latitude !== undefined && a.longitude !== undefined && a.location?.source !== 'gps' && !located.current.has(a.id))
+    const withName = memory.assets.filter((a) => a.metaPlace && !a.location && a.latitude === undefined && !located.current.has(a.id))
+    if (!withGps.length && !withName.length) return
+    ;[...withGps, ...withName].forEach((a) => located.current.add(a.id))
+    ;(async () => {
+      const found = await detailedAddresses(key, withGps.map((a) => ({ id: a.id, lat: a.latitude!, lng: a.longitude! })))
+      for (const a of withName) {
+        const hit = await locateAddress(key, a.metaPlace!).catch(() => undefined)
+        if (hit) found.set(a.id, hit)
+      }
+      if (found.size) setMemory((current) => ({ ...current, assets: current.assets.map((a) => (found.has(a.id) ? { ...a, location: better(a.location, found.get(a.id)) } : a)) }))
+    })().catch((error) => setNotice(error instanceof Error ? error.message : '地址识别失败'))
+  }, [memory.assets, ready, aiConfig.amapJsKey])
 
   // Photos imported before signatures existed get one once
   useEffect(() => {
@@ -185,6 +207,18 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     try {
       const card = await generatePhotoCard(asset, facts)
       setMemory((current) => ({ ...current, assets: current.assets.map((a) => (a.id === asset.id ? { ...a, card: { ...card, createdAt: new Date().toISOString() } } : a)) }))
+      // Level 2: no location from the photo's own data → search the landmark or place name it shows
+      if (!asset.location && card.placeQuery && aiConfig.amapJsKey) {
+        const found = await searchPlace(aiConfig.amapJsKey, card.placeQuery).catch(() => undefined)
+        if (found) {
+          setMemory((current) => ({
+            ...current,
+            assets: current.assets.map((a) => (a.id === asset.id ? { ...a, location: better(a.location, found) } : a)),
+            // An inferred place also gives an unlocated event a (dashed, unconfirmed) city
+            events: current.events.map((e) => (e.assetIds.includes(asset.id) && !e.city && found.city ? { ...e, city: found.city, citySource: 'ai', place: e.place || found.label } : e)),
+          }))
+        }
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '信息卡生成失败，请重试')
     } finally {

@@ -31,7 +31,10 @@ const mock = http.createServer(async (req, res) => {
   const payload = JSON.parse(raw.toString())
   requests[requests.length - 1].payload = payload
   const system = payload.messages[0].content
-  const output = system.includes('照片信息卡助手')
+  const plateCase = JSON.stringify(payload.messages?.[1]?.content || '').includes('DSCF3348')
+  const output = system.includes('照片信息卡助手') && plateCase
+    ? { title: '雨天行车', caption: '〔可能在云南〕', scene: '车内视角', visibleText: '云A 12345', clues: [{ kind: '地点', evidence: '前车车牌云A 12345', inference: '车辆登记于云南昆明，拍摄地点可能在云南', confidence: 0.9 }, { kind: '地点', evidence: '远处雪山和草场', inference: '高原地区', confidence: 0.7 }], placeQuery: { text: '云南', city: '', from: 'text', confidence: 0.7 }, eventGuess: { type: '旅行', reason: '自驾' }, tags: ['云南', '雨天', '自驾'], questions: [] }
+    : system.includes('照片信息卡助手')
     ? { title: '新居装修', caption: '〔可能在杭州〕', scene: '天花板上的灯', visibleText: '恒彩家装 0571-5670 0000', clues: [{ kind: '地点', evidence: '区号 0571', inference: '装修公司在杭州', confidence: 0.6 }, { kind: '事件', evidence: '', inference: '无依据的线索应被丢弃', confidence: 0.9 }], eventGuess: { type: '搬家装修', reason: '保护膜' }, tags: ['装修'], questions: ['这是你家吗？', '哪一年？', '第三个问题应被截掉'] }
     : system.includes('人生管家')
     ? { answer: '那是爸妈第一次来〔上海〕看你。', eventIds: ['e2', 'not-a-real-id'] }
@@ -193,6 +196,15 @@ try {
   assert.match(cardCall.messages[1].content[0].text, /来源：filename/)
   assert.match(cardCall.messages[1].content[0].text, /隐私声明：用户已同意/)
   assert.equal((await post('/api/photo-card', { image: { dataUrl: 'data:text/plain;base64,AA==' } })).status, 400)
+
+  // A licence plate never places a photo: confidence capped, no tag or map search built on it
+  const plateCard = await (await post('/api/photo-card', { image: photo.image, facts: { ...photo.facts, fileName: 'DSCF3348.JPG' } })).json()
+  const plateClue = plateCard.clues.find((c) => /车牌/.test(c.evidence))
+  assert.equal(plateClue.confidence, 0.3)
+  assert.match(plateClue.inference, /车牌只说明车辆登记地/)
+  assert.equal(plateCard.clues.find((c) => /高原/.test(c.inference)).confidence, 0.7, '其他线索不受影响')
+  assert.deepEqual(plateCard.tags, ['雨天', '自驾'], '只由车牌得出的省份不进标签')
+  assert.equal(plateCard.placeQuery, null, '只由车牌得出的省份不进地图搜索')
 
   const chatRemoved = await post('/api/chat', {})
   assert.equal(chatRemoved.status, 404, '旧的回忆对话接口已移除')

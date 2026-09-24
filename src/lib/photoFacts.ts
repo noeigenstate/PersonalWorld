@@ -1,5 +1,6 @@
 import type { MemoryAsset, MemoryEvent } from '../types'
 import { cityLabel, formatDate } from './memory'
+import { precisionNotes, sourceNotes } from './location'
 
 // What the app itself knows about a photo. These are facts; the photo card's AI part is not.
 export interface PhotoFacts {
@@ -11,6 +12,8 @@ export interface PhotoFacts {
   timeSource: MemoryAsset['dateSource']
   place: string
   placeNote: string
+  placeInferred: boolean
+  metaPlace?: string
   size: string
   latitude?: number
   longitude?: number
@@ -40,12 +43,17 @@ export function photoFacts(asset: MemoryAsset, event?: MemoryEvent, dimensions?:
     time: formatDate(asset.capturedAt, { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
     timeNote: timeNotes[asset.dateSource] || timeNotes.file,
     timeSource: asset.dateSource,
-    place: city ? [cityLabel(city), event?.place].filter(Boolean).join(' · ') : hasGps ? '有定位，城市待识别' : '没有定位信息',
-    placeNote: city ? (event?.citySource === 'user' ? '你填写的' : '来自照片定位') : hasGps ? `${asset.latitude!.toFixed(4)}, ${asset.longitude!.toFixed(4)}` : '微信等应用保存的图片通常会去掉定位',
+    // The photo's own location first (see lib/location.ts), then the event's city
+    place: asset.location ? asset.location.label : city ? [cityLabel(city), event?.place].filter(Boolean).join(' · ') : hasGps ? '有定位，地址待识别' : '没有定位信息',
+    placeNote: asset.location
+      ? [sourceNotes[asset.location.source], precisionNotes[asset.location.precision], asset.location.poi?.distance !== undefined ? `距离约 ${asset.location.poi.distance} 米` : ''].filter(Boolean).join(' · ')
+      : city ? (event?.citySource === 'user' ? '你填写的' : '来自照片定位') : hasGps ? `${asset.latitude!.toFixed(5)}, ${asset.longitude!.toFixed(5)}` : '照片里没有 GPS；可以从画面内容推断',
+    placeInferred: Boolean(asset.location && !['gps', 'meta', 'user'].includes(asset.location.source)),
+    metaPlace: asset.metaPlace,
     size: [dims ? `${dims.width} × ${dims.height}` : '', bytes(asset.size)].filter(Boolean).join(' · '),
     latitude: asset.latitude,
     longitude: asset.longitude,
-    city,
-    address: city ? event?.place : undefined,
+    city: asset.location?.city || city,
+    address: asset.location?.label || (city ? event?.place : undefined),
   }
 }

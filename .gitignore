@@ -9,3 +9,5 @@ server/data/
 data/
 skills/photo-card/evals/*/photo.jpg
 skills/photo-context/evals/*/images/room-*.jpg
+skills/photo-card/evals/*/plate/*.jpg
+skills/photo-card/evals/*/plate/results.json

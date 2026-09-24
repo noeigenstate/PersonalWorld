@@ -65,7 +65,7 @@ export function PhotoCard({ asset, event, aiAvailable, busy, onGenerate, peers }
         <h3>程序读到的</h3>
         <dl className="pc-facts">
           <div><dt>时间</dt><dd>{facts.time}<small className={facts.timeSource === 'exif' ? '' : 'warn'}>{facts.timeNote}</small></dd></div>
-          <div><dt>地点</dt><dd>{facts.place}<small>{facts.placeNote}</small></dd></div>
+          <div><dt>地点</dt><dd className={facts.placeInferred ? 'pc-inferred-place' : ''}>{facts.place}<small>{facts.placeNote}</small>{asset.location?.evidence && <small>{asset.location.evidence}</small>}</dd></div>
           <div><dt>设备</dt><dd>{facts.device || '未知'}</dd></div>
           <div><dt>尺寸</dt><dd>{facts.size}</dd></div>
           <div><dt>文件</dt><dd className="pc-file">{facts.fileName}</dd></div>

@@ -7,6 +7,7 @@ import { PRIVACY_VERSION, SESSION_COOKIE, createUserStore, publicUser, readCooki
 import { loadSkill } from './skills.mjs'
 import { maskDeep } from './privacy.mjs'
 import { contextMessages, readContext } from './photoContext.mjs'
+import { cardMessages, readCard } from './photoCard.mjs'
 
 loadEnv({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
@@ -90,39 +91,8 @@ const routes = {
     const image = body.image && typeof body.image === 'object' ? body.image : {}
     if (typeof image.dataUrl !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,/i.test(image.dataUrl)) return [400, { error: '图片格式不受支持' }]
     const facts = body.facts && typeof body.facts === 'object' ? body.facts : {}
-    const metadata = [
-      `文件名：${String(facts.fileName || '未知').slice(0, 120)}`,
-      `时间：${String(facts.time || '未知')}（来源：${String(facts.timeSource || '未知')}）`,
-      `GPS：${facts.latitude && facts.longitude ? `${facts.latitude},${facts.longitude}` : '无'}`,
-      `城市：${String(facts.city || '未知')} ${String(facts.address || '')}`.trim(),
-      `尺寸：${String(facts.size || '未知')}`,
-      `拍摄设备：${String(facts.device || '未知').slice(0, 60)}`,
-      `隐私声明：${consented ? '用户已同意' : '用户未同意'}`,
-    ].join('\n')
-    const answer = parseJsonAnswer(await chat(stepfun, [
-      { role: 'system', content: loadSkill('photo-card') },
-      { role: 'user', content: [{ type: 'text', text: `为这张照片写信息卡。程序读出的元数据：\n${metadata}` }, { type: 'image_url', image_url: { url: image.dataUrl } }] },
-    ], { json: true }))
-    const text = (value, max) => (typeof value === 'string' ? value.slice(0, max) : '')
-    const clues = (Array.isArray(answer.clues) ? answer.clues : []).slice(0, 5).map((c) => ({
-      kind: text(c?.kind, 8), evidence: text(c?.evidence, 120), inference: text(c?.inference, 120),
-      confidence: typeof c?.confidence === 'number' ? Math.max(0, Math.min(1, c.confidence)) : 0.5,
-    })).filter((c) => c.evidence && c.inference)
-    // Numbers are shown as-is only after the user accepted the privacy statement
-    const reveal = consented ? (value) => value : maskDeep
-    return [200, reveal({
-      title: text(answer.title, 20),
-      caption: text(answer.caption, 120),
-      scene: text(answer.scene, 160),
-      visibleText: text(answer.visibleText, 200),
-      clues,
-      landmark: answer.landmark && typeof answer.landmark === 'object' && text(answer.landmark.name, 30)
-        ? { name: text(answer.landmark.name, 30), city: text(answer.landmark.city, 20), confidence: typeof answer.landmark.confidence === 'number' ? Math.max(0, Math.min(1, answer.landmark.confidence)) : 0.5 }
-        : null,
-      eventGuess: { type: text(answer.eventGuess?.type, 10), reason: text(answer.eventGuess?.reason, 120) },
-      tags: strings(answer.tags, 5),
-      questions: strings(answer.questions, 2),
-    })]
+    const answer = parseJsonAnswer(await chat(stepfun, cardMessages({ system: loadSkill('photo-card'), dataUrl: image.dataUrl, facts, consented }), { json: true }))
+    return [200, readCard(answer, { consented })]
   },
 
   async 'POST /api/photo-context'(body, user) {

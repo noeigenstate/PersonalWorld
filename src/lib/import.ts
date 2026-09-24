@@ -101,10 +101,10 @@ export interface ImportResult {
 }
 
 const SUPPORTED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-const isHeic = (file: File) => /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
+export const isHeic = (file: File) => /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
 
 // Chrome can't decode HEIC (iPhone originals); convert only for the preview, keep the original file
-async function heicAsJpeg(file: File): Promise<File> {
+export async function heicAsJpeg(file: File): Promise<File> {
   const { default: heic2any } = await import('heic2any')
   const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
   return new File([Array.isArray(out) ? out[0] : out], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' })
@@ -120,6 +120,14 @@ export function cameraFrom(exif: Record<string, unknown>): MemoryAsset['camera']
   if (make && model && model.toLowerCase().startsWith(make.toLowerCase())) model = model.slice(make.length).trim() || model
   const lens = text(exif.LensModel)
   return make || model || lens ? { make, model, lens } : undefined
+}
+
+// IPTC/XMP place fields (written by some cameras, Lightroom, Photos exports), most specific first
+const PLACE_KEYS = ['Sublocation', 'SubLocation', 'Location', 'City', 'State', 'ProvinceState', 'Province-State', 'CountryName', 'Country']
+export function placeFromMetadata(exif: Record<string, unknown>): string | undefined {
+  const values = PLACE_KEYS.map((k) => exif[k]).filter((v): v is string => typeof v === 'string' && v.trim().length > 0).map((v) => v.trim())
+  const unique = [...new Set(values)]
+  return unique.length ? unique.reverse().join(' ') : undefined
 }
 
 export async function importFiles(files: File[], existingHashes: string[]): Promise<ImportResult> {
@@ -146,7 +154,7 @@ export async function importFiles(files: File[], existingHashes: string[]): Prom
       let exif: Record<string, unknown> = {}
       let gps: { latitude?: number; longitude?: number } = {}
       if (!isVideo) {
-        exif = (await exifr.parse(file, { tiff: true, exif: true, gps: true, xmp: true, mergeOutput: true }).catch(() => null)) || {}
+        exif = (await exifr.parse(file, { tiff: true, exif: true, gps: true, xmp: true, iptc: true, mergeOutput: true }).catch(() => null)) || {}
         gps = (await exifr.gps(file).catch(() => null)) || {}
       }
       const hasExif = Boolean(exif.DateTimeOriginal || exif.CreateDate || exif.Make || exif.Model || gps.latitude !== undefined)
@@ -173,6 +181,7 @@ export async function importFiles(files: File[], existingHashes: string[]): Prom
         camera: cameraFrom(exif),
         altitude: num(exif.GPSAltitude),
         direction: num(exif.GPSImgDirection),
+        metaPlace: placeFromMetadata(exif),
         width: isVideo ? undefined : lastSize?.width,
         height: isVideo ? undefined : lastSize?.height,
         latitude: gps.latitude,

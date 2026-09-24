@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { makeLifeFixtures } from './fixtures.mjs'
 
@@ -19,9 +20,13 @@ const browser = await chromium.launch({ channel: 'chrome' })
 const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
+const consoleLog = []
+page.on('console', (m) => consoleLog.push(`${m.type()}: ${m.text().slice(0, 200)}`))
 
 await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'amap-test', username: '测试', createdAt: '2026-09-24T00:00:00Z', privacyAccepted: true } } }))
-await page.route('**/api/config', (route) => route.fulfill({ json: { available: false, mode: 'unconfigured', message: '测试', geocode: false, amapJsKey: key } }))
+await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '测试', geocode: false, amapJsKey: key } }))
+// The card itself is mocked; what is tested here is the map search that follows it
+await page.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '东方明珠', caption: '', scene: '电视塔', visibleText: '', clues: [], landmark: { name: '东方明珠', city: '上海市', confidence: 0.95 }, placeQuery: { text: '东方明珠', city: '上海市', from: 'landmark', confidence: 0.9 }, eventGuess: { type: '旅行', reason: '' }, tags: [], questions: [] } }))
 // Same mapping as server/amap.mjs, done here so the test needs no signed-in session
 await page.route('**/_AMapService/**', async (route) => {
   const url = new URL(route.request().url())
@@ -49,8 +54,40 @@ try {
   await page.waitForTimeout(2500)
   assert.ok(await page.locator('.map-label.event').count() >= 5, '上海的故事线节点')
   await page.screenshot({ path: join(shots, 'pw-amap-2-story.png') })
+
+  // Location chain, level 1: a GPS photo is resolved to street level or finer
+  await page.locator('.map-label.event').filter({ hasText: '2019.10' }).click()
+  await page.locator('.photo-open').first().click()
+  const gpsPlace = page.locator('.pc-facts div').filter({ hasText: '地点' })
+  await gpsPlace.getByText('来自照片自带的 GPS').waitFor({ timeout: 45000 }).catch(async (error) => {
+    console.log('place row:', await gpsPlace.innerText().catch(() => '?'))
+    console.log('toast:', await page.getByRole('status').allInnerTexts().catch(() => []))
+    console.log(consoleLog.filter((l) => !l.startsWith('log')).slice(-10).join(' || '))
+    await page.screenshot({ path: join(shots, 'pw-amap-debug.png') })
+    throw error
+  })
+  assert.match(await gpsPlace.innerText(), /精确到(门牌|地点|街道)/)
+  assert.match(await gpsPlace.innerText(), /上海/)
+  console.log('GPS photo resolved to:', (await gpsPlace.locator('dd').innerText()).split(String.fromCharCode(10)).join(' | '))
+  await page.getByRole('button', { name: '关闭影像' }).click()
+  await page.getByRole('button', { name: '关闭事件详情' }).click()
+
+  // Level 2: a photo without GPS whose card recognises a landmark is placed by AMap place search
+  await page.getByRole('button', { name: '导入影像' }).click()
+  await page.locator('input[type="file"]').setInputFiles(fileURLToPath(new URL('../skills/photo-context/evals/2026-09-24/images/pearl-a.jpg', import.meta.url)))
+  await page.getByRole('status').getByText(/已导入 1 个影像/).waitFor({ timeout: 30000 })
+  await page.locator('.tray-chip').click()
+  await page.locator('.tray li').filter({ hasText: '未定位' }).first().click()
+  await page.locator('.photo-open').first().click()
+  await page.getByRole('button', { name: '生成信息卡' }).click()
+  const landmarkPlace = page.locator('.pc-facts div').filter({ hasText: '地点' })
+  await landmarkPlace.getByText('画面中认出地标，经高德地点搜索定位').waitFor({ timeout: 20000 })
+  assert.match(await landmarkPlace.innerText(), /东方明珠/)
+  assert.match(await landmarkPlace.innerText(), /画面中认出「东方明珠」/)
+  console.log('Landmark photo resolved to:', (await landmarkPlace.locator('dd').innerText()).split(String.fromCharCode(10)).join(' | '))
+  await page.screenshot({ path: join(shots, 'pw-amap-3-landmark.png') })
   assert.equal(errors.length, 0, `浏览器运行时不应报错：${errors.join('; ')}`)
-  console.log('AMap test passed: JS API through the security proxy, browser geocoding, life map and story line on the real base map.')
+  console.log('AMap test passed: security proxy, browser geocoding, life map and story line, GPS → street-level address, landmark → place search.')
 } finally {
   await browser.close()
 }

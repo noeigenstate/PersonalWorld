@@ -20,12 +20,34 @@ export interface MemoryAsset {
   altitude?: number
   // Compass bearing the camera faced, 0 = north
   direction?: number
+  // Place names written into IPTC/XMP by the camera or an editing app
+  metaPlace?: string
+  // Finest known place for this photo; see src/lib/location.ts for the resolution order
+  location?: PhotoLocation
   preview: string
   hash: string
   // 4×4 colour layout of the preview, used to rank similar photos
   signature?: number[]
   card?: PhotoCard
   context?: PhotoContext
+}
+
+export interface PhotoLocation {
+  source: 'gps' | 'meta' | 'landmark' | 'text' | 'peer' | 'user'
+  precision: 'point' | 'poi' | 'street' | 'district' | 'city' | 'province'
+  // GCJ-02 [lng, lat] as AMap returns it; for GPS photos the EXIF WGS-84 stays on the asset
+  gcj?: [number, number]
+  province?: string
+  city?: string
+  district?: string
+  township?: string
+  street?: string
+  number?: string
+  aoi?: string
+  poi?: { name: string; distance?: number }
+  label: string
+  evidence?: string
+  confidence: number
 }
 
 export interface ContextFill {
@@ -58,6 +80,8 @@ export interface PhotoCard {
   visibleText: string
   clues: PhotoClue[]
   landmark?: { name: string; city: string; confidence: number } | null
+  // Best text to search on the map for where this was taken, from a landmark or readable place name
+  placeQuery?: { text: string; city: string; from: 'landmark' | 'text'; confidence: number } | null
   eventGuess: { type: string; reason: string }
   tags: string[]
   questions: string[]

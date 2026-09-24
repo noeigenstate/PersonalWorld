@@ -12,6 +12,9 @@ export default defineConfig(({ mode }) => ({
     host: mode === 'lan' ? '0.0.0.0' : '127.0.0.1',
     port: 5183,
     strictPort: true,
+    // Photos and test media are not source: copying a large photo into data/ while it is
+    // still locked made the watcher crash the dev server (EBUSY on Windows)
+    watch: { ignored: ['**/data/**', '**/server/data/**', '**/skills/**/evals/**', '**/tests/fixtures/**', '**/docs/**'] },
     proxy: {
       '/api': 'http://127.0.0.1:8787',
       '/_AMapService': 'http://127.0.0.1:8787',

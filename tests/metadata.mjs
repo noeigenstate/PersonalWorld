@@ -43,7 +43,7 @@ try {
   assert.match(facts, /Apple iPhone 7 · iPhone 7 back camera 3\.99mm f\/1\.8/, '读出设备与镜头')
   assert.match(facts, /拍摄时间，来自照片元数据/)
   assert.match(facts, /2019年10月20日/)
-  assert.match(facts, /38\.0466, 12\.9944/, '读出 GPS')
+  assert.match(facts, /38\.0466\d*, 12\.9944/, '读出 GPS')
   assert.equal(await page.locator('.pc-stripped').count(), 0)
   assert.ok(await page.locator('.lightbox-stage img').evaluate((img) => img.naturalWidth > 0), 'HEIC 预览能显示')
   await page.screenshot({ path: join(shots, 'pw-metadata-heic.png') })
