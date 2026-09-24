@@ -3,12 +3,14 @@ import { fileURLToPath } from 'node:url'
 import { config as loadEnv } from 'dotenv'
 import { amapConfig, proxyAmapService, reverseGeocode } from './amap.mjs'
 import { chat, parseJsonAnswer, speak, stepfunConfig, transcribe } from './stepfun.mjs'
+import { SESSION_COOKIE, createUserStore, readCookie, sessionCookie } from './users.mjs'
 
 loadEnv({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
 const port = Number(process.env.PORT ?? 8787)
 const stepfun = stepfunConfig()
 const amap = amapConfig()
+const users = createUserStore(process.env.USERS_FILE || fileURLToPath(new URL('./data/users.json', import.meta.url)))
 
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -130,10 +132,35 @@ const routes = {
   },
 }
 
+async function authRoute(req, res, path) {
+  const token = readCookie(req, SESSION_COOKIE)
+  if (req.method === 'GET' && path === '/api/auth/me') {
+    const user = users.userForToken(token)
+    return user ? send(res, 200, { user: { id: user.id, username: user.username, createdAt: user.createdAt } }) : send(res, 401, { error: '请先登录' })
+  }
+  if (req.method !== 'POST') return send(res, 404, { error: '接口不存在' })
+  if (req.headers['x-memory-agent'] !== 'web') return send(res, 403, { error: '请求来源未通过校验' })
+  if (path === '/api/auth/logout') {
+    users.logout(token)
+    res.setHeader('Set-Cookie', sessionCookie('', 0))
+    return send(res, 200, { ok: true })
+  }
+  const body = await readJson(req)
+  const result = path === '/api/auth/register' ? await users.register(body)
+    : path === '/api/auth/login' ? await users.login(body, req.socket.remoteAddress)
+      : { status: 404, error: '接口不存在' }
+  if (result.error) return send(res, result.status, { error: result.error })
+  res.setHeader('Set-Cookie', sessionCookie(result.token, users.sessionMaxAge))
+  return send(res, result.status, { user: result.user })
+}
+
 const server = http.createServer(async (req, res) => {
   const path = new URL(req.url || '/', 'http://localhost').pathname
   try {
-    if (path.startsWith('/_AMapService/')) return await proxyAmapService(amap, req, res)
+    if (path.startsWith('/api/auth/')) return await authRoute(req, res, path)
+    // Everything below spends StepFun or AMap quota, so it needs a signed-in user
+    const signedIn = () => Boolean(users.userForToken(readCookie(req, SESSION_COOKIE)))
+    if (path.startsWith('/_AMapService/')) return signedIn() ? await proxyAmapService(amap, req, res) : send(res, 401, { error: '请先登录' })
     if (req.method === 'GET' && path === '/api/config') {
       const ready = Boolean(stepfun.apiKey && stepfun.model)
       return send(res, 200, {
@@ -149,6 +176,7 @@ const server = http.createServer(async (req, res) => {
     const handler = req.method === 'POST' && path === '/api/asr' ? 'asr' : routes[`${req.method} ${path}`]
     if (!handler) return send(res, 404, { error: '接口不存在' })
     if (req.headers['x-memory-agent'] !== 'web') return send(res, 403, { error: '请求来源未通过校验' })
+    if (!signedIn()) return send(res, 401, { error: '登录已过期，请重新登录' })
 
     if (handler === 'asr') {
       const audio = await readBody(req, 10 * 1024 * 1024)

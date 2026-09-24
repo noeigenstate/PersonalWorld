@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import http from 'node:http'
 import { spawn } from 'node:child_process'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 // One mock server stands in for both StepFun and the AMap web service
 const requests = []
@@ -35,6 +38,7 @@ const mock = http.createServer(async (req, res) => {
 await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve))
 const mockBase = `http://127.0.0.1:${mock.address().port}`
 
+const usersFile = join(mkdtempSync(join(tmpdir(), 'pw-users-')), 'users.json')
 const api = spawn(process.execPath, ['server/index.mjs'], {
   cwd: process.cwd(),
   env: {
@@ -47,6 +51,7 @@ const api = spawn(process.execPath, ['server/index.mjs'], {
     AMAP_WEB_SERVICE_KEY: 'mock-amap',
     AMAP_JS_KEY: '',
     AMAP_JS_SECURITY_CODE: '',
+    USERS_FILE: usersFile,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
@@ -65,11 +70,36 @@ const apiPort = await new Promise((resolve, reject) => {
 const apiBase = `http://127.0.0.1:${apiPort}`
 const headers = { 'Content-Type': 'application/json', 'X-Memory-Agent': 'web' }
 const post = (path, body) => fetch(`${apiBase}${path}`, { method: 'POST', headers, body: JSON.stringify(body) })
+const cookieOf = (response) => (response.headers.get('set-cookie') || '').split(';')[0]
 const last = (path) => requests.filter((r) => r.path === path).at(-1)
 
 try {
   const badRequest = await fetch(`${apiBase}/api/analyze`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
   assert.equal(badRequest.status, 403)
+
+  // Accounts: username + password only; quota endpoints need a session
+  const anonymous = await post('/api/butler', { question: '你好' })
+  assert.equal(anonymous.status, 401, '未登录不能调用人生管家')
+  assert.equal((await fetch(`${apiBase}/api/auth/me`)).status, 401)
+  assert.equal((await post('/api/auth/register', { username: 'a', password: '123456' })).status, 400, '用户名太短')
+  assert.equal((await post('/api/auth/register', { username: '小丁', password: '12345' })).status, 400, '密码太短')
+  const registered = await post('/api/auth/register', { username: '小丁', password: 'secret12' })
+  assert.equal(registered.status, 201)
+  assert.equal((await registered.json()).user.username, '小丁')
+  const setCookie = registered.headers.get('set-cookie')
+  assert.match(setCookie, /pw_session=[^;]+; Path=\/; HttpOnly; SameSite=Lax/)
+  assert.equal((await post('/api/auth/register', { username: '小丁', password: 'another1' })).status, 409, '用户名重复')
+  const stored = readFileSync(usersFile, 'utf8')
+  assert.ok(!stored.includes('secret12'), '密码不能明文保存')
+  assert.ok(!stored.includes(cookieOf(registered).split('=')[1]), '会话令牌只保存哈希')
+  assert.equal((await post('/api/auth/login', { username: '小丁', password: 'wrong-pass' })).status, 401)
+  const loggedIn = await post('/api/auth/login', { username: '小丁', password: 'secret12' })
+  assert.equal(loggedIn.status, 200)
+  headers.Cookie = cookieOf(loggedIn)
+  const me = await (await fetch(`${apiBase}/api/auth/me`, { headers })).json()
+  assert.equal(me.user.username, '小丁')
+  for (let i = 0; i < 5; i++) await post('/api/auth/login', { username: 'nobody', password: 'wrong-pass' })
+  assert.equal((await post('/api/auth/login', { username: 'nobody', password: 'wrong-pass' })).status, 429, '连续失败后暂时锁定')
 
   const config = await (await fetch(`${apiBase}/api/config`)).json()
   assert.equal(config.geocode, true)
@@ -126,13 +156,13 @@ try {
   // Speech to text: WAV in, StepFun multipart out
   const wav = Buffer.alloc(64)
   wav.write('RIFF', 0, 'ascii')
-  const asr = await fetch(`${apiBase}/api/asr`, { method: 'POST', headers: { 'Content-Type': 'audio/wav', 'X-Memory-Agent': 'web' }, body: wav })
+  const asr = await fetch(`${apiBase}/api/asr`, { method: 'POST', headers: { ...headers, 'Content-Type': 'audio/wav' }, body: wav })
   assert.equal(asr.status, 200)
   assert.equal((await asr.json()).text, '那时候发生了什么？')
   const asrCall = last('/v1/audio/transcriptions')
   assert.match(asrCall.type, /^multipart\/form-data/)
   assert.match(asrCall.raw.toString('latin1'), /name="model"\r\n\r\nstepaudio-2\.5-asr/)
-  const notWav = await fetch(`${apiBase}/api/asr`, { method: 'POST', headers: { 'Content-Type': 'audio/wav', 'X-Memory-Agent': 'web' }, body: Buffer.alloc(64) })
+  const notWav = await fetch(`${apiBase}/api/asr`, { method: 'POST', headers: { ...headers, 'Content-Type': 'audio/wav' }, body: Buffer.alloc(64) })
   assert.equal(notWav.status, 400)
 
   // Text to speech strips the uncertainty brackets
@@ -145,9 +175,15 @@ try {
 
   const chatRemoved = await post('/api/chat', {})
   assert.equal(chatRemoved.status, 404, '旧的回忆对话接口已移除')
-  const amapProxy = await fetch(`${apiBase}/_AMapService/v3/log/init`)
+  assert.equal((await fetch(`${apiBase}/_AMapService/v3/log/init`)).status, 401, '未登录不能使用高德代理')
+  const amapProxy = await fetch(`${apiBase}/_AMapService/v3/log/init`, { headers })
   assert.equal(amapProxy.status, 503, '缺少安全密钥时高德代理应拒绝')
-  console.log('API test passed: guard, analysis, geocode (GCJ-02), butler, ASR, TTS, AMap proxy.')
+
+  // Logging out ends the session
+  assert.equal((await post('/api/auth/logout', {})).status, 200)
+  assert.equal((await fetch(`${apiBase}/api/auth/me`, { headers })).status, 401)
+  assert.equal((await post('/api/tts', { text: '你好' })).status, 401)
+  console.log('API test passed: accounts, guard, analysis, geocode (GCJ-02), butler, ASR, TTS, AMap proxy, logout.')
 } finally {
   api.kill()
   await new Promise((resolve) => mock.close(resolve))

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Aperture, ChevronLeft, CircleHelp, Plus, Upload, X } from 'lucide-react'
-import { analyzeEvent, askButler, fetchAiConfig, geocode, speak, transcribe, type ButlerFocus, type ButlerTurn } from './lib/api'
+import { Aperture, ChevronLeft, CircleHelp, LogOut, Plus, Upload, UserRound, X } from 'lucide-react'
+import { analyzeEvent, askButler, fetchAiConfig, geocode, speak, transcribe, type Account, type ButlerFocus, type ButlerTurn } from './lib/api'
 import { importFiles } from './lib/import'
 import { baseAt, cityLabel, derivePlaces, firstsOf, formatYearMonth, regroupDrafts, roleLabels, spaceLine, storyLine } from './lib/memory'
 import { startRecording } from './lib/recorder'
@@ -19,7 +19,7 @@ const TIMEBAR_HEIGHT = 128
 const uid = () => crypto.randomUUID()
 const years = (from: string, to: string) => Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / (365.25 * 86400000)))
 
-export default function App() {
+export default function App({ account, onSignOut }: { account: Account; onSignOut: () => void }) {
   const [memory, setMemory] = useState<MemoryState>(initialMemory)
   const [ready, setReady] = useState(false)
   const [aiConfig, setAiConfig] = useState<AiConfig>({ available: false, mode: 'unconfigured', message: '正在检查 AI 连接…', geocode: false })
@@ -278,6 +278,8 @@ export default function App() {
         <div className="app-actions">
           <span className={`connection-status ${aiConfig.available ? 'online' : ''}`} title={aiConfig.message}><span />{aiConfig.available ? 'StepFun 已连接' : '本地模式'}</span>
           <button className="button button-primary top-import" onClick={() => setImportOpen(true)}><Plus size={16} />导入影像</button>
+          <span className="account" title={`已登录：${account.username}`}><UserRound size={15} /><span>{account.username}</span></span>
+          <button className="icon-button" onClick={() => { stopSpeaking(); onSignOut() }} aria-label="退出登录" title="退出登录"><LogOut size={17} /></button>
         </div>
       </header>
 

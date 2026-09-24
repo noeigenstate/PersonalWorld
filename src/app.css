@@ -125,6 +125,26 @@ body{overflow:hidden}
 .photo-open{position:relative}
 .gps-mark{position:absolute;right:6px;bottom:6px;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:#ffffffd9;color:var(--space)}
 
+/* Account */
+.account{display:flex;align-items:center;gap:5px;font-size:12px;color:#3d424b;max-width:9em;white-space:nowrap}
+.account span{overflow:hidden;text-overflow:ellipsis}
+.auth{min-height:100%;height:100%;overflow-y:auto;display:grid;place-items:center;padding:24px 16px;background:linear-gradient(180deg,#bfe2f3 0%,#dcf0f8 45%,#e9f0cb 100%)}
+.auth-card{width:min(400px,100%);background:#fff;border-radius:24px;padding:32px 30px 24px;box-shadow:0 18px 50px #1d3b5a2b}
+.auth-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;letter-spacing:-.02em;margin-bottom:22px}
+.auth-card h1{margin:0;font-size:28px;letter-spacing:-.03em}
+.auth-sub{margin:6px 0 20px;color:var(--muted);font-size:14px}
+.auth-notice{margin:-8px 0 16px;font-size:13px;color:#a35300;background:#fdf1e3;border-radius:8px;padding:8px 10px}
+.auth form{display:flex;flex-direction:column}
+.auth label{font-size:12px;font-weight:600;color:#4f5560;margin:0 0 6px}
+.auth input{height:44px;border:1px solid #d9dce3;border-radius:10px;padding:0 12px;font-size:15px;margin-bottom:14px}
+.auth input:focus{border-color:var(--blue);outline:none;box-shadow:0 0 0 3px #0071e326}
+.auth-error{margin:-4px 0 12px;font-size:13px;color:#b3261e}
+.auth-submit{height:46px;font-size:15px;margin-top:4px}
+.auth-switch{text-align:center;font-size:13px;color:var(--muted);margin:16px 0 0}
+.auth-switch button{border:0;background:none;color:var(--blue);font-weight:600;padding:0 2px}
+.auth-local{display:flex;gap:6px;align-items:flex-start;font-size:12px;line-height:1.6;color:var(--muted);border-top:1px solid var(--line);margin:18px 0 0;padding-top:14px}
+.auth-local svg{flex:none;margin-top:2px;color:var(--space)}
+
 /* Notices sit under the top bar so they never cover the time bar or the butler */
 .toast{top:calc(var(--bar) + 12px);bottom:auto}
 
@@ -135,7 +155,7 @@ body{overflow:hidden}
 }
 @media(max-width:640px){
   .app-bar{grid-template-columns:auto 1fr auto;padding:0 14px;gap:10px}
-  .app-brand span{display:none}
+  .app-brand span,.account span{display:none}
   .app-tabs{gap:18px;justify-content:center}
   .map-heading{top:12px;left:12px;padding:10px 12px}
   .map-heading h1{font-size:22px}

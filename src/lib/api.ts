@@ -2,13 +2,36 @@ import type { AiConfig, AnalysisResult, GeocodeResult, MemoryAsset, MemoryEvent,
 
 const headers = { 'Content-Type': 'application/json', 'X-Memory-Agent': 'web' }
 
+export const SIGNED_OUT_EVENT = 'pw:signed-out'
+
 async function jsonResponse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => ({}))
+  if (response.status === 401 && !response.url.includes('/api/auth/')) window.dispatchEvent(new Event(SIGNED_OUT_EVENT))
   if (!response.ok) throw new Error(data.error || `请求失败（${response.status}）`)
   return data as T
 }
 
 const post = (path: string, body: unknown) => fetch(path, { method: 'POST', headers, body: JSON.stringify(body) })
+
+export interface Account { id: string; username: string; createdAt: string }
+
+export async function fetchAccount(): Promise<Account | null> {
+  const response = await fetch('/api/auth/me')
+  if (response.status === 401) return null
+  return (await jsonResponse<{ user: Account }>(response)).user
+}
+
+export async function signUp(username: string, password: string): Promise<Account> {
+  return (await jsonResponse<{ user: Account }>(await post('/api/auth/register', { username, password }))).user
+}
+
+export async function signIn(username: string, password: string): Promise<Account> {
+  return (await jsonResponse<{ user: Account }>(await post('/api/auth/login', { username, password }))).user
+}
+
+export async function signOut(): Promise<void> {
+  await post('/api/auth/logout', {})
+}
 
 export async function fetchAiConfig(): Promise<AiConfig> {
   return jsonResponse<AiConfig>(await fetch('/api/config'))
