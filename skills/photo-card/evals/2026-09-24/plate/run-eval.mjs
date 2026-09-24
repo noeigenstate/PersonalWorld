@@ -2,7 +2,7 @@
 // 1200 px preview vs. 2560 px from the original. Real StepFun, RUNS per combination.
 //
 // Ground truth: at native resolution the first (province) character is an unreadable blur
-// behind a rainy windscreen, so the only correct reading is "?A 12345". (An earlier guess of
+// behind a rainy windscreen, so the only correct reading is "?A·*****". (An earlier guess of
 // 青A from the scenery was itself unreliable.) The photo is personal and not in git.
 //
 // Two scores: what the model wrote, and what the app shows after server/photoCard.mjs.
@@ -34,7 +34,8 @@ function placedByPlate(card) {
 }
 
 function grade(raw) {
-  const plate = texts(raw).join('\n').match(new RegExp(`([${PROVINCES}?？])\\s?A\\s?·?\\s?12345`))
+  // Any 5-character serial after "A": the real plate number is not kept in the repository
+  const plate = texts(raw).join('\n').match(new RegExp(`([${PROVINCES}?？])\\s?A\\s?·?\\s?[A-Z0-9]{5}`))
   const served = readCard(raw, { consented: true })
   return {
     plateRead: plate ? plate[1] : null,
