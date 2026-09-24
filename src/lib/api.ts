@@ -64,7 +64,7 @@ export async function generatePhotoCard(asset: MemoryAsset, facts: PhotoFacts): 
   if (!asset.preview) throw new Error('这张照片没有可用的预览图')
   return jsonResponse(await post('/api/photo-card', {
     image: { dataUrl: asset.preview },
-    facts: { fileName: facts.fileName, time: asset.capturedAt, timeSource: facts.timeSource, latitude: facts.latitude, longitude: facts.longitude, city: facts.city, address: facts.address, size: facts.size },
+    facts: { fileName: facts.fileName, time: asset.capturedAt, timeSource: facts.timeSource, latitude: facts.latitude, longitude: facts.longitude, city: facts.city, address: facts.address, size: facts.size, device: facts.device },
   }))
 }
 

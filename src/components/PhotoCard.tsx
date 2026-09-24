@@ -66,9 +66,13 @@ export function PhotoCard({ asset, event, aiAvailable, busy, onGenerate, peers }
         <dl className="pc-facts">
           <div><dt>时间</dt><dd>{facts.time}<small className={facts.timeSource === 'exif' ? '' : 'warn'}>{facts.timeNote}</small></dd></div>
           <div><dt>地点</dt><dd>{facts.place}<small>{facts.placeNote}</small></dd></div>
+          <div><dt>设备</dt><dd>{facts.device || '未知'}</dd></div>
           <div><dt>尺寸</dt><dd>{facts.size}</dd></div>
           <div><dt>文件</dt><dd className="pc-file">{facts.fileName}</dd></div>
         </dl>
+        {facts.stripped && (
+          <p className="pc-stripped">这张图不含拍摄信息（时间、定位、设备都已被去掉），常见于微信、QQ 发送的非原图。想要完整信息，请发送时勾选"原图"，或从手机相册用数据线、AirDrop 导出原图后再导入。</p>
+        )}
       </section>
 
       {card ? (

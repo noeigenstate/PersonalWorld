@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ArrowRight, CheckCircle2, ShieldCheck, Upload, X } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Info, ShieldCheck, Upload, X } from 'lucide-react'
 
 export function ImportDialog({ importing, onFiles, onClose }: { importing: boolean; onFiles: (files: File[]) => void; onClose: () => void }) {
   const [dragging, setDragging] = useState(false)
@@ -25,8 +25,9 @@ export function ImportDialog({ importing, onFiles, onClose }: { importing: boole
         <div className="import-notes">
           <span><ShieldCheck size={16} />原始文件保存在本浏览器</span>
           <span><CheckCircle2 size={16} />自动跳过完全重复文件</span>
+          <span><Info size={16} />微信发送的图片会丢失拍摄时间、定位和设备；请用"原图"或从相册导出</span>
         </div>
-        <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/*" multiple hidden onChange={(event) => { onFiles(Array.from(event.target.files || [])); event.target.value = '' }} />
+        <input ref={input} type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif,video/*" multiple hidden onChange={(event) => { onFiles(Array.from(event.target.files || [])); event.target.value = '' }} />
       </section>
     </div>
   )

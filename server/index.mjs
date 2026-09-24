@@ -96,6 +96,7 @@ const routes = {
       `GPS：${facts.latitude && facts.longitude ? `${facts.latitude},${facts.longitude}` : '无'}`,
       `城市：${String(facts.city || '未知')} ${String(facts.address || '')}`.trim(),
       `尺寸：${String(facts.size || '未知')}`,
+      `拍摄设备：${String(facts.device || '未知').slice(0, 60)}`,
       `隐私声明：${consented ? '用户已同意' : '用户未同意'}`,
     ].join('\n')
     const answer = parseJsonAnswer(await chat(stepfun, [

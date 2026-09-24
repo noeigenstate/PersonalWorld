@@ -11,9 +11,15 @@ export interface MemoryAsset {
   dateSource: 'exif' | 'filename' | 'file'
   width?: number
   height?: number
+  // 'none' when the file carries no EXIF at all (chat apps strip it unless sent as original)
+  metadata?: 'exif' | 'none'
+  camera?: { make?: string; model?: string; lens?: string }
   // WGS-84, as stored in the photo's EXIF
   latitude?: number
   longitude?: number
+  altitude?: number
+  // Compass bearing the camera faced, 0 = north
+  direction?: number
   preview: string
   hash: string
   // 4×4 colour layout of the preview, used to rank similar photos

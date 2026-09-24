@@ -16,11 +16,13 @@
     "test:amap": "node tests/amap.mjs",
     "test:card": "node tests/photo-card.mjs",
     "test:context": "node tests/photo-context.mjs",
+    "test:metadata": "node tests/metadata.mjs",
     "test:skills": "node --test skills/*/test.mjs .claude/skills/*/test.mjs"
   },
   "dependencies": {
     "dotenv": "18.0.3",
     "exifr": "7.1.3",
+    "heic2any": "^0.0.4",
     "idb": "8.0.3",
     "lucide-react": "1.47.0",
     "react": "19.3.0",

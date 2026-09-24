@@ -4,6 +4,8 @@ import { cityLabel, formatDate } from './memory'
 // What the app itself knows about a photo. These are facts; the photo card's AI part is not.
 export interface PhotoFacts {
   fileName: string
+  device: string
+  stripped: boolean
   time: string
   timeNote: string
   timeSource: MemoryAsset['dateSource']
@@ -30,8 +32,11 @@ export function photoFacts(asset: MemoryAsset, event?: MemoryEvent, dimensions?:
   const hasGps = asset.latitude !== undefined && asset.longitude !== undefined
   const city = event?.city && event.citySource !== 'ai' ? event.city : undefined
   const dims = dimensions || (asset.width && asset.height ? { width: asset.width, height: asset.height } : undefined)
+  const device = [asset.camera?.make, asset.camera?.model].filter(Boolean).join(' ')
   return {
     fileName: asset.name,
+    device: [device, asset.camera?.lens].filter(Boolean).join(' · '),
+    stripped: asset.metadata === 'none',
     time: formatDate(asset.capturedAt, { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
     timeNote: timeNotes[asset.dateSource] || timeNotes.file,
     timeSource: asset.dateSource,

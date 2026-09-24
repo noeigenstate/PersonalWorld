@@ -100,14 +100,36 @@ export interface ImportResult {
   rejected: string[]
 }
 
+const SUPPORTED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const isHeic = (file: File) => /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
+
+// Chrome can't decode HEIC (iPhone originals); convert only for the preview, keep the original file
+async function heicAsJpeg(file: File): Promise<File> {
+  const { default: heic2any } = await import('heic2any')
+  const out = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 })
+  return new File([Array.isArray(out) ? out[0] : out], file.name.replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' })
+}
+
+const text = (value: unknown) => (typeof value === 'string' && value.trim() ? value.trim() : undefined)
+const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
+
+export function cameraFrom(exif: Record<string, unknown>): MemoryAsset['camera'] {
+  const make = text(exif.Make)
+  let model = text(exif.Model)
+  // "HUAWEI" + "HUAWEI P60" → show once
+  if (make && model && model.toLowerCase().startsWith(make.toLowerCase())) model = model.slice(make.length).trim() || model
+  const lens = text(exif.LensModel)
+  return make || model || lens ? { make, model, lens } : undefined
+}
+
 export async function importFiles(files: File[], existingHashes: string[]): Promise<ImportResult> {
   const hashes = new Set(existingHashes)
   const assets: MemoryAsset[] = []
   const rejected: string[] = []
   let duplicates = 0
   for (const file of files) {
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type) && !file.type.startsWith('video/')) {
-      rejected.push(`${file.name}：目前支持 JPG、PNG、WebP、GIF 和浏览器可播放的视频`)
+    if (!SUPPORTED.includes(file.type) && !isHeic(file) && !file.type.startsWith('video/')) {
+      rejected.push(`${file.name}：目前支持 JPG、PNG、WebP、GIF、HEIC 和浏览器可播放的视频`)
       continue
     }
     if (file.size > maxFileSize) {
@@ -124,15 +146,16 @@ export async function importFiles(files: File[], existingHashes: string[]): Prom
       let exif: Record<string, unknown> = {}
       let gps: { latitude?: number; longitude?: number } = {}
       if (!isVideo) {
-        exif = (await exifr.parse(file).catch(() => null)) || {}
+        exif = (await exifr.parse(file, { tiff: true, exif: true, gps: true, xmp: true, mergeOutput: true }).catch(() => null)) || {}
         gps = (await exifr.gps(file).catch(() => null)) || {}
       }
+      const hasExif = Boolean(exif.DateTimeOriginal || exif.CreateDate || exif.Make || exif.Model || gps.latitude !== undefined)
       const captureDate = validDate(exif.DateTimeOriginal) || validDate(exif.CreateDate) || validDate(exif.ModifyDate)
       const namedDate = captureDate ? undefined : timeFromFileName(file.name)
       const date = captureDate || namedDate || new Date(file.lastModified || Date.now())
       const name = file.name.toLowerCase()
       const kind = isVideo ? 'video' : /screenshot|screen shot|截屏|截图|屏幕快照/.test(name) ? 'screenshot' : 'image'
-      const preview = isVideo ? await videoPreview(file) : await imagePreview(file)
+      const preview = isVideo ? await videoPreview(file) : await imagePreview(isHeic(file) ? await heicAsJpeg(file) : file)
       if (!isVideo && !preview) {
         rejected.push(`${file.name}：浏览器无法预览这个图片格式`)
         continue
@@ -146,6 +169,10 @@ export async function importFiles(files: File[], existingHashes: string[]): Prom
         capturedAt: date.toISOString(),
         dateSource: captureDate ? 'exif' : namedDate ? 'filename' : 'file',
         signature: preview ? await colorSignature(preview).catch(() => undefined) : undefined,
+        metadata: isVideo ? undefined : hasExif ? 'exif' : 'none',
+        camera: cameraFrom(exif),
+        altitude: num(exif.GPSAltitude),
+        direction: num(exif.GPSImgDirection),
         width: isVideo ? undefined : lastSize?.width,
         height: isVideo ? undefined : lastSize?.height,
         latitude: gps.latitude,
