@@ -88,6 +88,7 @@ try {
   // Accounts: username + password only; quota endpoints need a session
   const anonymous = await post('/api/butler', { question: '你好' })
   assert.equal(anonymous.status, 401, '未登录不能调用人生管家')
+  assert.equal((await post('/api/map-scene', { lng: 120.13, lat: 30.26 })).status, 401, '区域场景也需要登录')
   assert.equal((await fetch(`${apiBase}/api/auth/me`)).status, 401)
   assert.equal((await post('/api/auth/register', { username: 'a', password: '123456', acceptPrivacy: true })).status, 400, '用户名太短')
   assert.equal((await post('/api/auth/register', { username: '小丁', password: '12345', acceptPrivacy: true })).status, 400, '密码太短')
@@ -115,6 +116,7 @@ try {
   const config = await (await fetch(`${apiBase}/api/config`)).json()
   assert.equal(config.geocode, true)
   assert.equal(config.amapJsKey, undefined, '缺少安全密钥时不应下发 JS Key')
+  assert.equal((await post('/api/map-scene', { lng: 'bad', lat: 30.26 })).status, 400, '区域场景拒绝无效坐标')
 
   // Event analysis
   const analyzed = await post('/api/analyze', { images: [{ name: 'beach.jpg', capturedAt: '2026-09-23T10:00:00Z', dataUrl: 'data:image/jpeg;base64,/9j/2Q==' }], context: { city: '三亚市', address: '天涯区' } })

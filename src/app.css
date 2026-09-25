@@ -50,6 +50,8 @@ body{overflow:hidden}
 .map-scene-caption strong{font-size:12px}
 .map-scene-caption small{font-size:10px;line-height:1.4;color:#78675d}
 .map-scene-source{position:absolute;right:20px;bottom:138px;z-index:4;padding:4px 8px;border-radius:8px;background:#fffaf3d9;color:#5a5a5a;font-size:10px;text-decoration:none;box-shadow:0 1px 5px #735e4220}
+.map-scene-source a{color:inherit;text-decoration:none;margin-left:6px}
+.map-scene-source a:first-child{margin-left:0}
 .map-scene-source[hidden]{display:none}
 .map-label.small{padding:4px 9px 5px;border-width:1.5px;border-radius:9px}
 .map-label.small strong{font-size:12px}

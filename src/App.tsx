@@ -143,7 +143,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     const cardLandmark = a.card?.landmark && a.card.landmark.confidence >= 0.7 ? a.card.landmark.name : undefined
     const nearbyLandmark = a.location?.poi?.name || (a.location?.precision === 'poi' ? a.location.label : undefined)
     const placeLandmark = /东方明珠|oriental\s*pearl/i.test(nearbyLandmark || '') ? nearbyLandmark : undefined
-    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined }]
+    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision: a.location?.precision || 'point', landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined }]
   }), [memory.assets])
 
   function openPhoto(assetId: string) {

@@ -8,6 +8,7 @@ import { loadSkill } from './skills.mjs'
 import { maskDeep } from './privacy.mjs'
 import { contextMessages, readContext } from './photoContext.mjs'
 import { cardMessages, readCard } from './photoCard.mjs'
+import { mapSceneForPoint } from './mapScene.mjs'
 
 loadEnv({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
@@ -55,6 +56,10 @@ function compactEvent(event) {
 }
 
 const routes = {
+  async 'POST /api/map-scene'(body) {
+    if (typeof body.lng !== 'number' || typeof body.lat !== 'number' || !Number.isFinite(body.lng) || !Number.isFinite(body.lat) || Math.abs(body.lng) > 180 || Math.abs(body.lat) > 85) return [400, { error: '地点坐标无效' }]
+    return [200, await mapSceneForPoint(body.lng, body.lat)]
+  },
   async 'POST /api/analyze'(body, user) {
     const consented = user.privacyVersion === PRIVACY_VERSION
     const images = Array.isArray(body.images) ? body.images.slice(0, 6) : []
@@ -180,7 +185,7 @@ const server = http.createServer(async (req, res) => {
   const path = new URL(req.url || '/', 'http://localhost').pathname
   try {
     if (path.startsWith('/api/auth/')) return await authRoute(req, res, path)
-    // Everything below spends StepFun or AMap quota, so it needs a signed-in user
+    // Personal data and the external map services below need a signed-in user.
     const currentUser = () => users.userForToken(readCookie(req, SESSION_COOKIE))
     const signedIn = () => Boolean(currentUser())
     if (path.startsWith('/_AMapService/')) return signedIn() ? await proxyAmapService(amap, req, res) : send(res, 401, { error: '请先登录' })

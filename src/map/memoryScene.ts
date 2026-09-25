@@ -53,34 +53,20 @@ function tree(parent: THREE.Group, x: number, z: number, size = 1) {
   shape(parent, new THREE.IcosahedronGeometry(4.7 * size, 1), P.mint, x + 1.3 * size, 12 * size, z)
 }
 
-function toyHouse(parent: THREE.Group, x: number, z: number, w: number, d: number, h: number, wall: number, roof: number) {
-  cuboid(parent, x, h / 2 + 1, z, w, h, d, wall)
-  cuboid(parent, x, h + 2.4, z, w + 3.5, 3.7, d + 3.5, roof)
-  cuboid(parent, x, h + 4.7, z, w * 0.54, 1.2, d * 0.5, P.cream)
-  const rows = Math.max(2, Math.floor(h / 7))
-  const cols = Math.max(2, Math.floor(w / 6))
-  for (let row = 0; row < rows; row++) for (let col = 0; col < cols; col++) {
-    const wx = x - w / 2 + ((col + 1) * w) / (cols + 1)
-    const wy = 5 + row * ((h - 5) / rows)
-    cuboid(parent, wx, wy, z + d / 2 + 0.15, 2.2, 2.9, 0.3, P.cream)
-    cuboid(parent, wx, wy, z + d / 2 + 0.35, 1.55, 2.2, 0.24, P.glass)
-  }
-  cuboid(parent, x, 3.5, z + d / 2 + 0.45, 3.5, 6, 0.8, P.berry)
-}
-
 function storybook(photo: MapPhoto): MemoryScene {
   const group = new THREE.Group()
   const random = seeded([...photo.id].reduce((hash, c) => (hash * 31 + c.charCodeAt(0)) % 2147483647, 7))
-  const walls = [P.cream, P.pink, P.mint, P.lilac]
-  const roofs = [P.berry, P.sage, P.blue, P.gold]
-  disc(group, 0, 0.8, 0, 43, 1.6, P.stone, 48)
-  disc(group, 0, 1.9, 0, 39, 0.7, P.cream, 48)
-  ring(group, 0, 2.3, 0, 36, 0.55, P.pink)
-  toyHouse(group, -15, -8, 16, 13, 28, walls[Math.floor(random() * walls.length)], roofs[Math.floor(random() * roofs.length)])
-  toyHouse(group, 14, 11, 14, 12, 20, walls[Math.floor(random() * walls.length)], roofs[Math.floor(random() * roofs.length)])
-  for (const [x, z, s] of [[-26, 12, 0.9], [27, -12, 0.8], [-3, 27, 0.7], [26, 24, 0.55]] as const) tree(group, x, z, s)
-  group.scale.setScalar(1.7)
-  return { group, radius: 100, label: '照片地点 · 玩具小景示意' }
+  const accents = [P.pink, P.mint, P.lilac, P.blue]
+  const accent = accents[Math.floor(random() * accents.length)]
+  // A neutral memory marker leaves the actual local buildings to the map extract.
+  disc(group, 0, 1, 0, 23, 2, P.stone, 40)
+  disc(group, 0, 2.3, 0, 20, .7, P.cream, 40)
+  ring(group, 0, 2.8, 0, 19, .65, accent)
+  disc(group, 0, 7, 0, 3, 10, P.cream, 16)
+  shape(group, new THREE.SphereGeometry(8, 20, 14), accent, 0, 17, 0)
+  ring(group, 0, 17, 0, 8, .6, P.gold)
+  for (const [x, z, s] of [[-24, 13, .7], [25, -12, .75], [-8, -28, .6], [20, 24, .55]] as const) tree(group, x, z, s)
+  return { group, radius: 38, label: '照片地点 · 记忆锚点示意' }
 }
 
 function pearl(): MemoryScene {
@@ -155,7 +141,3 @@ export function createMemoryScene(photo: MapPhoto): MemoryScene {
 }
 
 export const createOrientalPearlScene = pearl
-
-export function inEastChina([lng, lat]: [number, number]) {
-  return lng >= 115 && lng <= 123.8 && lat >= 25 && lat <= 36.5
-}

@@ -11,7 +11,22 @@ type Point = [number, number]
 type Polygon = { id: string; rings: Point[][]; height?: string | null; levels?: string | null }
 type Road = { id: string; class: string; path: Point[] }
 type Archetype = 0 | 1 | 2 | 3 // low, mid-rise, tower, broad hall
-const data = snapshot as unknown as { bbox: [number, number, number, number]; buildings: Polygon[]; roads: Road[]; water: Polygon[]; green: Polygon[]; landuse: (Polygon & { kind: string })[]; plazas: Polygon[]; treeRows: { id: string; path: Point[] }[] }
+export interface SceneData {
+  source: string
+  license: string
+  provider?: string
+  bbox: [number, number, number, number]
+  buildings: Polygon[]
+  roads: Road[]
+  water: Polygon[]
+  green: Polygon[]
+  sand?: Polygon[]
+  landuse: (Polygon & { kind: string })[]
+  plazas: Polygon[]
+  treeRows: { id: string; path: Point[] }[]
+  coast?: boolean
+}
+export const shanghaiScene = snapshot as unknown as SceneData
 type Convert = (points: Point[]) => Point[]
 
 const palettes = [
@@ -482,8 +497,10 @@ function illustrateTraffic(group: THREE.Group, roads: { path: Point[]; major: bo
   group.add(body, cabin)
 }
 
-export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL_PEARL_GCJ, clearRadius = 45) {
+export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL_PEARL_GCJ, clearRadius = 45, data: SceneData = shanghaiScene) {
   const group = new THREE.Group()
+  // Sparse vector data must not erase the more complete native AMap buildings.
+  const replaceNativeBuildings = data.buildings.length >= 100
   const transform = (points: Point[]) => convert(points.map(([lng, lat]) => {
     const p = wgs84ToGcj02({ lng, lat })
     return [p.lng, p.lat]
@@ -499,7 +516,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     fragmentShader: 'varying vec2 vUv; void main(){ float e=min(min(vUv.x,1.-vUv.x),min(vUv.y,1.-vUv.y)); float a=smoothstep(0.,.09,e); gl_FragColor=vec4(.942,.895,.832,a); }',
   }))
   ground.position.set((corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2, .02)
-  group.add(ground)
+  if (replaceNativeBuildings) group.add(ground)
 
   const water = data.water.map((polygon) => polygon.rings.map(transform))
   const parks = data.green.map((polygon) => polygon.rings.map(transform))
@@ -508,6 +525,10 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     ['retail', '#f3d5c7'],
     ['residential', '#d9e9c6'],
     ['brownfield', '#e5d6c8'],
+    ['school', '#e7dcf2'],
+    ['college', '#e7dcf2'],
+    ['university', '#e7dcf2'],
+    ['hospital', '#dce9ec'],
   ] as const) {
     const surfaces = data.landuse.filter((polygon) => polygon.kind === kind)
       .map((polygon) => polygonGeometry(polygon.rings.map(transform), .07))
@@ -587,6 +608,8 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
       }`,
   })
   mergedMesh(group, parks.map((rings) => polygonGeometry(rings, .19)).filter((value): value is THREE.ShapeGeometry => value !== null), grassMaterial)
+  const sand = (data.sand || []).map((polygon) => polygon.rings.map(transform))
+  mergedMesh(group, sand.map((rings) => polygonGeometry(rings, .195)).filter((value): value is THREE.ShapeGeometry => value !== null), parcelMaterial('#f1d6ad', 'sand'))
   const plazas = data.plazas.map((polygon) => polygon.rings.map(transform))
   mergedMesh(group, plazas.map((rings) => polygonGeometry(rings, .205)).filter((value): value is THREE.ShapeGeometry => value !== null), parcelMaterial('#f4dec8', 'plaza'))
   group.add(new THREE.Mesh(ribbonGeometry(water.map((rings) => rings[0]), 6, .22), new THREE.MeshBasicMaterial({ color: '#f8e9ce', side: THREE.DoubleSide })))
@@ -633,6 +656,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     if (outer.length < 4) continue
     const center: Point = [outer.reduce((sum, point) => sum + point[0], 0) / outer.length, outer.reduce((sum, point) => sum + point[1], 0) / outer.length]
     occupied.push(outer)
+    if (!replaceNativeBuildings) continue
     if (Math.hypot(center[0] - anchor[0], center[1] - anchor[1]) < clearRadius) continue
     let signedArea = 0
     for (let i = 1; i < outer.length; i++) signedArea += outer[i - 1][0] * outer[i][1] - outer[i][0] * outer[i - 1][1]
@@ -724,5 +748,14 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   shadowGround.receiveShadow = true
   shadowGround.name = 'real-scene-shadows'
   group.add(shadowGround)
-  return { group, bounds: data.bbox }
+  const polygonArea = (rings: Point[][]) => {
+    const ring = rings[0]
+    let twice = 0
+    for (let i = 1; i < ring.length; i++) twice += ring[i - 1][0] * ring[i][1] - ring[i][0] * ring[i - 1][1]
+    return Math.abs(twice) / 2
+  }
+  const waterArea = water.reduce((sum, rings) => sum + polygonArea(rings), 0)
+  const greenArea = parks.reduce((sum, rings) => sum + polygonArea(rings), 0)
+  const kind = data.coast ? '海岸' : waterArea > 18000 ? '水岸' : greenArea > 15000 ? '公园' : data.buildings.length > 20 ? '街区' : '地点'
+  return { group, bounds: data.bbox, kind, hideNativeBuildings: replaceNativeBuildings }
 }

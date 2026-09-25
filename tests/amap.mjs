@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { makeLifeFixtures } from './fixtures.mjs'
+import { mapSceneForPoint } from '../server/mapScene.mjs'
 
 process.loadEnvFile(new URL('../.env', import.meta.url))
 // npm run dev → http://localhost:5183/; npm run dev:lan → BASE_URL=https://localhost:5183/
@@ -25,6 +26,13 @@ page.on('console', (m) => consoleLog.push(`${m.type()}: ${m.text().slice(0, 200)
 
 await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'amap-test', username: '测试', createdAt: '2026-09-24T00:00:00Z', privacyAccepted: true } } }))
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '测试', geocode: false, amapJsKey: key } }))
+const regionRequests = []
+await page.route('**/api/map-scene', async (route) => {
+  const { lng, lat } = route.request().postDataJSON()
+  regionRequests.push([lng, lat])
+  try { await route.fulfill({ json: await mapSceneForPoint(lng, lat) }) }
+  catch (error) { await route.fulfill({ status: 503, json: { error: error.message } }) }
+})
 // The card itself is mocked; what is tested here is the map search that follows it.
 // Only the landmark photo "recognises" something; other photos without GPS find nothing.
 const cardRequests = []
@@ -103,7 +111,7 @@ try {
   assert.match(await gpsPlace.innerText(), /上海/)
   console.log('GPS photo resolved to:', (await gpsPlace.locator('dd').innerText()).split(String.fromCharCode(10)).join(' | '))
   await page.getByRole('button', { name: '在地图上看' }).click()
-  await page.locator('.map-scene-caption').getByText('照片地点 · 玩具小景示意').waitFor({ timeout: 10000 }).catch(async (error) => {
+  await page.locator('.map-scene-caption').getByText(/照片地点 · 风格化/).waitFor({ timeout: 30000 }).catch(async (error) => {
     await page.screenshot({ path: join(shots, 'pw-amap-generic-debug.png') })
     console.log('generic caption:', await page.locator('.map-scene-caption').evaluate((element) => ({ hidden: element.hidden, text: element.innerText, style: element.style.transform })))
     console.log('browser errors:', errors)
@@ -111,6 +119,30 @@ try {
   })
   await page.waitForTimeout(1200)
   await page.screenshot({ path: join(shots, 'pw-amap-generic-scene.png') })
+  if (await page.getByRole('button', { name: '关闭影像' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭影像' }).click()
+  if (await page.getByRole('button', { name: '关闭事件详情' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭事件详情' }).click()
+
+  // A second city uses the automatic vector-tile district, rather than Pearl's bundled sample.
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.locator('.map-label.place').filter({ hasText: '杭州' }).click()
+  await page.locator('.map-label.event').first().click()
+  await page.locator('.photo-open').first().click()
+  await page.getByRole('button', { name: '在地图上看' }).click()
+  await page.locator('.map-scene-caption').getByText(/照片地点 · 风格化/).waitFor({ timeout: 30000 })
+  assert.ok(regionRequests.some(([lng, lat]) => Math.abs(lng - 120.13) < .1 && Math.abs(lat - 30.26) < .1), '杭州照片区域应读取地理场景数据')
+  assert.match(await page.locator('.map-scene-source').innerText(), /OpenMapTiles.*OpenStreetMap|OpenStreetMap.*OpenMapTiles/)
+  await page.screenshot({ path: join(shots, 'pw-amap-hangzhou-region.png') })
+  if (await page.getByRole('button', { name: '关闭影像' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭影像' }).click()
+  if (await page.getByRole('button', { name: '关闭事件详情' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭事件详情' }).click()
+
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.locator('.map-label.place').filter({ hasText: '武汉' }).click()
+  await page.locator('.map-label.event').first().click()
+  await page.locator('.photo-open').first().click()
+  await page.getByRole('button', { name: '在地图上看' }).click()
+  await page.locator('.map-scene-caption').getByText(/照片地点 · 风格化/).waitFor({ timeout: 30000 })
+  assert.ok(regionRequests.some(([lng, lat]) => Math.abs(lng - 114.365) < .1 && Math.abs(lat - 30.54) < .1), '武汉照片区域也应独立读取地理场景数据')
+  await page.screenshot({ path: join(shots, 'pw-amap-wuhan-region.png') })
   if (await page.getByRole('button', { name: '关闭影像' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭影像' }).click()
   if (await page.getByRole('button', { name: '关闭事件详情' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭事件详情' }).click()
 

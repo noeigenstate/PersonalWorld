@@ -65,7 +65,16 @@ Personal World 的核心是**从照片重建有证据的事件，再把事件投
 - `scripts/extract_shanghai_scene.py` 从 OSM 官方 API 截取 WGS84 边界 `121.486,31.234,121.505,31.251`，简化为 `src/map/data/shanghai-pearl.json`。本次快照含 321 个建筑轮廓、927 段道路、11 块水面、68 块绿地。复现需要 Python `shapely`。项目只打包此小样本，不在用户浏览时请求 OSM API。
 - `src/map/styledDistrict.ts` 在浏览器内把轮廓从 WGS84 转成高德 GCJ02，再用同一相机叠加。楼体使用 6 组奶油色立面窗格和屋顶；道路、水、绿地、树木、水纹和阴影单独生成。缺高度的楼按稳定规则估计，为了美术效果而非真实三维测绘。除轮廓、道路和水绿地外，窗户、树、屋顶细节均是示意。
 - 场景显示时隐藏这片区域的高德原生楼块，周边原生地图继续运行；关闭「3D 记忆场景」即可对照。页面在样本显示时持续标出 `© OpenStreetMap contributors · ODbL`，源数据许可见[OSM 版权页](https://www.openstreetmap.org/copyright)。
-- `npm run build`、`npm run test:amap` 与桌面／手机浏览器截图已验证。测试覆盖样本预览、缩放离开并返回、场景开关、照片点击和拖动。范围仍只限这个上海样本；进一步扩展华东需要逐区检查数据密度、许可和移动端开销。
+- `npm run build`、`npm run test:amap` 与桌面／手机浏览器截图已验证。测试覆盖样本预览、缩放离开并返回、场景开关、照片点击和拖动。此轮范围只限这个上海样本；后续的照片区域自动生成见下节。
+
+## 照片区域自动场景（第三轮）
+
+街道级或更精确的照片按约 450 米聚为到访区域。用户聚焦照片或手动放大到其附近时，浏览器将区域中心从高德 GCJ02 转回 WGS84；本机 `POST /api/map-scene` 按中心截取约 1.8 公里见方的地理轮廓。服务端从 OpenFreeMap 的 OpenStreetMap／OpenMapTiles 矢量瓦片读取建筑、道路、水域、草木覆盖和用地，裁剪后缓存 7 天。区域之间分别生成，照片和事件内容不发送给瓦片服务。源站及署名方式见 [OpenFreeMap 官方说明](https://openfreemap.org/)。
+
+- `src/map/regionScene.ts` 负责区域聚合及坐标转换；`server/mapScene.mjs` 读取和裁剪瓦片；`src/map/styledDistrict.ts` 对所有区域复用材质系统。地理类型由已有水体、海面、绿地和建筑轮廓判断：水岸、海岸、公园或一般街区。学校、医院等用地另有轻微色彩区分，不虚构活动主题。
+- 东方明珠继续使用精修的 OSM 快照和专属塔模型。其他区域没有已证实的地标造型时，照片地点显示统一的中性记忆锚点；建筑仍按当地真实足迹生成。若瓦片建筑轮廓少于 100 个，则保留高德原生 3D 楼体，以免少量开放数据让整片街区变空。只有城市／区县级定位时只显示标明为示意的地点锚点。瓦片暂时不可用时也保留原生地图和锚点。
+- 动态区域在地图上显示 `© OpenMapTiles` 和 `© OpenStreetMap contributors · ODbL`；上海精修快照显示 OSM 署名。卡通楼高的缺失值、立面、屋顶、车辆及增补树木依旧是艺术推断。运行时无 Python／Shapely 依赖；它们只用于复现上海快照。
+- [杭州真实浏览器截图](mockups/map-scene-region-hangzhou-2026-09-25.png)与[武汉真实浏览器截图](mockups/map-scene-region-wuhan-2026-09-25.png)展示两个不同的照片区域。`npm run test:amap` 覆盖杭州、武汉及东方明珠三种入口与地图交互。不同地方的开放建筑资料密度差异很大，尚未让 Agent 从照片自动生成海滩、课堂等主题物件；当前的差异来自真实地理轮廓和用地类别。
 
 ## 可参赛的运行时 skill：`memory-scene-style`（拟议，尚未接入）
 

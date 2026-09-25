@@ -31,6 +31,7 @@ export interface MapPhoto {
   preview: string
   // Place came from the picture or other photos, not the photo's own GPS
   inferred: boolean
+  precision?: 'point' | 'poi' | 'street' | 'district' | 'city' | 'province'
   // A landmark identified in a photo card or in the located place details.
   landmark?: string
   landmarkSource?: 'photo' | 'place'

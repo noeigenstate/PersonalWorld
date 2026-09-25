@@ -6,8 +6,9 @@ import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import type { MemoryEvent } from '../types'
 import { wgs84ToGcj02 } from '../lib/geo'
 import { LAND, adder, box, building, createLabels, dim, eventLabel, placeLabel, seeded } from './objects'
-import { createMemoryScene, createOrientalPearlScene, inEastChina, isOrientalPearl, ORIENTAL_PEARL_GCJ } from './memoryScene'
-import { createStyledDistrict } from './styledDistrict'
+import { createMemoryScene, createOrientalPearlScene, isOrientalPearl, ORIENTAL_PEARL_GCJ } from './memoryScene'
+import { createStyledDistrict, shanghaiScene, type SceneData } from './styledDistrict'
+import { fetchRegionScene, hasStreetLocation, metresApart, regionForPhoto } from './regionScene'
 import type { AMapNS } from './amap'
 import type { LifeMapCallbacks, LifeMapData, MapPhoto } from './scene'
 
@@ -35,12 +36,20 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   const labelLayer = document.createElement('div')
   labelLayer.className = 'life-map-labels'
   container.append(mapEl, canvas, atmosphere, photoLayer, labelLayer)
-  const sceneSource = document.createElement('a')
+  const sceneSource = document.createElement('div')
   sceneSource.className = 'map-scene-source'
-  sceneSource.href = 'https://www.openstreetmap.org/copyright'
-  sceneSource.target = '_blank'
-  sceneSource.rel = 'noopener noreferrer'
-  sceneSource.textContent = '街区轮廓 © OpenStreetMap contributors · ODbL'
+  const osmCredit = document.createElement('a')
+  osmCredit.href = 'https://www.openstreetmap.org/copyright'
+  osmCredit.target = '_blank'
+  osmCredit.rel = 'noopener noreferrer'
+  osmCredit.textContent = '© OpenStreetMap contributors · ODbL'
+  const tileCredit = document.createElement('a')
+  tileCredit.href = 'https://openmaptiles.org/'
+  tileCredit.target = '_blank'
+  tileCredit.rel = 'noopener noreferrer'
+  tileCredit.textContent = '© OpenMapTiles'
+  tileCredit.hidden = true
+  sceneSource.append(osmCredit, tileCredit)
   sceneSource.hidden = true
   container.append(sceneSource)
   const sceneCaption = document.createElement('div')
@@ -108,6 +117,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let memoryAnchor: THREE.Vector3 | null = null
   let activeSceneKey = ''
   let hasStyledDistrict = false
+  let sceneGeneration = 0
   let shadowSceneWasVisible = false
   type BuildingArea = { visible?: boolean; color1?: string; color2?: string; path: [number, number][] }
   let sceneAreas: BuildingArea[] = []
@@ -286,12 +296,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let focusedId: string | null = null
   const shown = new Map<string, HTMLButtonElement>()
   const CELL = 84
-  const metresApart = (a: [number, number], b: [number, number]) => Math.hypot(
-    (a[0] - b[0]) * 111320 * Math.cos(((a[1] + b[1]) * Math.PI) / 360),
-    (a[1] - b[1]) * 111320,
-  )
-
   function clearMemoryScene() {
+    sceneGeneration++
     memoryWorld.traverse((child) => {
       const mesh = child as THREE.Mesh
       mesh.geometry?.dispose()
@@ -314,21 +320,14 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
 
   function focusMemoryScene(photo?: MapPhoto) {
     clearMemoryScene()
+    const generation = sceneGeneration
     const pearl = !photo || isOrientalPearl(photo.landmark)
     const point = pearl ? ORIENTAL_PEARL_GCJ : photo.gcj
-    if (!inEastChina(point)) return
     if (!origin) origin = point
     map.customCoords.setCenter(origin)
     const [x, y] = map.customCoords.lngLatsToCoords([point])[0]
     memoryAnchor = new THREE.Vector3(x, y, 0)
     const miniature = photo ? createMemoryScene(photo) : createOrientalPearlScene()
-    let districtBounds: [number, number, number, number] | undefined
-    if (metresApart(point, ORIENTAL_PEARL_GCJ) < 650) {
-      const district = createStyledDistrict((points) => map.customCoords.lngLatsToCoords(points), point, pearl ? 45 : miniature.radius)
-      memoryWorld.add(district.group)
-      districtBounds = district.bounds
-      hasStyledDistrict = true
-    }
     activeSceneKey = photo ? `${photo.id}:${photo.landmark || ''}:${photo.landmarkSource || ''}:${photo.gcj.join(',')}` : 'public:oriental-pearl'
     const upright = new THREE.Group()
     upright.rotation.x = Math.PI / 2
@@ -371,16 +370,40 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       { color1: '#fff0e7', color2: '#e8c0b9', path: rect(125, -290, 560, 300) },
       { color1: '#e8f1df', color2: '#bbd5bd', path: rect(-290, -560, 260, -125) },
       { color1: '#f0e8f8', color2: '#cdbbdc', path: rect(-560, -260, -125, 220) },
-      ...(districtBounds ? [{ visible: false, path: [
-        gcj(districtBounds[1], districtBounds[0]),
-        gcj(districtBounds[1], districtBounds[2]),
-        gcj(districtBounds[3], districtBounds[2]),
-        gcj(districtBounds[3], districtBounds[0]),
-        gcj(districtBounds[1], districtBounds[0]),
-      ] }] : []),
       { visible: false, path },
     ]
     if (sceneEnabled) buildings.setStyle({ hideWithoutStyle: false, areas: sceneAreas })
+    const attachDistrict = (data: SceneData, regionCount = 0) => {
+      if (generation !== sceneGeneration) return
+      if (!data.buildings.length && !data.roads.length && !data.water.length && !data.green.length) return
+      map.customCoords.setCenter(origin!)
+      const district = createStyledDistrict((points) => map.customCoords.lngLatsToCoords(points), point, pearl ? 45 : miniature.radius, data)
+      memoryWorld.add(district.group)
+      hasStyledDistrict = true
+      tileCredit.hidden = !data.provider
+      if (district.hideNativeBuildings) sceneAreas.splice(sceneAreas.length - 1, 0, { visible: false, path: [
+        gcj(district.bounds[1], district.bounds[0]),
+        gcj(district.bounds[1], district.bounds[2]),
+        gcj(district.bounds[3], district.bounds[2]),
+        gcj(district.bounds[3], district.bounds[0]),
+        gcj(district.bounds[1], district.bounds[0]),
+      ] })
+      if (photo && !pearl) title.textContent = `照片地点 · 风格化${district.kind}${regionCount > 1 ? ` · ${regionCount} 张照片` : ''}`
+      note.textContent = `${photo?.inferred ? '照片线索推断地点' : photo ? '照片自带定位' : '高德地标位置'} · 地理轮廓来自 OpenStreetMap，细节为艺术示意`
+      if (sceneEnabled) buildings.setStyle({ hideWithoutStyle: false, areas: sceneAreas })
+      renderer.shadowMap.needsUpdate = true
+      draw()
+    }
+    if (metresApart(point, ORIENTAL_PEARL_GCJ) < 650) attachDistrict(shanghaiScene)
+    else if (photo && hasStreetLocation(photo)) {
+      const region = regionForPhoto(photos.map((entry) => entry.photo), photo)
+      if (region) {
+        note.textContent = '正在整理这一组照片地点的街区轮廓…'
+        fetchRegionScene(region.center).then((data) => attachDistrict(data, region.photoIds.length)).catch(() => {
+          if (generation === sceneGeneration) { note.textContent = '区域轮廓暂不可用 · 当前显示地点小景'; draw() }
+        })
+      }
+    } else if (photo) note.textContent = '地点尚未精确到街道 · 当前显示示意小景'
     // AMap may finish its final map frame before moveend/zoomend rebuilds this group.
     // Draw the independent canvas now so the scene and caption never wait for another pan.
     draw()
@@ -398,7 +421,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     const at: [number, number] = [center.lng, center.lat]
     let candidate: MapPhoto | undefined
     const focused = photos.find(({ photo }) => photo.id === focusedId)?.photo
-    if (focused && inEastChina(focused.gcj) && metresApart(focused.gcj, at) < 450) {
+    if (focused && metresApart(focused.gcj, at) < 450) {
       const key = `${focused.id}:${focused.landmark || ''}:${focused.landmarkSource || ''}:${focused.gcj.join(',')}`
       if (key !== activeSceneKey) focusMemoryScene(focused)
       return
@@ -410,7 +433,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       return
     }
     const nearby = photos
-      .filter(({ photo }) => inEastChina(photo.gcj) && metresApart(photo.gcj, at) < 450)
+      .filter(({ photo }) => metresApart(photo.gcj, at) < 450)
       .sort((a, b) => (a.photo.id === focusedId ? -1 : b.photo.id === focusedId ? 1 : metresApart(a.photo.gcj, at) - metresApart(b.photo.gcj, at)))
     candidate = nearby[0]?.photo
     const key = candidate ? `${candidate.id}:${candidate.landmark || ''}:${candidate.landmarkSource || ''}:${candidate.gcj.join(',')}` : ''
@@ -421,7 +444,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   }
 
   function setPhotos(next: MapPhoto[] = []) {
-    const key = next.map((p) => `${p.id}:${p.gcj.join(',')}:${p.inferred}:${p.landmark || ''}:${p.landmarkSource || ''}`).join('|') + `#${focusedId}`
+    const key = next.map((p) => `${p.id}:${p.gcj.join(',')}:${p.inferred}:${p.precision || ''}:${p.landmark || ''}:${p.landmarkSource || ''}`).join('|') + `#${focusedId}`
     // With no located place yet, the photos themselves anchor the scene
     if (!origin && next.length) origin = next[0].gcj
     if (key === photoKey || !origin) return
@@ -588,6 +611,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     setInsets(next: { right: number; bottom: number }) {
       if (next.right === insets.right && next.bottom === insets.bottom) return
       insets = next
+      sceneSource.style.right = `${Math.max(20, next.right + 20)}px`
+      sceneSource.style.bottom = `${Math.max(138, next.bottom + 12)}px`
       if (current && ready) frame(current, false)
     },
     dispose() {

@@ -7,7 +7,9 @@ description: 为 Personal World 的人生地图设计或实现统一的卡通地
 
 目标是让用户从照片中的一件事进入可辨认、可解释的个人记忆场景。先读 [路线与技术边界](../../../docs/MAP_SCENE_STYLE_2026-09-25.md)及[竞品视觉规则](../../../docs/MAP_STYLE_REFERENCES_2026-09-25.md)，再检查当前 `src/map/amapScene.ts`、`src/map/objects.ts` 与界面色板；高德和 Three.js 的坐标／相机细节见 [amap-threejs](../amap-threejs/SKILL.md)。
 
-当前试作的场景生成器在 `src/map/memoryScene.ts`：华东照片地点在手动放大或聚焦时显示；东方明珠也可按高德公开 POI 坐标在地图放大后显示，左上角有直接跳转按钮。普通地点是有示意标注的小景。东方明珠周边另有 `src/map/styledDistrict.ts`，以 `src/map/data/shanghai-pearl.json` 的 OpenStreetMap 小范围轮廓生成卡通楼体、道路、水面与绿地。`scripts/extract_shanghai_scene.py` 可复现数据快照；再生成时保留 ODbL 来源和页面署名。`src/map/amapScene.ts` 用 `Buildings.setStyle` 隐藏定制街区内的原生楼块；开关关闭时恢复。用 `npm run test:amap` 的前后截图检查同镜头效果、主动选中照片的优先级和拖动跟随。此场景尚未由运行时 Agent skill 生成。
+当前场景按照片地点生成：`src/map/regionScene.ts` 将街道级或更精确的照片聚成约 450 米内的区域；放大或聚焦照片时，`server/mapScene.mjs` 根据该区域坐标读取 OpenFreeMap 的 OpenStreetMap／OpenMapTiles 矢量瓦片，截取约 1.8 公里的真实建筑、道路、水面与绿地轮廓。`src/map/styledDistrict.ts` 对这些轮廓使用统一的卡通楼体、屋顶、道路、树木、草坪与水面材质；按海岸、水岸、公园、街区识别区域类型。轮廓密度不足时保留高德原生 3D 楼体并铺设有数据依据的地面元素；定位只到城市或区县时，`src/map/memoryScene.ts` 只显示标为示意的地点锚点。东方明珠继续使用 `src/map/data/shanghai-pearl.json` 的精修快照和专属塔模型，左上角可直接跳转。`scripts/extract_shanghai_scene.py` 可复现该快照；运行时普通区域不需要 Python 或 Shapely。
+
+`src/map/amapScene.ts` 同步高德相机与 Three.js，并在轮廓足够密集时隐藏区域内的高德楼块，开关关闭时恢复。服务端只接收坐标，不接收照片或故事；区域 JSON 在本机缓存 7 天。动态瓦片场景需在页面标注 `© OpenMapTiles` 与 `© OpenStreetMap contributors · ODbL`。用 `npm run test:amap` 对比不同城市、主动选中照片、缩放恢复和场景开关。该规则是开发用 Codex skill；照片证据驱动的运行时 Agent `sceneRecipe` 尚未接入。
 
 上海快照还包含有类别的 OSM 用地面和标注树列。先用用地面区分街区铺地，按道路等级画路面、路缘和小径，再在原建筑足迹内按高度与占地选择低楼、中层、高楼或大占地楼的窗、檐口和屋顶。颜色、缺失楼高、贴图、额外树木和屋顶细节属于艺术推断；道路宽度也是表现参数。概念参照与当前真实截图见[还原进度](../../../docs/MAP_CONCEPT_FIDELITY_2026-09-25.md)。
 
