@@ -8,12 +8,14 @@ interface Props extends LifeMapData {
   amapKey?: string
   insetRight: number
   insetBottom: number
+  sceneEnabled: boolean
   onSelectCity: (city: string | null) => void
   onOpenEvent: (id: string) => void
   onOpenPhoto: (id: string) => void
   onMapError: (message: string) => void
   // Changes every time the user asks to see a photo on the map
   focus?: { photo: MapPhoto; at: number } | null
+  landmarkPreviewAt?: number
 }
 
 interface MapApi {
@@ -21,13 +23,15 @@ interface MapApi {
   setInsets: (insets: { right: number; bottom: number }) => void
   dispose: () => void
   focusPhoto?: (photo: MapPhoto) => void
+  focusLandmark?: () => void
+  setSceneEnabled?: (visible: boolean) => void
 }
 
-export function LifeMapView({ amapKey, insetRight, insetBottom, onSelectCity, onOpenEvent, onOpenPhoto, onMapError, focus, ...data }: Props) {
+export function LifeMapView({ amapKey, insetRight, insetBottom, sceneEnabled, onSelectCity, onOpenEvent, onOpenPhoto, onMapError, focus, landmarkPreviewAt = 0, ...data }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const map = useRef<MapApi | null>(null)
-  const latest = useRef({ data, insets: { right: insetRight, bottom: insetBottom } })
-  latest.current = { data, insets: { right: insetRight, bottom: insetBottom } }
+  const latest = useRef({ data, insets: { right: insetRight, bottom: insetBottom }, sceneEnabled, landmarkPreviewAt })
+  latest.current = { data, insets: { right: insetRight, bottom: insetBottom }, sceneEnabled, landmarkPreviewAt }
   const callbacks = useRef({ onSelectCity, onOpenEvent, onOpenPhoto, onMapError })
   callbacks.current = { onSelectCity, onOpenEvent, onOpenPhoto, onMapError }
 
@@ -44,7 +48,9 @@ export function LifeMapView({ amapKey, insetRight, insetBottom, onSelectCity, on
       if (cancelled) { api.dispose(); return }
       map.current = api
       api.setInsets(latest.current.insets)
+      api.setSceneEnabled?.(latest.current.sceneEnabled)
       api.update(latest.current.data)
+      if (latest.current.landmarkPreviewAt) api.focusLandmark?.()
     }
     if (amapKey) {
       loadAmap(amapKey)
@@ -61,6 +67,7 @@ export function LifeMapView({ amapKey, insetRight, insetBottom, onSelectCity, on
 
   // Insets first, so the camera is framed for the space the panels leave free
   useEffect(() => { map.current?.setInsets({ right: insetRight, bottom: insetBottom }) }, [insetRight, insetBottom])
+  useEffect(() => { map.current?.setSceneEnabled?.(sceneEnabled) }, [sceneEnabled])
 
   useEffect(() => {
     map.current?.update(data)
@@ -68,6 +75,7 @@ export function LifeMapView({ amapKey, insetRight, insetBottom, onSelectCity, on
   }, [data.places, data.bases, data.story, data.selectedCity, data.highlightedEventId, data.photos]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (focus) map.current?.focusPhoto?.(focus.photo) }, [focus])
+  useEffect(() => { if (landmarkPreviewAt) map.current?.focusLandmark?.() }, [landmarkPreviewAt])
 
   return <div className="life-map" ref={host} aria-label="人生地图" />
 }

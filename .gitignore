@@ -7,6 +7,14 @@ dist/
 *.tsbuildinfo
 server/data/
 data/
+!src/map/data/
+!src/map/data/shanghai-pearl.json
+__pycache__/
+*.pyc
+docs/mockups/lighting-trial/
+/image.png
+/地图样式.png
+/当前照片分析和对比其他照片.png
 skills/photo-card/evals/*/photo.jpg
 skills/photo-context/evals/*/images/room-*.jpg
 skills/photo-card/evals/*/plate/*.jpg

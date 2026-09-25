@@ -38,6 +38,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [openPhotoId, setOpenPhotoId] = useState<string | null>(null)
   const [mapFocus, setMapFocus] = useState<{ photo: MapPhoto; at: number } | null>(null)
+  const [landmarkPreviewAt, setLandmarkPreviewAt] = useState(0)
+  const [sceneEnabled, setSceneEnabled] = useState(true)
   const [locating, setLocating] = useState<{ done: number; total: number } | null>(null)
   const stopLocating = useRef(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -138,7 +140,10 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     if (!a.preview || a.kind === 'video') return []
     const gcj = a.location?.gcj || (a.latitude !== undefined && a.longitude !== undefined ? (({ lat, lng }) => [lng, lat] as [number, number])(wgs84ToGcj02({ lat: a.latitude, lng: a.longitude! })) : undefined)
     if (!gcj) return []
-    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)) }]
+    const cardLandmark = a.card?.landmark && a.card.landmark.confidence >= 0.7 ? a.card.landmark.name : undefined
+    const nearbyLandmark = a.location?.poi?.name || (a.location?.precision === 'poi' ? a.location.label : undefined)
+    const placeLandmark = /东方明珠|oriental\s*pearl/i.test(nearbyLandmark || '') ? nearbyLandmark : undefined
+    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined }]
   }), [memory.assets])
 
   function openPhoto(assetId: string) {
@@ -474,6 +479,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       <main className="stage">
         {configChecked && <LifeMapView
           amapKey={aiConfig.amapJsKey}
+          sceneEnabled={sceneEnabled}
           onMapError={setNotice}
           places={places}
           bases={bases}
@@ -487,6 +493,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           onOpenPhoto={openPhoto}
           photos={mapPhotos}
           focus={mapFocus}
+          landmarkPreviewAt={landmarkPreviewAt}
         />}
 
         {ready && events.length > 0 && (
@@ -508,6 +515,19 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
               <span><em className="lg-migrate" />迁徙</span>
               <span><em className="lg-unsure" />待确认</span>
             </div>
+            {aiConfig.amapJsKey && (<>
+              <button
+                className={`building-toggle ${sceneEnabled ? 'active' : ''}`}
+                type="button"
+                aria-pressed={sceneEnabled}
+                title="放大到街区后，在华东照片地点查看风格化记忆场景"
+                onClick={() => setSceneEnabled((enabled) => !enabled)}
+              >
+                3D 记忆场景 {sceneEnabled ? '开' : '关'}
+                <small>华东照片点</small>
+              </button>
+              <button className="scene-preview" type="button" onClick={() => { setTab('map'); selectCity(null, false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>
+            </>)}
             {locating && (
               <div className="locating-chip" role="status">
                 <span>正在从画面识别地点 {locating.done}/{locating.total}</span>

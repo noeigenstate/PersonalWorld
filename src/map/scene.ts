@@ -31,6 +31,9 @@ export interface MapPhoto {
   preview: string
   // Place came from the picture or other photos, not the photo's own GPS
   inferred: boolean
+  // A landmark identified in a photo card or in the located place details.
+  landmark?: string
+  landmarkSource?: 'photo' | 'place'
 }
 
 const SPAN = 18 // scene units covered by the bases' bounding box
