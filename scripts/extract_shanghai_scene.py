@@ -46,7 +46,7 @@ def main():
         source = urllib.request.urlopen(request, timeout=40).read()
     root = ET.fromstring(source)
     nodes = {node.get("id"): (float(node.get("lon")), float(node.get("lat"))) for node in root.findall("node")}
-    result = {"source": "OpenStreetMap contributors", "license": "ODbL-1.0", "bbox": list(BBOX), "buildings": [], "roads": [], "water": [], "green": [], "landuse": [], "treeRows": []}
+    result = {"source": "OpenStreetMap contributors", "license": "ODbL-1.0", "bbox": list(BBOX), "buildings": [], "roads": [], "water": [], "green": [], "landuse": [], "plazas": [], "treeRows": []}
     way_paths = {
         way.get("id"): [nodes[ref] for nd in way.findall("nd") if (ref := nd.get("ref")) in nodes]
         for way in root.findall("way")
@@ -82,6 +82,15 @@ def main():
                     continue
                 piece = piece.simplify(0.000009, preserve_topology=True)
                 result["landuse"].append({"id": ident, "kind": tags["landuse"], "rings": [points(piece.exterior.coords)] + [points(hole.coords) for hole in piece.interiors]})
+        if closed and tags.get("highway") == "pedestrian" and tags.get("area") == "yes":
+            polygon = Polygon(path)
+            if not polygon.is_valid:
+                polygon = polygon.buffer(0)
+            for piece in parts(polygon.intersection(CLIP), "Polygon"):
+                if piece.area < 0.000015 ** 2:
+                    continue
+                piece = piece.simplify(0.000009, preserve_topology=True)
+                result["plazas"].append({"id": ident, "rings": [points(piece.exterior.coords)] + [points(hole.coords) for hole in piece.interiors]})
         if "highway" in tags and tags["highway"] not in {"steps", "construction", "proposed", "platform", "corridor"}:
             line = LineString(path).intersection(CLIP)
             for piece in parts(line, "LineString"):
@@ -122,7 +131,7 @@ def main():
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(json.dumps(result, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
-    print({key: len(result[key]) for key in ("buildings", "roads", "water", "green", "landuse", "treeRows")})
+    print({key: len(result[key]) for key in ("buildings", "roads", "water", "green", "landuse", "plazas", "treeRows")})
     print(f"Wrote {OUTPUT} ({OUTPUT.stat().st_size} bytes)")
 
 

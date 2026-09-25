@@ -171,6 +171,7 @@ try {
   await page.locator('.photo-card').getByText('画面中认出地标，经高德地点搜索定位').waitFor({ timeout: 10000 })
   assert.equal(errors.length, 0, `浏览器运行时不应报错：${errors.join('; ')}`)
   console.log('AMap test passed: security proxy, geocoding, life map, story line, photo clusters, GPS → street number, automatic landmark locating, Shanghai preview without a photo card, manual zoom scene recovery, scene comparison, map dragging.')
+  assert.equal(consoleLog.filter((item) => /error: THREE\.WebGLProgram: Shader Error/i.test(item)).length, 0, '地图场景着色器应在真实浏览器中编译成功')
 } finally {
   await browser.close()
 }

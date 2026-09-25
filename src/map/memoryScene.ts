@@ -85,48 +85,58 @@ function storybook(photo: MapPhoto): MemoryScene {
 
 function pearl(): MemoryScene {
   const group = new THREE.Group()
-  // A recognizable silhouette, deliberately simplified. It is anchored to the located POI;
-  // surrounding trees and plinth are artistic decoration rather than surveyed geometry.
+  // An art-directed silhouette anchored to the located POI. The three spheres and
+  // tapered cream core follow the landmark; surface detail is an illustration.
   disc(group, 0, 1.6, 0, 46, 3.2, P.stone, 48)
   disc(group, 0, 3.4, 0, 40, 0.9, P.cream, 48)
   ring(group, 0, 4.1, 0, 40, 0.9, P.pink)
-  disc(group, 0, 10, 0, 24, 13, P.cream, 24)
-  ring(group, 0, 17, 0, 24, 1.5, P.gold)
-  // The reference reads as a single generous cream body, with the three legs visible on
-  // its surface. Keep the legs, but give them a shared tapered mass instead of empty air.
-  shape(group, new THREE.CylinderGeometry(11, 18, 66, 24), P.cream, 0, 48, 0)
-  disc(group, 0, 63, 0, 12, 3, P.stone, 24)
-  for (let i = 0; i < 10; i++) {
-    const angle = i / 10 * Math.PI * 2
-    const window = cuboid(group, Math.cos(angle) * 17.2, 42, Math.sin(angle) * 17.2, 3.2, 26, .9, P.glass)
+  disc(group, 0, 11.5, 0, 29, 15, P.cream, 32)
+  ring(group, 0, 19.5, 0, 29, 1.25, P.gold)
+  shape(group, new THREE.CylinderGeometry(13, 24, 155, 32), P.cream, 0, 96.5, 0)
+  disc(group, 0, 24, 0, 23.5, 3.5, P.stone, 32)
+  for (let i = 0; i < 12; i++) {
+    const angle = i / 12 * Math.PI * 2
+    const radius = 21.8
+    const window = cuboid(group, Math.cos(angle) * radius, 48, Math.sin(angle) * radius, 3.3, 35, 1.1, P.glass)
     window.rotation.y = -angle + Math.PI / 2
+    const sill = cuboid(group, Math.cos(angle) * (radius + .4), 29, Math.sin(angle) * (radius + .4), 4, 1.2, 1.6, P.gold)
+    sill.rotation.y = window.rotation.y
   }
-
+  // The three buttresses make the lower body read as a building instead of a mast.
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2
-    const x = Math.cos(a) * 13
-    const z = Math.sin(a) * 13
-    const support = disc(group, x, 51, z, 5.2, 78, P.cream, 10)
-    support.rotation.z = Math.cos(a) * 0.045
-    support.rotation.x = -Math.sin(a) * 0.045
+    const x = Math.cos(a) * 20
+    const z = Math.sin(a) * 20
+    shape(group, new THREE.CylinderGeometry(4.4, 6.4, 96, 12), P.stone, x, 65, z)
+    disc(group, x, 19, z, 6.7, 4, P.cream, 12)
   }
-
-  disc(group, 0, 139, 0, 10.5, 128, P.cream, 20)
-  for (let i = 0; i < 8; i++) {
-    const angle = i / 8 * Math.PI * 2
-    disc(group, Math.cos(angle) * 9.3, 146, Math.sin(angle) * 9.3, 1.2, 91, i % 2 ? P.stone : P.gold, 8)
+  for (let i = 0; i < 10; i++) {
+    const angle = i / 10 * Math.PI * 2
+    disc(group, Math.cos(angle) * 13.1, 148, Math.sin(angle) * 13.1, 1, 55, i % 2 ? P.stone : P.gold, 8)
   }
-  disc(group, 0, 199, 0, 5.7, 11, P.gold, 16)
+  disc(group, 0, 184, 0, 9.5, 18, P.cream, 24)
+  ring(group, 0, 193, 0, 9.5, 1.6, P.gold)
   shape(group, new THREE.SphereGeometry(32, 32, 20), P.pink, 0, 91, 0)
   shape(group, new THREE.SphereGeometry(27, 32, 20), P.berry, 0, 213, 0)
-  for (const [y, r] of [[79, 29.7], [91, 32.2], [103, 29.7], [202, 24.9], [214, 27.2], [225, 24.9]] as const) ring(group, 0, y, 0, r, 1.1, P.gold)
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2
-    for (const [y, r] of [[92, 32], [214, 27]] as const) {
-      const light = cuboid(group, Math.cos(a) * (r + 0.3), y, Math.sin(a) * (r + 0.3), 2.3, 3.5, 0.5, P.cream)
-      light.rotation.y = -a + Math.PI / 2
+  for (const [y, r] of [[78, 29], [91, 32.1], [104, 29], [201, 24.2], [213, 27.1], [225, 24.2]] as const) ring(group, 0, y, 0, r, 1.1, P.gold)
+  const sphereDetails = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), toon(P.cream), 160)
+  const detail = new THREE.Object3D()
+  let detailIndex = 0
+  for (const [center, radius, offsets, columns] of [[91, 32, [-19, -7, 7, 19], 22], [213, 27, [-16, -5, 5, 16], 18]] as const) {
+    for (const offset of offsets) {
+      const orbit = Math.sqrt(radius * radius - offset * offset) + .4
+      for (let i = 0; i < columns; i++) {
+        const angle = i / columns * Math.PI * 2
+        detail.position.set(Math.cos(angle) * orbit, center + offset, Math.sin(angle) * orbit)
+        detail.rotation.set(0, -angle + Math.PI / 2, 0)
+        detail.scale.set(offset === -7 || offset === -5 ? 2.4 : 1.8, 2.8, .7)
+        detail.updateMatrix()
+        sphereDetails.setMatrixAt(detailIndex++, detail.matrix)
+      }
     }
   }
+  sphereDetails.count = detailIndex
+  group.add(sphereDetails)
   disc(group, 0, 267, 0, 3.6, 75, P.cream, 12)
   disc(group, 0, 311, 0, 2.2, 22, P.gold, 12)
   shape(group, new THREE.SphereGeometry(5, 16, 12), P.pink, 0, 329, 0)
@@ -135,14 +145,8 @@ function pearl(): MemoryScene {
 
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2 + 0.2
-    tree(group, Math.cos(a) * 33, Math.sin(a) * 33, 0.75)
+    tree(group, Math.cos(a) * 37, Math.sin(a) * 37, 0.68)
   }
-  // Small, deliberately schematic pavilions make the visited place read as a toy scene.
-  // They do not claim to reproduce the actual surrounding buildings.
-  toyHouse(group, 53, 59, 22, 17, 31, P.mint, P.sage)
-  toyHouse(group, -41, 66, 19, 18, 25, P.lilac, P.berry)
-  toyHouse(group, 82, 14, 17, 15, 37, P.cream, P.pink)
-  for (const [x, z] of [[63, 86], [15, 74], [-70, 64], [96, 38]] as const) tree(group, x, z, 0.65)
   return { group, radius: 125, label: '东方明珠 · 风格化地标' }
 }
 

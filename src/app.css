@@ -24,7 +24,7 @@ body{overflow:hidden}
 .life-map-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .life-map-amap{position:absolute;inset:0}
 .life-map-canvas.overlay{pointer-events:none}
-.map-scene-atmosphere{position:absolute;inset:0 0 auto;height:42%;pointer-events:none;background:linear-gradient(180deg,#c8f2f6a6 0%,#e8f7ef55 44%,#fff9ea00 100%)}
+.map-scene-atmosphere{position:absolute;inset:0 0 auto;height:32%;pointer-events:none;background:linear-gradient(180deg,#c8f2f683 0%,#e8f7ef33 44%,#fff9ea00 100%)}
 .map-scene-atmosphere[hidden]{display:none}
 .life-map-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
 

@@ -75,8 +75,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   renderer.shadowMap.type = THREE.PCFShadowMap
   renderer.shadowMap.autoUpdate = false
   const scene = new THREE.Scene()
-  scene.add(new THREE.HemisphereLight(0xfff7e9, 0xc7d8d1, 1.3))
-  const sun = new THREE.DirectionalLight(0xffecd7, 1.6)
+  scene.add(new THREE.HemisphereLight(0xfff7e9, 0xc7d8d1, .95))
+  const sun = new THREE.DirectionalLight(0xffecd7, 1.3)
   sun.position.set(-0.55, -0.7, 1.1) // z is up in AMap's frame
   sun.castShadow = true
   sun.shadow.mapSize.set(window.innerWidth < 700 ? 1024 : 2048, window.innerWidth < 700 ? 1024 : 2048)

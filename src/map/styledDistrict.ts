@@ -11,7 +11,7 @@ type Point = [number, number]
 type Polygon = { id: string; rings: Point[][]; height?: string | null; levels?: string | null }
 type Road = { id: string; class: string; path: Point[] }
 type Archetype = 0 | 1 | 2 | 3 // low, mid-rise, tower, broad hall
-const data = snapshot as unknown as { bbox: [number, number, number, number]; buildings: Polygon[]; roads: Road[]; water: Polygon[]; green: Polygon[]; landuse: (Polygon & { kind: string })[]; treeRows: { id: string; path: Point[] }[] }
+const data = snapshot as unknown as { bbox: [number, number, number, number]; buildings: Polygon[]; roads: Road[]; water: Polygon[]; green: Polygon[]; landuse: (Polygon & { kind: string })[]; plazas: Polygon[]; treeRows: { id: string; path: Point[] }[] }
 type Convert = (points: Point[]) => Point[]
 
 const palettes = [
@@ -233,6 +233,18 @@ function inside([x, y]: Point, ring: Point[]) {
   return value
 }
 
+function distanceToPath([x, y]: Point, path: Point[]) {
+  let nearest = Infinity
+  for (let i = 1; i < path.length; i++) {
+    const [ax, ay] = path[i - 1]
+    const [bx, by] = path[i]
+    const dx = bx - ax, dy = by - ay
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)))
+    nearest = Math.min(nearest, Math.hypot(x - ax - t * dx, y - ay - t * dy))
+  }
+  return nearest
+}
+
 function actualHeight(building: Polygon, footprint: number) {
   const measured = Number.parseFloat(building.height || '')
   if (Number.isFinite(measured) && measured > 3 && measured < 1000) return measured
@@ -243,20 +255,13 @@ function actualHeight(building: Polygon, footprint: number) {
   return Math.min(46, Math.max(11, 12 + random * 23 + Math.sqrt(footprint) * 0.12))
 }
 
-function decorate(group: THREE.Group, parks: Point[][][], water: Point[][][], roads: { path: Point[]; major: boolean }[], treeRows: Point[][], occupied: Point[][], bounds: [Point, Point]) {
+function decorate(group: THREE.Group, parks: Point[][][], plazas: Point[][][], water: Point[][][], roads: { path: Point[]; major: boolean }[], treeRows: Point[][], occupied: Point[][], bounds: [Point, Point]) {
   const treePositions: Point[] = []
   const wet = (point: Point) => water.some((rings) => inside(point, rings[0]))
   const built = (point: Point) => occupied.some((ring) => inside(point, ring))
-  const nearRoad = ([x, y]: Point) => roads.some(({ path, major }) => {
+  const nearRoad = (point: Point) => roads.some(({ path, major }) => {
     const clearance = major ? 13 : 7
-    for (let i = 1; i < path.length; i++) {
-      const [ax, ay] = path[i - 1]
-      const [bx, by] = path[i]
-      const dx = bx - ax, dy = by - ay
-      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)))
-      if (Math.hypot(x - ax - t * dx, y - ay - t * dy) < clearance) return true
-    }
-    return false
+    return distanceToPath(point, path) < clearance
   })
   const addTree = (point: Point, mapped = false) => {
     if (point[0] < bounds[0][0] + 10 || point[0] > bounds[1][0] - 10 || point[1] < bounds[0][1] + 10 || point[1] > bounds[1][1] - 10) return
@@ -306,6 +311,52 @@ function decorate(group: THREE.Group, parks: Point[][][], water: Point[][][], ro
       addTree([x + nx, y + ny])
       addTree([x - nx, y - ny])
     }
+  }
+  // Tree islands are an authored finish inside mapped pedestrian plazas. Their exact
+  // positions and shapes are illustrative; the plaza boundaries remain OSM geometry.
+  const plazaBeds: { point: Point; rx: number; ry: number; angle: number }[] = []
+  for (const rings of plazas) {
+    const ring = rings[0]
+    let signedArea = 0
+    for (let i = 1; i < ring.length; i++) signedArea += ring[i - 1][0] * ring[i][1] - ring[i][0] * ring[i - 1][1]
+    const area = Math.abs(signedArea) / 2
+    if (area < 500) continue
+    const count = Math.min(12, Math.floor(area / 650))
+    const minX = Math.min(...ring.map((point) => point[0]))
+    const maxX = Math.max(...ring.map((point) => point[0]))
+    const minY = Math.min(...ring.map((point) => point[1]))
+    const maxY = Math.max(...ring.map((point) => point[1]))
+    let placed = 0
+    for (let x = minX + 13; x < maxX - 10 && placed < count; x += 26) for (let y = minY + 13; y < maxY - 10 && placed < count; y += 26) {
+      const point: Point = [x + (hash(`${x}:${y}:plaza-x`) - .5) * 7, y + (hash(`${y}:${x}:plaza-y`) - .5) * 7]
+      const rx = 8 + hash(`${x}:${y}:rx`) * 3
+      const ry = 5 + hash(`${x}:${y}:ry`) * 2
+      if (!inside(point, ring) || rings.slice(1).some((hole) => inside(point, hole))) continue
+      if (distanceToPath(point, ring) < rx + 2 || wet(point) || built(point)) continue
+      if (roads.some(({ path, major }) => major && distanceToPath(point, path) < 14)) continue
+      if (occupied.some((building) => distanceToPath(point, building) < rx + 3)) continue
+      if (plazaBeds.some((bed) => Math.hypot(point[0] - bed.point[0], point[1] - bed.point[1]) < 25)) continue
+      plazaBeds.push({ point, rx, ry, angle: hash(`${x}:${y}:angle`) * Math.PI })
+      addTree(point, true)
+      placed++
+    }
+  }
+  if (plazaBeds.length) {
+    const rim = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 24), new THREE.MeshLambertMaterial({ color: '#e6c6a7', side: THREE.DoubleSide }), plazaBeds.length)
+    const lawn = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 24), new THREE.MeshLambertMaterial({ color: '#a5cc82', side: THREE.DoubleSide }), plazaBeds.length)
+    const dummy = new THREE.Object3D()
+    plazaBeds.forEach(({ point, rx, ry, angle }, index) => {
+      for (const [mesh, border, z] of [[rim, 1.3, .305], [lawn, 0, .31]] as const) {
+        dummy.position.set(point[0], point[1], z)
+        dummy.rotation.set(0, 0, angle)
+        dummy.scale.set(rx + border, ry + border, 1)
+        dummy.updateMatrix()
+        mesh.setMatrixAt(index, dummy.matrix)
+      }
+    })
+    rim.name = 'illustrative-plaza-planter-rims'
+    lawn.name = 'illustrative-plaza-planter-lawns'
+    group.add(rim, lawn)
   }
   const tuftPositions: Point[] = []
   for (const rings of parks) {
@@ -385,6 +436,50 @@ function decorate(group: THREE.Group, parks: Point[][][], water: Point[][][], ro
     }
   })
   group.add(trunks, crowns, shrubs)
+}
+
+function illustrateTraffic(group: THREE.Group, roads: { path: Point[]; major: boolean }[], water: Point[][][], occupied: Point[][], anchor: Point) {
+  const cars: { point: Point; angle: number; color: string }[] = []
+  const colors = ['#e48873', '#e9bb74', '#79b6cc', '#a4c493', '#e6d5c3']
+  roads.forEach(({ path, major }, roadIndex) => {
+    if (!major || cars.length >= 80) return
+    for (let i = 1; i < path.length && cars.length < 80; i++) {
+      const [ax, ay] = path[i - 1]
+      const [bx, by] = path[i]
+      const dx = bx - ax, dy = by - ay
+      const length = Math.hypot(dx, dy)
+      if (length < 45) continue
+      for (let d = 24; d < length - 12 && cars.length < 80; d += 92) {
+        const seed = `${roadIndex}:${i}:${d}`
+        if (hash(seed) < .48) continue
+        const side = hash(`${seed}:side`) < .5 ? -1 : 1
+        const point: Point = [ax + dx * d / length - dy / length * side * 3, ay + dy * d / length + dx / length * side * 3]
+        if (Math.hypot(point[0] - anchor[0], point[1] - anchor[1]) < 70) continue
+        if (water.some((rings) => inside(point, rings[0]))) continue
+        if (occupied.some((ring) => inside(point, ring))) continue
+        cars.push({ point, angle: Math.atan2(dy, dx), color: colors[Math.floor(hash(`${seed}:color`) * colors.length)] })
+      }
+    }
+  })
+  if (!cars.length) return
+  const body = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: '#ffffff' }), cars.length)
+  const cabin = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: '#c5e1df' }), cars.length)
+  const dummy = new THREE.Object3D()
+  cars.forEach(({ point, angle, color }, index) => {
+    dummy.position.set(point[0], point[1], 1.25)
+    dummy.rotation.set(0, 0, angle)
+    dummy.scale.set(5.4, 2.8, 1.7)
+    dummy.updateMatrix()
+    body.setMatrixAt(index, dummy.matrix)
+    body.setColorAt(index, new THREE.Color(color))
+    dummy.position.z = 2.25
+    dummy.scale.set(2.7, 2.3, .85)
+    dummy.updateMatrix()
+    cabin.setMatrixAt(index, dummy.matrix)
+  })
+  body.name = 'illustrative-traffic-on-mapped-roads'
+  body.castShadow = cabin.castShadow = true
+  group.add(body, cabin)
 }
 
 export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL_PEARL_GCJ, clearRadius = 45) {
@@ -481,10 +576,10 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
         return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);
       }
       void main(){
-        float patch=noise(vMap/27.);
+        float mottle=noise(vMap/27.);
         float grain=noise(vMap/2.5);
         float meadow=sin(vMap.x*.042+grain)*sin(vMap.y*.038);
-        vec3 grass=mix(vec3(.48,.64,.35),vec3(.74,.84,.50),.38+patch*.40+grain*.12+meadow*.08);
+        vec3 grass=mix(vec3(.48,.64,.35),vec3(.74,.84,.50),.38+mottle*.40+grain*.12+meadow*.08);
         vec2 blade=fract(vMap/1.8+vec2(hash(floor(vMap/1.8))));
         float fleck=(1.-smoothstep(.02,.14,abs(blade.x-.5)))*smoothstep(.10,.34,blade.y)*(1.-smoothstep(.58,.80,blade.y));
         grass=mix(grass,vec3(.84,.91,.61),fleck*.13);
@@ -492,6 +587,8 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
       }`,
   })
   mergedMesh(group, parks.map((rings) => polygonGeometry(rings, .19)).filter((value): value is THREE.ShapeGeometry => value !== null), grassMaterial)
+  const plazas = data.plazas.map((polygon) => polygon.rings.map(transform))
+  mergedMesh(group, plazas.map((rings) => polygonGeometry(rings, .205)).filter((value): value is THREE.ShapeGeometry => value !== null), parcelMaterial('#f4dec8', 'plaza'))
   group.add(new THREE.Mesh(ribbonGeometry(water.map((rings) => rings[0]), 6, .22), new THREE.MeshBasicMaterial({ color: '#f8e9ce', side: THREE.DoubleSide })))
   const waterLines: Point[][] = []
   for (let x = corners[0][0] + 30; x < corners[1][0] - 30; x += 84) for (let y = corners[0][1] + 25; y < corners[1][1] - 25; y += 82) {
@@ -527,7 +624,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   const roofCaps = palettes.map(() => [] as THREE.BufferGeometry[])
   const facadeBands = palettes.map(() => [] as THREE.BufferGeometry[])
   const roofLines: number[] = []
-  const roofFeatures: { point: Point; height: number; size: number; rotation: number }[] = []
+  const roofFeatures: { point: Point; height: number; size: number; rotation: number; color: string }[] = []
   const occupied: Point[][] = []
   const anchor = convert([clearAt])[0]
   for (const item of data.buildings) {
@@ -535,6 +632,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     const outer = rings[0]
     if (outer.length < 4) continue
     const center: Point = [outer.reduce((sum, point) => sum + point[0], 0) / outer.length, outer.reduce((sum, point) => sum + point[1], 0) / outer.length]
+    occupied.push(outer)
     if (Math.hypot(center[0] - anchor[0], center[1] - anchor[1]) < clearRadius) continue
     let signedArea = 0
     for (let i = 1; i < outer.length; i++) signedArea += outer[i - 1][0] * outer[i][1] - outer[i][0] * outer[i - 1][1]
@@ -551,7 +649,6 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     const overhang = Math.min(2.2, Math.max(1.2, Math.sqrt(area) * .045))
     const roofOuter = outer.map(([x, y]): Point => [x + (x - center[0]) / radius * overhang, y + (y - center[1]) / radius * overhang])
     const roofRings = [roofOuter, ...rings.slice(1)]
-    occupied.push(outer)
     facades[palette][kind].push(wallGeometry(outer, .65, height, true, tileWidth, tileHeight))
     plinths[palette].push(wallGeometry(roofOuter, .45, 2.5, false))
     parapets[palette].push(wallGeometry(roofOuter, height - .1, height + 2.3, false))
@@ -566,7 +663,15 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
       roofLines.push(roofOuter[i - 1][0], roofOuter[i - 1][1], height + 2.37, roofOuter[i][0], roofOuter[i][1], height + 2.37)
     }
     if (area > 280 && hash(`${item.id}:roof`) > .35 && inside(center, outer)) {
-      roofFeatures.push({ point: center, height: height + (kind === 2 ? 2.3 : 5), size: Math.min(11, Math.max(4, Math.sqrt(area) * .18)), rotation: hash(`${item.id}:rotation`) * Math.PI })
+      const spanX = Math.max(...outer.map((point) => point[0])) - Math.min(...outer.map((point) => point[0]))
+      const spanY = Math.max(...outer.map((point) => point[1])) - Math.min(...outer.map((point) => point[1]))
+      roofFeatures.push({
+        point: center,
+        height: height + (kind === 2 ? 2.3 : 5),
+        size: Math.min(15, Math.max(4.5, Math.sqrt(area) * .34), Math.max(3.5, Math.min(spanX, spanY) * .55)),
+        rotation: Math.atan2(outer[1][1] - outer[0][1], outer[1][0] - outer[0][0]),
+        color: palettes[palette].roof,
+      })
     }
   }
   palettes.forEach((palette, index) => {
@@ -589,19 +694,26 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(roofLines, 3))
   group.add(new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: '#fff6e7', transparent: true, opacity: .75 })))
   if (roofFeatures.length) {
-    const features = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: '#f9eedc' }), roofFeatures.length)
+    const podiums = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: '#ffffff' }), roofFeatures.length)
+    const upper = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: '#f9eedc' }), roofFeatures.length)
     const dummy = new THREE.Object3D()
     roofFeatures.forEach((feature, index) => {
-      dummy.position.set(feature.point[0], feature.point[1], feature.height + 1.3)
+      dummy.position.set(feature.point[0], feature.point[1], feature.height + 1.5)
       dummy.rotation.set(0, 0, feature.rotation)
-      dummy.scale.set(feature.size, feature.size * .65, 2.6)
+      dummy.scale.set(feature.size * 1.35, feature.size * .85, 3)
       dummy.updateMatrix()
-      features.setMatrixAt(index, dummy.matrix)
+      podiums.setMatrixAt(index, dummy.matrix)
+      podiums.setColorAt(index, new THREE.Color(feature.color).lerp(new THREE.Color('#fff0dc'), .22))
+      dummy.position.z = feature.height + 3.9
+      dummy.scale.set(feature.size * .72, feature.size * .47, 1.8)
+      dummy.updateMatrix()
+      upper.setMatrixAt(index, dummy.matrix)
     })
-    group.add(features)
-    features.castShadow = features.receiveShadow = true
+    group.add(podiums, upper)
+    podiums.castShadow = podiums.receiveShadow = upper.castShadow = upper.receiveShadow = true
   }
-  decorate(group, parks, water, roads, data.treeRows.map((row) => transform(row.path)), occupied, [corners[0], corners[1]])
+  decorate(group, parks, plazas, water, roads, data.treeRows.map((row) => transform(row.path)), occupied, [corners[0], corners[1]])
+  illustrateTraffic(group, roads, water, occupied, anchor)
   // The transparent plane receives the same shadow map over roads, lawns and water. It
   // replaces the old offset footprint silhouettes, so a tree crown has its own shape.
   const shadowGround = new THREE.Mesh(
