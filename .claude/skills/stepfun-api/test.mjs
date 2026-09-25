@@ -1,11 +1,15 @@
 // Checks that what the stepfun-api skill documents is still true.
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { stripTypeScriptTypes } from 'node:module'
 import { test } from 'node:test'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { checkSkillFile, imageDataUrl, live } from '../../../tests/skill-kit.mjs'
 
 const dir = fileURLToPath(new URL('.', import.meta.url))
-const { encodeWav } = await import(pathToFileURL(`${dir}scripts/wav.ts`).href)
+const wavSource = readFileSync(new URL('./scripts/wav.ts', import.meta.url), 'utf8')
+const wavModule = stripTypeScriptTypes(wavSource, { mode: 'strip' })
+const { encodeWav } = await import(`data:text/javascript;base64,${Buffer.from(wavModule).toString('base64')}`)
 
 test('SKILL.md 格式完整，记录了已验证的模型和接口', () => {
   const { body } = checkSkillFile(dir)

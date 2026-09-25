@@ -1,7 +1,7 @@
 // AMap (高德) Web service + JS API security proxy.
 // Docs: https://lbs.amap.com/api/webservice/guide/api/georegeo
 //       https://lbs.amap.com/api/javascript-api-v2/guide/abc/jscode
-import { wgs84ToGcj02 } from '../src/lib/geo.ts'
+import { wgs84ToGcj02 } from '../src/lib/geo.js'
 
 export function amapConfig(env = process.env) {
   return {

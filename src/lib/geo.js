@@ -1,17 +1,14 @@
-// Photo GPS is WGS-84; AMap (and every map service in mainland China) uses GCJ-02.
-// This file is also imported by the Node API server, so it must stay free of browser APIs
-// and use only erasable TypeScript syntax.
-
-export interface LatLng { lat: number; lng: number }
+// Photo GPS is WGS-84; AMap uses GCJ-02 for mainland China.
+// Shared by the browser bundle and the plain Node API server.
 
 const A = 6378245.0
 const EE = 0.00669342162296594323
 
-function outOfChina({ lat, lng }: LatLng) {
+function outOfChina({ lat, lng }) {
   return lng < 72.004 || lng > 137.8347 || lat < 0.8293 || lat > 55.8271
 }
 
-function transformLat(x: number, y: number) {
+function transformLat(x, y) {
   let r = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x))
   r += ((20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2) / 3
   r += ((20 * Math.sin(y * Math.PI) + 40 * Math.sin((y / 3) * Math.PI)) * 2) / 3
@@ -19,7 +16,7 @@ function transformLat(x: number, y: number) {
   return r
 }
 
-function transformLng(x: number, y: number) {
+function transformLng(x, y) {
   let r = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x))
   r += ((20 * Math.sin(6 * x * Math.PI) + 20 * Math.sin(2 * x * Math.PI)) * 2) / 3
   r += ((20 * Math.sin(x * Math.PI) + 40 * Math.sin((x / 3) * Math.PI)) * 2) / 3
@@ -27,7 +24,7 @@ function transformLng(x: number, y: number) {
   return r
 }
 
-export function wgs84ToGcj02(point: LatLng): LatLng {
+export function wgs84ToGcj02(point) {
   if (outOfChina(point)) return point
   const dLat = transformLat(point.lng - 105, point.lat - 35)
   const dLng = transformLng(point.lng - 105, point.lat - 35)
@@ -41,7 +38,7 @@ export function wgs84ToGcj02(point: LatLng): LatLng {
 }
 
 // Inverse of wgs84ToGcj02 by fixed-point iteration; accurate to well under a metre
-export function gcj02ToWgs84(point: LatLng): LatLng {
+export function gcj02ToWgs84(point) {
   let guess = { ...point }
   for (let i = 0; i < 4; i++) {
     const shifted = wgs84ToGcj02(guess)
@@ -50,7 +47,7 @@ export function gcj02ToWgs84(point: LatLng): LatLng {
   return guess
 }
 
-export function distanceKm(a: LatLng, b: LatLng) {
+export function distanceKm(a, b) {
   const rad = Math.PI / 180
   const dLat = (b.lat - a.lat) * rad
   const dLng = (b.lng - a.lng) * rad
@@ -58,7 +55,7 @@ export function distanceKm(a: LatLng, b: LatLng) {
   return 6371 * 2 * Math.asin(Math.sqrt(h))
 }
 
-export function centroid(points: LatLng[]): LatLng | undefined {
+export function centroid(points) {
   if (!points.length) return undefined
   return {
     lat: points.reduce((sum, p) => sum + p.lat, 0) / points.length,

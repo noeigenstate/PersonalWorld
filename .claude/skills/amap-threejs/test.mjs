@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { checkSkillFile, importRoot, live } from '../../../tests/skill-kit.mjs'
 
 const dir = fileURLToPath(new URL('.', import.meta.url))
-const { wgs84ToGcj02 } = await importRoot('src/lib/geo.ts')
+const { wgs84ToGcj02 } = await importRoot('src/lib/geo.js')
 
 test('SKILL.md 格式完整，记录了关键结论', () => {
   const { body } = checkSkillFile(dir)

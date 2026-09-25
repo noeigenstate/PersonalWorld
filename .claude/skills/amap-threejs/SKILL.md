@@ -33,7 +33,7 @@ function draw() {
 
 ## 2. Coordinates
 
-- `customCoords.lngLatsToCoords([[lng, lat]])` takes **GCJ-02**. Photo EXIF / GPS is WGS-84: convert first (see `src/lib/geo.ts` `wgs84ToGcj02`), otherwise objects sit a few hundred metres off.
+- `customCoords.lngLatsToCoords([[lng, lat]])` takes **GCJ-02**. Photo EXIF / GPS is WGS-84: convert first (see `src/lib/geo.js` `wgs84ToGcj02`), otherwise objects sit a few hundred metres off.
 - Output units are **Web Mercator metres** relative to `setCenter(origin)` (0.01° of longitude = 1113.19 units at any latitude). Axes: x east, y north, **z up**.
 - Pick one origin (e.g. the first place) and keep it; call `setCenter(origin)` before every `lngLatsToCoords` and `getCameraParams`.
 - Models authored y-up need `wrapper.rotation.x = Math.PI / 2`.
