@@ -115,7 +115,7 @@ export function createSportsGround(rings: Point[][], sport: string, kind: string
   group.name = 'mapped-sports-ground'
   const surface = new THREE.ShapeGeometry(shapeOf(rings))
   surface.translate(0, 0, .21)
-  group.add(new THREE.Mesh(surface, new THREE.MeshLambertMaterial({ color: kind === 'track' ? '#dca28c' : sport === 'field_hockey' ? '#78bacb' : '#a5c883', side: THREE.DoubleSide })))
+  group.add(new THREE.Mesh(surface, new THREE.MeshLambertMaterial({ color: kind === 'track' ? '#dca28c' : '#a5c883', side: THREE.DoubleSide })))
   const ring = rings[0]
   // Fit painted markings inside the mapped playing surface, retaining its bearing.
   const edges = ring.slice(1).map((b, i) => ({ a: ring[i], b, length: Math.hypot(b[0] - ring[i][0], b[1] - ring[i][1]) }))
@@ -127,12 +127,21 @@ export function createSportsGround(rings: Point[][], sport: string, kind: string
   const minX = Math.min(...local.map((p) => p[0])), maxX = Math.max(...local.map((p) => p[0]))
   const minY = Math.min(...local.map((p) => p[1])), maxY = Math.max(...local.map((p) => p[1]))
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
-  const halfX = (maxX - minX) * .32, halfY = (maxY - minY) * .31
+  const hockey = sport === 'field_hockey'
+  const halfX = (maxX - minX) * (hockey ? .36 : .32), halfY = hockey ? Math.min((maxY - minY) * .31, halfX / 1.66) : (maxY - minY) * .31
   const project = (x: number, y: number) => new THREE.Vector3((cx + x) * cos - (cy + y) * sin, (cx + x) * sin + (cy + y) * cos, .225)
+  if (hockey) {
+    const court = new THREE.PlaneGeometry(halfX * 2.12, halfY * 2.18)
+    court.rotateZ(angle); court.translate(cx * cos - cy * sin, cx * sin + cy * cos, .217)
+    group.add(new THREE.Mesh(court, new THREE.MeshLambertMaterial({ color: '#70bacb', side: THREE.DoubleSide })))
+  }
   const paths = [
     [[-halfX, -halfY], [halfX, -halfY], [halfX, halfY], [-halfX, halfY], [-halfX, -halfY]],
     [[0, -halfY], [0, halfY]],
-    Array.from({ length: 49 }, (_, i) => [Math.cos(i / 48 * Math.PI * 2) * halfY * .28, Math.sin(i / 48 * Math.PI * 2) * halfY * .28]),
+    ...(hockey ? [-1, 1].map((side) => Array.from({ length: 33 }, (_, i) => {
+      const a = -Math.PI / 2 + i / 32 * Math.PI
+      return [side * halfX - side * Math.cos(a) * halfY * .55, Math.sin(a) * halfY * .55]
+    })) : [Array.from({ length: 49 }, (_, i) => [Math.cos(i / 48 * Math.PI * 2) * halfY * .28, Math.sin(i / 48 * Math.PI * 2) * halfY * .28])]),
   ]
   for (const path of paths) {
     const curve = new THREE.CurvePath<THREE.Vector3>()

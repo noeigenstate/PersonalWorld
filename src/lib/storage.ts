@@ -1,7 +1,8 @@
 import { openDB, type IDBPDatabase } from 'idb'
 import type { MemoryState } from '../types'
 
-// Every account gets its own database in this browser; nothing is uploaded.
+// Every account gets its own browser database. Originals remain here;
+// photo analysis and films send only the copies required by those features.
 const LEGACY_DB = 'memory-agent-local'
 
 const open = (name: string) => openDB(name, 1, {
@@ -93,5 +94,15 @@ export async function getFile(id: string): Promise<File | undefined> {
 export async function removeFile(id: string): Promise<void> {
   const db = await current()
   await db.delete('files', id)
+}
+
+export async function loadFilmSettings(): Promise<{ enabled: boolean; attempted: string[] }> {
+  const db = await current()
+  return (await db.get('state', 'film-settings')) || { enabled: true, attempted: [] }
+}
+
+export async function saveFilmSettings(settings: { enabled: boolean; attempted: string[] }): Promise<void> {
+  const db = await current()
+  await db.put('state', settings, 'film-settings')
 }
 

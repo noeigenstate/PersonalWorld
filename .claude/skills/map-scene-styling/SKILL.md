@@ -27,4 +27,8 @@ description: 为 Personal World 的人生地图设计或实现统一的卡通地
 
 ## 交付检查
 
+有明确身份的特殊建筑精修，执行 [landmark-refinement](../landmark-refinement/SKILL.md)：从真实足迹和公开多角度资料提取识别特征，依次完成轮廓、结构、立面、材质与真实地图验收。该 skill 固化了拱墅两馆已获认可的生成过程；生成的是可复用资产，仍须为每个新地标核实资料和制作模型。
+
+特殊场馆精修见[交付记录](../../../docs/LANDMARKS_AND_MEMORY_FILM_2026-09-26.md)。`src/map/landmarkVenues.ts` 按确认的 OSM 建筑 ID 注册专属资产：杭州伞的开放翼形屋盖、玉琮馆的斜切椭圆及叠鳞玻璃外壳。新增资产须有建筑依据、沿用地面位置和轮廓；不能按城市名替换整区，也不能宣称任意新地标会自动精确生成。`npm run test:venues` 检查多视角实际模型；`SCENE_CLOSEUPS=gongshu` 的 `tests/scene-region-preview.mjs` 检查公园地图近景。参考摄影仅作本机观察，不作为可分发纹理。
+
 用同一照片地点、同一镜头对比原图和风格图；查看地理轮廓、照片与故事线可读性、近景地标辨认、桌面与手机帧率。若工作涉及运行时 skill，展示输入证据、`sceneRecipe`、实际渲染结果和用户确认／改风格后的再生成。概念效果图需明确标成美术参照。

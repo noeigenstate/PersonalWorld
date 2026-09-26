@@ -20,6 +20,7 @@ import { EventDetail, statusLabel } from './components/EventDetail'
 import { ImportDialog } from './components/ImportDialog'
 import { LifeMapView } from './components/LifeMapView'
 import { TimelineBar } from './components/TimelineBar'
+import { MemoryFilms } from './components/MemoryFilms'
 
 type Tab = 'map' | 'butler'
 const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
@@ -494,6 +495,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           <button className={tab === 'butler' ? 'on' : ''} onClick={() => setTab('butler')} aria-current={tab === 'butler' ? 'page' : undefined}>人生管家</button>
         </nav>
         <div className="app-actions">
+          <MemoryFilms assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId)} />
           <span className={`connection-status ${aiConfig.available ? 'online' : ''}`} title={aiConfig.message}><span />{aiConfig.available ? 'StepFun 已连接' : '本地模式'}</span>
           <button className="button button-primary top-import" onClick={() => setImportOpen(true)}><Plus size={16} />导入影像</button>
           <span className="account" title={`已登录：${account.username}`}><UserRound size={15} /><span>{account.username}</span></span>

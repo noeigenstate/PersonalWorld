@@ -17,6 +17,8 @@
     "test:card": "node tests/photo-card.mjs",
     "test:context": "node tests/photo-context.mjs",
     "test:metadata": "node tests/metadata.mjs",
+    "test:film": "node tests/memory-film.mjs",
+    "test:venues": "node tests/venue-models.mjs",
     "test:skills": "node --test skills/*/test.mjs .claude/skills/*/test.mjs"
   },
   "dependencies": {

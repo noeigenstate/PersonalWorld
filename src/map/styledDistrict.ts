@@ -6,6 +6,7 @@ import snapshot from './data/shanghai-pearl.json'
 import { ORIENTAL_PEARL_GCJ } from './memoryScene'
 import polygonClipping from 'polygon-clipping'
 import { createVenueBuilding, createSportsGround } from './venueArchitecture'
+import { createLandmarkVenue, venueLandmark } from './landmarkVenues'
 
 // A deliberately art-directed district, anchored to independently sourced OSM geometry.
 // Missing heights, windows, roof details, trees and cars are illustrative, not survey data.
@@ -721,7 +722,8 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     const height = actualHeight(item, area)
     if (specialised) {
       const measured = Boolean(item.height || item.levels)
-      group.add(createVenueBuilding(rings, measured ? height : item.kind === 'stadium' ? 22 : 26, item.kind as 'stadium' | 'sports_hall'))
+      const landmark = venueLandmark(item.id)
+      group.add(landmark ? createLandmarkVenue(rings, landmark, measured ? height : undefined) : createVenueBuilding(rings, measured ? height : item.kind === 'stadium' ? 22 : 26, item.kind as 'stadium' | 'sports_hall'))
       continue
     }
     const kind: Archetype = height >= 90 ? 2 : area >= 900 && height < 55 ? 3 : height < 27 ? 0 : 1

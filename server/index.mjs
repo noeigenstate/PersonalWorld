@@ -1,5 +1,6 @@
 import http from 'node:http'
 import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import { config as loadEnv } from 'dotenv'
 import { amapConfig, proxyAmapService, reverseGeocode } from './amap.mjs'
 import { chat, parseJsonAnswer, speak, stepfunConfig, transcribe } from './stepfun.mjs'
@@ -9,13 +10,18 @@ import { maskDeep } from './privacy.mjs'
 import { contextMessages, readContext } from './photoContext.mjs'
 import { cardMessages, readCard } from './photoCard.mjs'
 import { mapSceneForPoint } from './mapScene.mjs'
+import { createFilmService } from './memoryFilms.mjs'
+import { filmCapability } from './memoryFilmRender.mjs'
 
 loadEnv({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
 const port = Number(process.env.PORT ?? 8787)
 const stepfun = stepfunConfig()
 const amap = amapConfig()
-const users = createUserStore(process.env.USERS_FILE || fileURLToPath(new URL('./data/users.json', import.meta.url)))
+const usersFile = process.env.USERS_FILE || fileURLToPath(new URL('./data/users.json', import.meta.url))
+const users = createUserStore(usersFile)
+// Isolated account stores (including tests) must also have isolated media jobs.
+const films = createFilmService(stepfun, { root: process.env.MEMORY_FILMS_DIR || join(dirname(usersFile), 'memory-films') })
 
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -188,6 +194,30 @@ const server = http.createServer(async (req, res) => {
     // Personal data and the external map services below need a signed-in user.
     const currentUser = () => users.userForToken(readCookie(req, SESSION_COOKIE))
     const signedIn = () => Boolean(currentUser())
+    if (path === '/api/memory-films' || path.startsWith('/api/memory-films/')) {
+      const user = currentUser()
+      if (!user) return send(res, 401, { error: '请先登录' })
+      if (user.privacyVersion !== PRIVACY_VERSION) return send(res, 403, { error: '请先确认隐私声明' })
+      if (req.method === 'GET' && path === '/api/memory-films') return send(res, 200, { jobs: await films.list(user), capability: await filmCapability() })
+      const match = /^\/api\/memory-films\/([a-f0-9-]{36})(?:\/(video|poster|render|cancel|images|context)(?:\/([\w-]+))?)?$/.exec(path)
+      if (match && req.method === 'GET') {
+        if (match[2] === 'video' || match[2] === 'poster') {
+          if (await films.media(match[1], match[2], user, req, res)) return
+          return send(res, 404, { error: '短片不存在或已过期' })
+        }
+        if (!match[2]) { const [status, body] = films.get(match[1], user); return send(res, status, body) }
+      }
+      if (req.method !== 'POST') return send(res, 404, { error: '接口不存在' })
+      if (req.headers['x-memory-agent'] !== 'web') return send(res, 403, { error: '请求来源未通过校验' })
+      let result
+      if (path === '/api/memory-films') result = await films.start(await readJson(req), user)
+      else if (match?.[2] === 'images' && match[3]) result = await films.upload(match[1], match[3], await readJson(req), user)
+      else if (match?.[2] === 'render') result = await films.render(match[1], user)
+      else if (match?.[2] === 'cancel') result = await films.cancel(match[1], user)
+      else if (match?.[2] === 'context') result = films.context(match[1], await readJson(req), user)
+      else return send(res, 404, { error: '接口不存在' })
+      return send(res, result[0], result[1])
+    }
     if (path.startsWith('/_AMapService/')) return signedIn() ? await proxyAmapService(amap, req, res) : send(res, 401, { error: '请先登录' })
     if (req.method === 'GET' && path === '/api/config') {
       const ready = Boolean(stepfun.apiKey && stepfun.model)
