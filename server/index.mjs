@@ -58,7 +58,7 @@ function compactEvent(event) {
 const routes = {
   async 'POST /api/map-scene'(body) {
     if (typeof body.lng !== 'number' || typeof body.lat !== 'number' || !Number.isFinite(body.lng) || !Number.isFinite(body.lat) || Math.abs(body.lng) > 180 || Math.abs(body.lat) > 85) return [400, { error: '地点坐标无效' }]
-    return [200, await mapSceneForPoint(body.lng, body.lat)]
+    return [200, await mapSceneForPoint(body.lng, body.lat, body.radius)]
   },
   async 'POST /api/analyze'(body, user) {
     const consented = user.privacyVersion === PRIVACY_VERSION

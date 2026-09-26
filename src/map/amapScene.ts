@@ -4,11 +4,11 @@ import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js'
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import type { MemoryEvent } from '../types'
-import { wgs84ToGcj02 } from '../lib/geo'
+import { gcj02ToWgs84, wgs84ToGcj02 } from '../lib/geo'
 import { LAND, adder, box, building, createLabels, dim, eventLabel, placeLabel, seeded } from './objects'
 import { createOrientalPearlScene, isOrientalPearl, ORIENTAL_PEARL_GCJ } from './memoryScene'
 import { createStyledDistrict, shanghaiScene, type SceneData } from './styledDistrict'
-import { fetchRegionScene, hasStreetLocation, metresApart, photoSceneKey, regionForPhoto } from './regionScene'
+import { fetchRegionScene, hasStreetLocation, metresApart, photoRegions, photoSceneKey, regionForPhoto } from './regionScene'
 import { clusterProjectedPhotos } from './photoClusters'
 import type { AMapNS } from './amap'
 import type { LifeMapCallbacks, LifeMapData, MapPhoto } from './scene'
@@ -20,6 +20,7 @@ import type { LifeMapCallbacks, LifeMapData, MapPhoto } from './scene'
 // by scaling with the zoom level ("unit" = metres per scene unit).
 
 const PX_PER_UNIT = 26
+const VENUE_MIN_ZOOM = 15
 const unitMetres = (zoom: number) => (156543.034 / 2 ** zoom) * PX_PER_UNIT
 
 interface Scaled { object: THREE.Object3D }
@@ -117,6 +118,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let unit = unitMetres(5)
   let scaled: Scaled[] = []
   let lines: LineMaterial[] = []
+  let storyLines: THREE.Object3D[] = []
   let current: LifeMapData | null = null
   let lastSignature = ''
   let ready = false
@@ -133,6 +135,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let shadowSceneWasVisible = false
   type BuildingArea = { visible?: boolean; color1?: string; color2?: string; path: [number, number][] }
   let sceneAreas: BuildingArea[] = []
+  let activeVenue: import('./styledDistrict').SceneVenue | undefined
+  let frameFocusedVenue = false
   const heights = new Map<string, number>() // label heights in scene units
 
   const gcj = (lat: number, lng: number): [number, number] => { const p = wgs84ToGcj02({ lat, lng }); return [p.lng, p.lat] }
@@ -174,7 +178,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     labels.clear()
     scaled = []
     lines = []
+    storyLines = []
     heights.clear()
+    container.dataset.storySegments = '0'
     const located = data.places.filter((p) => p.lat !== undefined && p.lng !== undefined)
     if (!origin && located.length) origin = gcj(located[0].lat!, located[0].lng!)
     if (!origin) return
@@ -225,7 +231,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     const cityPos = selected ? positions.get(selected) : undefined
     if (selected && cityPos && data.story.length) {
       const nodes = data.story.map((event, index) => ({ event, pos: storyPosition(event, index, data.story.length, cityPos, positions) }))
-      if (nodes.length > 1) fatLine(new THREE.CatmullRomCurve3(nodes.map((n) => n.pos), false, 'centripetal').getPoints(nodes.length * 24), 0xf08a24, 6)
+      const route = (data.routeEventIds || []).map((id) => nodes.find((node) => node.event.id === id)).filter((node) => node !== undefined)
+      if (route.length > 1) storyLines.push(fatLine(route.map((n) => n.pos.clone().setZ(2)), 0xf08a24, 3, .8))
+      container.dataset.storySegments = String(Math.max(0, route.length - 1))
       for (const { event, pos } of nodes) {
         const now = event.id === data.highlightedEventId
         const unsure = event.citySource === 'ai'
@@ -272,7 +280,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     camera.lookAt(lookAt[0], lookAt[1], lookAt[2])
     camera.updateProjectionMatrix()
     unit = unitMetres(map.getZoom())
-    memoryWorld.visible = sceneEnabled && map.getZoom() >= 16.7
+    for (const line of storyLines) line.visible = map.getZoom() >= 12
+    container.dataset.storyLinesVisible = String(storyLines.length > 0 && map.getZoom() >= 12)
+    memoryWorld.visible = sceneEnabled && map.getZoom() >= (activeVenue ? VENUE_MIN_ZOOM : 16.7)
     if (memoryWorld.visible && !shadowSceneWasVisible) renderer.shadowMap.needsUpdate = true
     shadowSceneWasVisible = memoryWorld.visible
     sceneSource.hidden = !(memoryWorld.visible && hasStyledDistrict)
@@ -418,6 +428,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     disposeMemoryContent()
     memoryAnchor = null
     activeSceneKey = ''
+    activeVenue = undefined
     requestedSceneKey = ''
     hasStyledDistrict = false
     sceneAreas = []
@@ -425,16 +436,45 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     sceneSource.hidden = true
     applyBuildingAreas([])
     container.dataset.sceneBuildings = '0'
+    container.dataset.sceneVenue = ''
+    container.dataset.scenePhotos = '0'
     delete container.dataset.sceneSurfaces
     setSceneState('idle')
   }
 
-  function focusMemoryScene(photo?: MapPhoto, retry = false) {
+  function frameVenue(venue: import('./styledDistrict').SceneVenue) {
+    const [west, south, east, north] = venue.bbox
+    map.setPitch(52, true)
+    map.setBounds(new AMap.Bounds(gcj(south, west), gcj(north, east)), true, [110, insets.bottom + 50, 90, insets.right + 90])
+    if (map.getZoom() < VENUE_MIN_ZOOM) map.setZoom(VENUE_MIN_ZOOM, true)
+    // A geographic box at a tilted camera can leave the park tiny in a sea of
+    // unrelated blocks. Fit the actual projected outline into the usable viewport.
+    const left = size.w < 700 ? 25 : 65, right = Math.max(left + 120, size.w - insets.right - left)
+    const top = 105, bottom = Math.max(top + 120, size.h - insets.bottom - 50)
+    for (let pass = 0; pass < 3; pass++) {
+      const pixels = venue.polygons.flat(2).map(([lng, lat]) => map.lngLatToContainer(gcj(lat, lng)))
+      const minX = Math.min(...pixels.map((p: { x: number }) => p.x)), maxX = Math.max(...pixels.map((p: { x: number }) => p.x))
+      const minY = Math.min(...pixels.map((p: { y: number }) => p.y)), maxY = Math.max(...pixels.map((p: { y: number }) => p.y))
+      map.panBy((left + right - minX - maxX) / 2, (top + bottom - minY - maxY) / 2, 0)
+      const ratio = Math.min((right - left) / Math.max(1, maxX - minX), (bottom - top) / Math.max(1, maxY - minY))
+      if (Math.abs(Math.log2(ratio)) < .08) break
+      map.setZoom(Math.max(VENUE_MIN_ZOOM, Math.min(19, map.getZoom() + Math.max(-.6, Math.min(.6, Math.log2(ratio) * .7)))), true)
+    }
+  }
+
+  function focusMemoryScene(photo?: MapPhoto, retry = false, frameAfterLoad = false) {
     if (!sceneEnabled || disposed) return
     const region = photo ? regionForPhoto(photos.map((entry) => entry.photo), photo) : undefined
     if (photo && !region) { clearMemoryScene(); return }
     const key = photo ? sceneKey(photo) : 'public:oriental-pearl'
-    if (!retry && key === requestedSceneKey && sceneState !== 'idle') return
+    if (!retry && key === requestedSceneKey && sceneState !== 'idle') {
+      if (sceneState === 'ready' && activeVenue && region) {
+        container.dataset.scenePhotos = String(region.photoIds.length)
+        const title = sceneCaption.querySelector('strong')
+        if (title) title.textContent = `${activeVenue.name} · ${region.photoIds.length} 张照片`
+      }
+      return
+    }
     const generation = ++sceneGeneration
     requestedSceneKey = key
     const center = region?.center || ORIENTAL_PEARL_GCJ
@@ -484,12 +524,17 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       disposeMemoryContent()
       memoryWorld.add(district.group)
       sceneAreas = areas
-      activeSceneKey = key
+      // The server can discover a complete park/mall boundary on the first load.
+      // All photos inside it then acquire one canonical scene key immediately.
+      const resolved = photo ? regionForPhoto(photos.map((entry) => entry.photo), photo) : undefined
+      activeVenue = resolved?.venue
+      activeSceneKey = photo ? sceneKey(photo) : key
+      requestedSceneKey = activeSceneKey
       hasStyledDistrict = true
       tileCredit.hidden = !data.provider
-      const count = region?.photoIds.length || 0
-      title.textContent = pearl ? '东方明珠 · 风格化地标' : `照片地点 · 风格化${district.kind}${count > 1 ? ` · ${count} 张照片` : ''}`
-      note.textContent = district.completeSurface ? '地理轮廓来自 OpenStreetMap，窗、树和材质为艺术表现' : '地图建筑资料较少，保留未替换的原有楼体'
+      const count = resolved?.photoIds.length || region?.photoIds.length || 0
+      title.textContent = pearl ? '东方明珠 · 风格化地标' : `${activeVenue?.name || `照片地点 · 风格化${district.kind}`}${count > 1 ? ` · ${count} 张照片` : ''}`
+      note.textContent = activeVenue ? '整片地点共同呈现，照片仍在各自拍摄位置' : district.completeSurface ? '地理轮廓来自 OpenStreetMap，窗、树和材质为艺术表现' : '地图建筑资料较少，保留未替换的原有楼体'
       sun.position.copy(pointAt).add(new THREE.Vector3(-800, -750, 1200))
       sun.target.position.copy(pointAt)
       sun.target.updateMatrixWorld()
@@ -497,11 +542,18 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       container.dataset.sceneBuildings = String(district.buildingCount)
       container.dataset.sceneSurfaces = district.completeSurface ? 'full' : 'partial'
       container.dataset.sceneBuilds = String(++sceneBuilds)
+      container.dataset.sceneVenue = activeVenue?.id || ''
+      container.dataset.scenePhotos = String(count)
+      container.dataset.sceneWater = String(data.water.length)
+      container.dataset.sceneWaterways = String(data.waterways?.length || 0)
+      container.dataset.sceneSpecialBuildings = String(data.buildings.filter((b) => b.kind === 'stadium' || b.kind === 'sports_hall').length)
       setSceneState('ready')
+      if ((frameAfterLoad || frameFocusedVenue) && activeVenue) frameVenue(activeVenue)
+      frameFocusedVenue = false
       renderer.shadowMap.needsUpdate = true
       draw()
     }
-    const loading = pearl ? Promise.resolve(shanghaiScene) : fetchRegionScene(center, retry)
+    const loading = pearl ? Promise.resolve(shanghaiScene) : fetchRegionScene(region!, retry)
     loading.then(attachDistrict).catch(() => {
       if (disposed || generation !== sceneGeneration) return
       setSceneState('error')
@@ -520,12 +572,22 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   // Every precise photo group uses the same pipeline, including manual zoom/pan visits.
   function syncSceneForView() {
     if (!ready || !origin || !sceneEnabled || disposed) return
-    if (map.getZoom() < 16.7) {
+    if (map.getZoom() < (activeVenue ? VENUE_MIN_ZOOM : 16.7)) {
       if (requestedSceneKey || activeSceneKey) clearMemoryScene()
       return
     }
     const center = map.getCenter()
     const at: [number, number] = [center.lng, center.lat]
+    if (activeVenue) {
+      const [west, south, east, north] = activeVenue.bbox
+      const p = gcj02ToWgs84({ lng: at[0], lat: at[1] })
+      if (p.lng >= west && p.lng <= east && p.lat >= south && p.lat <= north) {
+        const all = photos.map((entry) => entry.photo)
+        const region = photoRegions(all).find((r) => r.venue?.id === activeVenue!.id)
+        const member = all.find((photo) => photo.id === region?.photoIds[0])
+        if (member) { focusMemoryScene(member); return }
+      }
+    }
     const focused = photos.find(({ photo }) => photo.id === focusedId)?.photo
     if (focused && hasStreetLocation(focused) && metresApart(focused.gcj, at) < 700) {
       focusMemoryScene(focused)
@@ -541,7 +603,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   }
 
   function setPhotos(next: MapPhoto[] = []) {
-    const key = next.map((p) => `${p.id}:${p.gcj.join(',')}:${p.inferred}:${p.precision || ''}:${p.landmark || ''}:${p.landmarkSource || ''}:${p.sceneCard?.createdAt || ''}:${p.sceneCard?.scene || ''}:${p.sceneCard?.tags?.join(',') || ''}`).join('|') + `#${focusedId}`
+    const key = next.map((p) => `${p.id}:${p.gcj.join(',')}:${p.inferred}:${p.precision || ''}:${p.venueName || ''}:${p.landmark || ''}:${p.landmarkSource || ''}:${p.sceneCard?.createdAt || ''}:${p.sceneCard?.scene || ''}:${p.sceneCard?.tags?.join(',') || ''}`).join('|') + `#${focusedId}`
     // With no located place yet, the photos themselves anchor the scene
     if (!origin && next.length) origin = next[0].gcj
     if (key === photoKey || !origin) return
@@ -672,6 +734,11 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   map.on('movestart', closePhotoMenu)
   map.on('moveend', syncSceneForView)
   map.on('zoomend', syncSceneForView)
+  // AMap updates its internal viewport after the browser's ResizeObserver. Fit a
+  // whole venue only after that update, otherwise a narrow screen keeps the old zoom.
+  map.on('resize', () => {
+    if (ready && !disposed && activeVenue) frameVenue(activeVenue)
+  })
 
   function resize() {
     size = { w: Math.max(1, container.clientWidth), h: Math.max(1, container.clientHeight) }
@@ -723,11 +790,17 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     focusPhoto(photo: MapPhoto) {
       if (!ready) { pendingFocus = photo; pendingLandmark = false; return }
       focusedId = photo.id
+      frameFocusedVenue = true
       if (current) setPhotos(current.photos)
-      map.setPitch(60, true)
-      map.setZoomAndCenter(hasStreetLocation(photo) ? 18 : 13, photo.gcj, true)
-      if (hasStreetLocation(photo)) focusMemoryScene(photo)
+      const region = regionForPhoto(photos.map((entry) => entry.photo), photo)
+      if (region?.venue) frameVenue(region.venue)
+      else {
+        map.setPitch(60, true)
+        map.setZoomAndCenter(hasStreetLocation(photo) ? 18 : 13, photo.gcj, true)
+      }
+      if (hasStreetLocation(photo)) focusMemoryScene(photo, false, true)
       else clearMemoryScene()
+      if (sceneState === 'ready') frameFocusedVenue = false
     },
     focusLandmark() {
       if (!ready) { pendingLandmark = true; pendingFocus = null; return }
@@ -742,7 +815,10 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       insets = next
       sceneSource.style.right = `${Math.max(20, next.right + 20)}px`
       sceneSource.style.bottom = `${Math.max(138, next.bottom + 12)}px`
-      if (current && ready) frame(current, false)
+      if (current && ready) {
+        if (activeVenue) frameVenue(activeVenue)
+        else frame(current, false)
+      }
     },
     dispose() {
       disposed = true

@@ -41,6 +41,7 @@ try {
   page.on('pageerror', (error) => errors.push(error.message))
   page.on('console', (message) => { if (/THREE.WebGLProgram: Shader Error/.test(message.text())) shaderErrors.push(message.text()) })
   let requests = 0
+  let lastMapScene
   let holdNext = false
   let failNext = false
   let heldReceived
@@ -60,6 +61,7 @@ try {
         url: `${apiBase}${url.pathname}${url.search}`,
         headers: { ...route.request().headers(), cookie },
       })
+      if (isScene && response.ok()) lastMapScene = await response.json()
       if (shouldHold) {
         await new Promise((resolve) => { releaseHeld = resolve; heldReceived() })
       }
@@ -159,9 +161,79 @@ try {
   const shenzhen = await snapshot('shenzhen')
   assert.equal(shenzhen.sceneState, 'ready', '失败后通过真实接口重试成功')
 
+  // One actual public park, with photos near opposite ends (well beyond 450 m).
+  // No venue names or AI cards are supplied: membership comes from the OSM boundary.
+  await page.evaluate(async () => {
+    const { wgs84ToGcj02 } = await import('/src/lib/geo.js')
+    const park = [[120.0978, 30.3182], [120.1008, 30.3138]].map(([lng, lat], i) => {
+      const p = wgs84ToGcj02({ lng, lat })
+      return { ...regionTest.photos[0], id: `park-${i}`, name: `Park ${i}`, gcj: [p.lng, p.lat] }
+    })
+    regionTest.park = park
+    regionTest.data.photos = [...regionTest.photos, ...park]
+    regionTest.api.update(regionTest.data)
+    regionTest.api.focusPhoto(park[0])
+  })
+  const gongshu = await snapshot('gongshu-whole-park')
+  assert.equal(gongshu.sceneVenue, 'osm:way:615060920', '真实公园边界被识别')
+  assert.equal(Number(gongshu.scenePhotos), 2, '同一园区的南北照片共同展示')
+  assert.equal(Number(gongshu.sceneSpecialBuildings), 2, '南体育馆和北体育场采用分类造型')
+  assert.ok(Number(gongshu.sceneWater) >= 2 && Number(gongshu.sceneWaterways) > 0, '湖面与独立河道均被提取')
+  const parkRequests = requests
+  await page.evaluate(() => regionTest.api.focusPhoto(regionTest.park[1]))
+  await page.waitForTimeout(800)
+  assert.equal((await state()).sceneBuilds, gongshu.sceneBuilds, '同一公园不同位置共享整个场景')
+  assert.equal(requests, parkRequests, '同一公园另一组照片不再请求独立街区')
+  const frameBounds = () => page.evaluate(async (venue) => {
+    const { wgs84ToGcj02 } = await import('/src/lib/geo.js')
+    const pixels = venue.polygons.flat(2).map(([lng, lat]) => {
+      const p = wgs84ToGcj02({ lng, lat })
+      const pixel = regionTest.map.lngLatToContainer([p.lng, p.lat])
+      return [pixel.x, pixel.y]
+    })
+    return { zoom: regionTest.map.getZoom(), photos: Number(regionTest.host.dataset.scenePhotos), bounds: [Math.min(...pixels.map((p) => p[0])), Math.min(...pixels.map((p) => p[1])), Math.max(...pixels.map((p) => p[0])), Math.max(...pixels.map((p) => p[1]))] }
+  }, lastMapScene.venue)
+  const parkFrame = await frameBounds()
+  assert.equal(parkFrame.photos, 2)
+  assert.ok(parkFrame.bounds[0] >= 0 && parkFrame.bounds[1] >= 0 && parkFrame.bounds[2] <= 1440 && parkFrame.bounds[3] <= 900, '完整公园而非单个拍摄点位于视窗')
+  await page.screenshot({ path: join(temporary, 'gongshu-shared-park.png') })
+  await page.setViewportSize({ width: 430, height: 900 })
+  await page.evaluate(() => regionTest.api.focusPhoto(regionTest.park[0]))
+  await page.waitForTimeout(1200)
+  assert.equal((await state()).sceneBuilds, gongshu.sceneBuilds, '窄屏进入公园仍复用同一场景')
+  assert.equal(await page.locator('#region-test .map-scene-source').isVisible(), true, '完整园区取景在窄屏也显示材质')
+  const mobileFrame = await frameBounds()
+  assert.ok(mobileFrame.bounds[0] >= -2 && mobileFrame.bounds[2] <= 432 && mobileFrame.bounds[1] >= -2 && mobileFrame.bounds[3] <= 902, `窄屏不能裁掉半个公园: ${JSON.stringify(mobileFrame)}`)
+  await page.screenshot({ path: join(temporary, 'gongshu-shared-park-mobile.png') })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.evaluate(() => {
+    regionTest.data.photos = regionTest.photos
+    regionTest.api.update(regionTest.data)
+  })
+  await page.waitForFunction(() => regionTest.host.dataset.sceneState === 'idle')
+  assert.equal((await state()).sceneVenue, '', '移除该地点全部照片后不保留孤立园区场景')
+
+  // City memories are always accessible, but default and overview have no story line.
+  await page.evaluate(() => {
+    const base = { assetIds: [], timeSource: 'exif', title: '回忆', summary: '', type: '日常', place: '', city: '杭州', people: [], visibleText: '', tags: [], questions: [], status: 'confirmed' }
+    const story = [{ ...base, id: 'visit-a', occurredAt: '2026-09-20T02:00:00Z', lat: 30.3182, lng: 120.0978 }, { ...base, id: 'visit-b', occurredAt: '2026-09-20T04:00:00Z', lat: 30.3138, lng: 120.1008 }]
+    regionTest.data = { ...regionTest.data, places: [{ city: '杭州', lat: 30.316, lng: 120.099, eventIds: ['visit-a', 'visit-b'], firstAt: story[0].occurredAt, lastAt: story[1].occurredAt, role: 'travel', isBase: false }], selectedCity: '杭州', story }
+    regionTest.api.update(regionTest.data)
+  })
+  assert.equal((await state()).storyLinesVisible, 'false', '城市故事默认不机械连线')
+  await page.evaluate(() => {
+    regionTest.data.routeEventIds = ['visit-a', 'visit-b']
+    regionTest.api.update(regionTest.data)
+    regionTest.map.setZoom(14, true)
+  })
+  await page.waitForFunction(() => regionTest.host.dataset.storyLinesVisible === 'true')
+  assert.equal((await state()).storySegments, '1')
+  await page.evaluate(() => regionTest.map.setZoom(10, true))
+  await page.waitForFunction(() => regionTest.host.dataset.storyLinesVisible === 'false')
+
   const sparse = await page.evaluate(async () => {
     const { createStyledDistrict } = await import('/src/map/styledDistrict.ts')
-    const { photoRegions, metresApart } = await import('/src/map/regionScene.ts')
+    const { photoRegions, metresApart, rememberSceneVenues } = await import('/src/map/regionScene.ts')
     const { wgs84ToGcj02 } = await import('/src/lib/geo.js')
     const center = wgs84ToGcj02({ lng: 121.5, lat: 31.2 })
     const convert = (points) => points.map(([lng, lat]) => [(lng - center.lng) * 96000, (lat - center.lat) * 111000])
@@ -178,7 +250,17 @@ try {
     })
     const groups = photoRegions(chain)
     const boundedGroups = groups.every((group) => group.photoIds.every((id) => metresApart(group.center, chain.find((p) => p.id === id).gcj) <= 450.01))
-    const result = { buildings: district.buildingCount, texturedWalls: walls.length, maxHeight, broadSurface: district.completeSurface, hiddenFootprints: district.hideNativePaths.length, boundedGroups }
+    const mallRing = [[115, 30], [115.02, 30], [115.02, 30.01], [115, 30.01], [115, 30]]
+    rememberSceneVenues({ venues: [{ id: 'test-mall', kind: 'mall', name: 'Test mall', polygons: [[mallRing]], bbox: [115, 30, 115.02, 30.01], center: [115.01, 30.005] }] })
+    const mallPhotos = [115.002, 115.018].map((lng, i) => {
+      const p = wgs84ToGcj02({ lng, lat: 30.005 })
+      return { id: `mall-${i}`, precision: 'point', gcj: [p.lng, p.lat] }
+    })
+    const mallGroups = photoRegions(mallPhotos)
+    const mallShared = mallGroups.length === 1 && mallGroups[0].photoIds.length === 2 && mallGroups[0].key === 'venue:test-mall'
+    const named = photoRegions([{ id: 'a', gcj: [116, 30], venueName: '示例购物中心' }, { id: 'b', gcj: [116.007, 30], venueName: '示例购物中心' }, { id: 'branch', gcj: [117, 31], venueName: '示例购物中心' }])
+    const separateBranches = named.length === 2 && named.some((r) => r.photoIds.includes('a') && r.photoIds.includes('b'))
+    const result = { buildings: district.buildingCount, texturedWalls: walls.length, maxHeight, broadSurface: district.completeSurface, hiddenFootprints: district.hideNativePaths.length, boundedGroups, mallShared, separateBranches }
     district.group.traverse((child) => { child.geometry?.dispose(); child.material?.map?.dispose(); child.material?.dispose() })
     return result
   })
@@ -188,9 +270,11 @@ try {
   assert.equal(sparse.broadSurface, false, '稀疏资料不铺盖住原生楼块的整片用地面')
   assert.equal(sparse.hiddenFootprints, 1, '只隐藏实际已替换的足迹')
   assert.equal(sparse.boundedGroups, true, '一串照片不能让组中心漂移而遗漏早先的照片地点')
+  assert.equal(sparse.mallShared, true, '同一商场边界内的不同入口共用场景')
+  assert.equal(sparse.separateBranches, true, '同名异地商场不能因名称相同被合并')
   assert.deepEqual(errors, [])
   assert.deepEqual(shaderErrors, [])
-  console.log(JSON.stringify({ screenshots: temporary, wuhan, hangzhou, xiangtan, shenzhen, sparse, requests, errors }))
+  console.log(JSON.stringify({ screenshots: temporary, wuhan, hangzhou, xiangtan, shenzhen, gongshu, parkFrame, mobileFrame, sparse, requests, errors }))
 } finally {
   closing = true
   releaseHeld?.()

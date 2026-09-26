@@ -4,13 +4,16 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { wgs84ToGcj02 } from '../lib/geo'
 import snapshot from './data/shanghai-pearl.json'
 import { ORIENTAL_PEARL_GCJ } from './memoryScene'
+import polygonClipping from 'polygon-clipping'
+import { createVenueBuilding, createSportsGround } from './venueArchitecture'
 
 // A deliberately art-directed district, anchored to independently sourced OSM geometry.
 // Missing heights, windows, roof details, trees and cars are illustrative, not survey data.
 type Point = [number, number]
-type Polygon = { id: string; rings: Point[][]; height?: string | null; levels?: string | null }
+type Polygon = { id: string; rings: Point[][]; height?: string | null; levels?: string | null; kind?: string; name?: string }
 type Road = { id: string; class: string; path: Point[] }
 type Archetype = 0 | 1 | 2 | 3 // low, mid-rise, tower, broad hall
+export interface SceneVenue { id: string; name: string; kind: string; polygons: Point[][][]; bbox: [number, number, number, number]; center: Point }
 export interface SceneData {
   source: string
   license: string
@@ -25,6 +28,11 @@ export interface SceneData {
   plazas: Polygon[]
   treeRows: { id: string; path: Point[] }[]
   coast?: boolean
+  waterways?: Road[]
+  grounds?: (Polygon & { kind: string; sport: string })[]
+  venues?: SceneVenue[]
+  venue?: SceneVenue
+  detailStatus?: 'ready' | 'unavailable'
 }
 export const shanghaiScene = snapshot as unknown as SceneData
 type Convert = (points: Point[]) => Point[]
@@ -289,16 +297,27 @@ function decorate(group: THREE.Group, parks: Point[][][], plazas: Point[][][], w
     const length = Math.hypot(bx - ax, by - ay)
     for (let d = 5; d < length; d += 19) addTree([ax + (bx - ax) * d / length, ay + (by - ay) * d / length], true)
   }
+  const parkCandidates: Point[] = []
   for (const rings of parks) {
     const ring = rings[0]
     const minX = Math.min(...ring.map((point) => point[0]))
     const maxX = Math.max(...ring.map((point) => point[0]))
     const minY = Math.min(...ring.map((point) => point[1]))
     const maxY = Math.max(...ring.map((point) => point[1]))
-    for (let x = minX + 12; x < maxX && treePositions.length < 240; x += 19) for (let y = minY + 12; y < maxY && treePositions.length < 240; y += 19) {
+    const spacious = (maxX - minX) * (maxY - minY) > 50000
+    const spacing = spacious ? 31 : 19
+    for (let x = minX + 12; x < maxX; x += spacing) for (let y = minY + 12; y < maxY; y += spacing) {
       const point: Point = [x + (hash(`${x}:${y}`) - .5) * 9, y + (hash(`${y}:${x}`) - .5) * 9]
-      if (inside(point, ring)) addTree(point)
+      if (spacious && hash(`${x}:${y}:open-lawn`) < .45) continue
+      if (inside(point, ring) && !rings.slice(1).some((hole) => inside(point, hole))) parkCandidates.push(point)
     }
+  }
+  // A shared tree budget must cover the whole park. Taking the first 240 grid
+  // positions filled one corner with a forest and left the other half empty.
+  parkCandidates.sort((a, b) => hash(`${a[0]}:${a[1]}:plant`) - hash(`${b[0]}:${b[1]}:plant`))
+  for (const point of parkCandidates) {
+    if (treePositions.length >= 240) break
+    addTree(point)
   }
   for (const { path } of roads.filter((road) => road.major)) for (let i = 1; i < path.length && treePositions.length < 360; i++) {
     const [ax, ay] = path[i - 1]
@@ -524,7 +543,26 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   if (completeSurface) group.add(ground)
   else { ground.geometry.dispose(); ground.material.dispose() }
 
-  const water = data.water.map((polygon) => polygon.rings.map(transform))
+  let water = data.water.map((polygon) => polygon.rings.map(transform))
+  const channelPolygons: Point[][][] = []
+  for (const channel of data.waterways || []) {
+    const path = transform(channel.path)
+    // Centerlines have no measured banks. Use a restrained class-based width.
+    const width = channel.class === 'river' ? 20 : channel.class === 'canal' ? 12 : channel.class === 'stream' ? 6 : 3
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1], b = path[i]
+      const length = Math.hypot(b[0] - a[0], b[1] - a[1])
+      if (length < .5) continue
+      const ux = (b[0] - a[0]) / length * width / 2, uy = (b[1] - a[1]) / length * width / 2
+      const ring: Point[] = [[a[0] - ux - uy, a[1] - uy + ux], [b[0] + ux - uy, b[1] + uy + ux], [b[0] + ux + uy, b[1] + uy - ux], [a[0] - ux + uy, a[1] - uy - ux]]
+      ring.push(ring[0])
+      channelPolygons.push([ring])
+    }
+  }
+  if (channelPolygons.length) {
+    try { water = polygonClipping.union([...water, ...channelPolygons]) as Point[][][] }
+    catch { water.push(...channelPolygons) }
+  }
   const parks = data.green.map((polygon) => polygon.rings.map(transform))
   for (const [kind, color] of [
     ['commercial', '#f4ddc6'],
@@ -541,7 +579,9 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
       .filter((value): value is THREE.ShapeGeometry => value !== null)
     if (surfaces.length) mergedMesh(group, surfaces, parcelMaterial(color, kind))
   }
-  const waterShapes = water.map((rings) => polygonGeometry(rings, .15)).filter((value): value is THREE.ShapeGeometry => value !== null)
+  // A park polygon often includes its lake. Water must sit above grass and plazas,
+  // while paths/bridges sit above water. Otherwise the lake becomes a green lawn.
+  const waterShapes = water.map((rings) => polygonGeometry(rings, .24)).filter((value): value is THREE.ShapeGeometry => value !== null)
   const waterGeometry = waterShapes.length ? mergeGeometries(waterShapes, false) : null
   waterShapes.forEach((geometry) => geometry.dispose())
   if (waterGeometry) {
@@ -618,7 +658,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   mergedMesh(group, sand.map((rings) => polygonGeometry(rings, .195)).filter((value): value is THREE.ShapeGeometry => value !== null), parcelMaterial('#f1d6ad', 'sand'))
   const plazas = data.plazas.map((polygon) => polygon.rings.map(transform))
   mergedMesh(group, plazas.map((rings) => polygonGeometry(rings, .205)).filter((value): value is THREE.ShapeGeometry => value !== null), parcelMaterial('#f4dec8', 'plaza'))
-  group.add(new THREE.Mesh(ribbonGeometry(water.map((rings) => rings[0]), 6, .22), new THREE.MeshBasicMaterial({ color: '#f8e9ce', side: THREE.DoubleSide })))
+  group.add(new THREE.Mesh(ribbonGeometry(water.flatMap((rings) => rings), 3, .25), new THREE.MeshBasicMaterial({ color: '#f8e9ce', side: THREE.DoubleSide })))
   const waterLines: Point[][] = []
   for (let x = corners[0][0] + 30; x < corners[1][0] - 30; x += 84) for (let y = corners[0][1] + 25; y < corners[1][1] - 25; y += 82) {
     const point: Point = [x + (hash(`${x}:wave`) - .5) * 34, y + (hash(`${y}:wave`) - .5) * 30]
@@ -627,7 +667,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
       waterLines.push([[point[0] - length, point[1]], [point[0], point[1] + 2], [point[0] + length, point[1]]])
     }
   }
-  group.add(new THREE.Mesh(ribbonGeometry(waterLines, 1.7, .18), new THREE.MeshBasicMaterial({ color: '#edfdfa', transparent: true, opacity: .68, side: THREE.DoubleSide })))
+  group.add(new THREE.Mesh(ribbonGeometry(waterLines, 1.7, .255), new THREE.MeshBasicMaterial({ color: '#edfdfa', transparent: true, opacity: .68, side: THREE.DoubleSide })))
 
   const roads = data.roads.map((road) => ({ path: transform(road.path), major: /^(motorway|trunk|primary|secondary|tertiary)/.test(road.class), class: road.class }))
   const types = [
@@ -655,6 +695,11 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   const roofLines: number[] = []
   const roofFeatures: { point: Point; height: number; size: number; rotation: number; color: string }[] = []
   const occupied: Point[][] = []
+  for (const item of data.grounds || []) {
+    const rings = item.rings.map(transform)
+    occupied.push(rings[0])
+    group.add(createSportsGround(rings, item.sport, item.kind))
+  }
   const anchor = convert([clearAt])[0]
   for (const item of data.buildings) {
     const rings = item.rings.map(transform)
@@ -666,13 +711,19 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     let signedArea = 0
     for (let i = 1; i < outer.length; i++) signedArea += outer[i - 1][0] * outer[i][1] - outer[i][0] * outer[i - 1][1]
     const area = Math.abs(signedArea) / 2
-    if (area < 18 || area > 24000) continue
+    const specialised = item.kind === 'stadium' || item.kind === 'sports_hall'
+    if (area < 18 || area > (specialised ? 60000 : 24000)) continue
     buildingCount++
     hideNativePaths.push(item.rings[0].map(([lng, lat]): Point => {
       const p = wgs84ToGcj02({ lng, lat })
       return [p.lng, p.lat]
     }))
     const height = actualHeight(item, area)
+    if (specialised) {
+      const measured = Boolean(item.height || item.levels)
+      group.add(createVenueBuilding(rings, measured ? height : item.kind === 'stadium' ? 22 : 26, item.kind as 'stadium' | 'sports_hall'))
+      continue
+    }
     const kind: Archetype = height >= 90 ? 2 : area >= 900 && height < 55 ? 3 : height < 27 ? 0 : 1
     const [tileWidth, tileHeight] = ([[17, 14], [13, 12], [12, 15], [19, 11]] as const)[kind]
     const block = `${Math.floor(center[0] / 155)}:${Math.floor(center[1] / 155)}`

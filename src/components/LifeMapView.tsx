@@ -74,7 +74,7 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, scene
   useEffect(() => {
     map.current?.update(data)
     // Rebuild only when the data the scene draws actually changes
-  }, [data.places, data.bases, data.story, data.selectedCity, data.highlightedEventId, data.photos]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.places, data.bases, data.story, data.selectedCity, data.highlightedEventId, data.photos, data.routeEventIds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (focus) map.current?.focusPhoto?.(focus.photo) }, [focus])
   useEffect(() => { if (landmarkPreviewAt) map.current?.focusLandmark?.() }, [landmarkPreviewAt])

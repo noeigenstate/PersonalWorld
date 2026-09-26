@@ -15,6 +15,8 @@ export interface LifeMapData {
   selectedCity: string | null
   highlightedEventId: string | null
   photos?: MapPhoto[]
+  // Only a deliberately selected outing has a geographic connecting line.
+  routeEventIds?: string[]
 }
 
 export interface LifeMapCallbacks {
@@ -32,6 +34,8 @@ export interface MapPhoto {
   // Place came from the picture or other photos, not the photo's own GPS
   inferred: boolean
   precision?: 'point' | 'poi' | 'street' | 'district' | 'city' | 'province'
+  // An AOI or POI from geocoding, kept locally for grouping repeated visits.
+  venueName?: string
   // A landmark identified in a photo card or in the located place details.
   landmark?: string
   landmarkSource?: 'photo' | 'place'
@@ -256,11 +260,12 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
     const cityPos = selected ? positions.get(selected) : undefined
     if (selected && cityPos && data.story.length) {
       const nodes = storyLayout(selected, data.story, cityPos)
-      if (nodes.length > 1) {
-        const route: THREE.Vector3[] = [nodes[0].pos]
-        for (let i = 1; i < nodes.length; i++) {
-          const a = nodes[i - 1]
-          const b = nodes[i]
+      const routeNodes = (data.routeEventIds || []).map((id) => nodes.find((n) => n.event.id === id)).filter((n) => n !== undefined)
+      if (routeNodes.length > 1) {
+        const route: THREE.Vector3[] = [routeNodes[0].pos]
+        for (let i = 1; i < routeNodes.length; i++) {
+          const a = routeNodes[i - 1]
+          const b = routeNodes[i]
           let delta = b.angle - a.angle
           while (delta > Math.PI) delta -= Math.PI * 2
           while (delta < -Math.PI) delta += Math.PI * 2

@@ -12,6 +12,7 @@ import { importFiles } from './lib/import'
 import { baseAt, cityLabel, derivePlaces, firstsOf, formatYearMonth, regroupDrafts, roleLabels, spaceLine, storyLine } from './lib/memory'
 import { startRecording } from './lib/recorder'
 import { geocodeInBrowser } from './map/amap'
+import { visitRoutes } from './lib/storyRoutes'
 import { loadMemory, removeFile, saveMemory } from './lib/storage'
 import type { AiConfig, MemoryAsset, MemoryEvent, MemoryState, PlaceRole } from './types'
 import { Butler, type ButlerMessage, type VoiceState } from './components/Butler'
@@ -40,6 +41,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [mapFocus, setMapFocus] = useState<{ photo: MapPhoto; at: number } | null>(null)
   const [landmarkPreviewAt, setLandmarkPreviewAt] = useState(0)
   const [sceneEnabled, setSceneEnabled] = useState(true)
+  const [routeId, setRouteId] = useState('')
   const [locating, setLocating] = useState<{ done: number; total: number } | null>(null)
   const stopLocating = useRef(false)
   const autoRun = useRef(false)
@@ -134,6 +136,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const bases = useMemo(() => spaceLine(places), [places])
   const story = useMemo(() => (selectedCity ? storyLine(selectedCity, events, places) : []), [selectedCity, events, places])
   const storyIds = useMemo(() => new Set(story.map((e) => e.id)), [story])
+  const routes = useMemo(() => visitRoutes(story), [story])
+  const routeEventIds = useMemo(() => routes.find((route) => route.id === routeId)?.eventIds || [], [routes, routeId])
   const firsts = useMemo(() => firstsOf(events), [events])
   const needsWork = events.filter((e) => !e.city || e.status === 'draft')
   const analyzablePhotos = memory.assets.filter((a) => a.preview && a.kind !== 'video')
@@ -147,7 +151,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     const cardLandmark = a.card?.landmark && a.card.landmark.confidence >= 0.7 ? a.card.landmark.name : undefined
     const nearbyLandmark = a.location?.poi?.name || (a.location?.precision === 'poi' ? a.location.label : undefined)
     const placeLandmark = /东方明珠|oriental\s*pearl/i.test(nearbyLandmark || '') ? nearbyLandmark : undefined
-    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision: a.location?.precision || 'point', landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined, sceneCard: a.card ? { title: a.card.title, caption: a.card.caption, scene: a.card.scene, tags: a.card.tags, eventGuess: a.card.eventGuess, createdAt: a.card.createdAt } : undefined }]
+    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision: a.location?.precision || 'point', venueName: a.location?.aoi || a.location?.poi?.name, landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined, sceneCard: a.card ? { title: a.card.title, caption: a.card.caption, scene: a.card.scene, tags: a.card.tags, eventGuess: a.card.eventGuess, createdAt: a.card.createdAt } : undefined }]
   }), [memory.assets])
 
   function openPhoto(assetId: string) {
@@ -227,6 +231,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
 
   const selectCity = useCallback((city: string | null, announce = true) => {
     setSelectedCity(city)
+    setRouteId('')
     setHighlightedEventId(null)
     if (!city) { setFocus(null); return }
     const place = places.find((p) => p.city === city)
@@ -236,7 +241,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     const name = cityLabel(city)
     const count = storyLine(city, events, places).length
     const text = place.isBase
-      ? `你在${name}生活了 ${years(place.firstAt, place.lastAt)} 年，我记得这里的 ${count} 件事。地图上亮起的是这段时间的故事线，想聊哪一段？`
+      ? `你在${name}生活了 ${years(place.firstAt, place.lastAt)} 年，我记得这里的 ${count} 件事。可以沿时间线看看这些回忆，想聊哪一段？`
       : `你在${formatYearMonth(place.firstAt)}来过${name}，我记得这里的 ${place.eventIds.length} 件事，想聊哪一次？`
     const intro: ButlerMessage[] = [{ id: uid(), role: 'assistant', text }]
     if (place.isBase && !place.roleConfirmed) intro.push({ id: uid(), role: 'assistant', text: `${name}对你来说是哪一种地方？`, roleFor: city })
@@ -505,6 +510,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           places={places}
           bases={bases}
           story={story}
+          routeEventIds={routeEventIds}
           selectedCity={selectedCity}
           highlightedEventId={highlightedEventId}
           insetRight={panelOpen ? BUTLER_WIDTH : 0}
@@ -532,10 +538,17 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
               </>
             )}
             <div className="legend">
-              <span><em className="lg-story" />故事线</span>
+              <span><em className="lg-story" />回忆事件</span>
               <span><em className="lg-migrate" />迁徙</span>
               <span><em className="lg-unsure" />待确认</span>
             </div>
+            {selectedCity && routes.length > 0 && <div className="memory-route-control">
+              <select aria-label="选择回忆连线" value={routeEventIds.length ? routeId : ''} onChange={(event) => setRouteId(event.target.value)}>
+                <option value="">不显示回忆连线</option>
+                {routes.map((route) => <option key={route.id} value={route.id}>{route.label}</option>)}
+              </select>
+              {routeEventIds.length > 0 && <small>按拍摄先后连接，仅表示这次回忆的地点顺序。</small>}
+            </div>}
             {aiConfig.amapJsKey && (<>
               <button
                 className={`building-toggle ${sceneEnabled ? 'active' : ''}`}
