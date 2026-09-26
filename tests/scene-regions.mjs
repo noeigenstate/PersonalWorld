@@ -201,10 +201,18 @@ try {
   await page.evaluate(() => regionTest.api.focusPhoto(regionTest.park[0]))
   await page.waitForTimeout(1200)
   assert.equal((await state()).sceneBuilds, gongshu.sceneBuilds, '窄屏进入公园仍复用同一场景')
-  assert.equal(await page.locator('#region-test .map-scene-source').isVisible(), true, '完整园区取景在窄屏也显示材质')
+  assert.equal(await page.locator('#region-test .map-scene-source').isVisible(), true, `完整园区取景在窄屏也显示材质: ${JSON.stringify({ state: await state(), frame: await frameBounds() })}`)
   const mobileFrame = await frameBounds()
   assert.ok(mobileFrame.bounds[0] >= -2 && mobileFrame.bounds[2] <= 432 && mobileFrame.bounds[1] >= -2 && mobileFrame.bounds[3] <= 902, `窄屏不能裁掉半个公园: ${JSON.stringify(mobileFrame)}`)
   await page.screenshot({ path: join(temporary, 'gongshu-shared-park-mobile.png') })
+  for (const width of [820, 390, 430]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.evaluate(() => regionTest.api.focusPhoto(regionTest.park[0]))
+    await page.waitForTimeout(1000)
+    const fit = await frameBounds()
+    assert.ok(fit.bounds[0] >= -2 && fit.bounds[2] <= width + 2, `反复缩放窗口仍需完整取景: ${JSON.stringify(fit)}`)
+    assert.equal(await page.locator('#region-test .map-scene-source').isVisible(), true)
+  }
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.evaluate(() => {
     regionTest.data.photos = regionTest.photos

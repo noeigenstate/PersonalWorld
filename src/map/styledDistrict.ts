@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
+import { createStorybookWater } from './storybookWater'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { wgs84ToGcj02 } from '../lib/geo'
 import snapshot from './data/shanghai-pearl.json'
@@ -585,55 +585,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   const waterShapes = water.map((rings) => polygonGeometry(rings, .24)).filter((value): value is THREE.ShapeGeometry => value !== null)
   const waterGeometry = waterShapes.length ? mergeGeometries(waterShapes, false) : null
   waterShapes.forEach((geometry) => geometry.dispose())
-  if (waterGeometry) {
-    // One planar camera reflects the actual Three.js buildings, tower and trees. A small
-    // target keeps this usable while panning; the shader tints and ripples that reflection.
-    const reflectionSize = window.innerWidth < 700 ? 384 : 768
-    const river = new Reflector(waterGeometry, {
-      color: '#74c8d1',
-      textureWidth: reflectionSize,
-      textureHeight: reflectionSize,
-      multisample: 0,
-      clipBias: .002,
-      shader: {
-        name: 'StorybookRiver',
-        uniforms: { color: { value: null }, tDiffuse: { value: null }, textureMatrix: { value: null } },
-        vertexShader: `uniform mat4 textureMatrix;
-          varying vec4 vMirror;
-          varying vec2 vMap;
-          void main() {
-            vMap = position.xy;
-            vMirror = textureMatrix * vec4(position, 1.);
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.);
-          }`,
-        fragmentShader: `uniform vec3 color;
-          uniform sampler2D tDiffuse;
-          varying vec4 vMirror;
-          varying vec2 vMap;
-          float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-          void main() {
-            float broad = sin(vMap.x * .006 + sin(vMap.y * .004)) * sin(vMap.y * .005);
-            float ripple = sin(vMap.x * .080 + sin(vMap.y * .028) * 1.7) * .003;
-            vec4 uv = vMirror;
-            uv.xy += vec2(ripple, ripple * .4) * uv.w;
-            vec4 reflected = texture2DProj(tDiffuse, uv);
-            vec3 water = mix(color * .78, color * 1.12, .5 + broad * .3);
-            vec2 cell=floor(vMap/13.);
-            vec2 local=fract(vMap/13.);
-            float glint=step(.82,hash(cell))*(1.-smoothstep(.015,.09,abs(local.y-.48)));
-            glint*=smoothstep(.10,.28,local.x)*(1.-smoothstep(.70,.93,local.x));
-            water += vec3(.20, .24, .20) * glint;
-            // Empty reflection pixels keep the river pastel instead of mirroring black.
-            vec3 result = mix(water, reflected.rgb, clamp(reflected.a * .46, 0., .46));
-            gl_FragColor = vec4(result, 1.);
-            #include <tonemapping_fragment>
-            #include <colorspace_fragment>
-          }`,
-      },
-    })
-    river.name = 'story-river-reflector'
-    group.add(river)
-  }
+  if (waterGeometry) group.add(createStorybookWater(waterGeometry, water, corners, Boolean(data.coast)))
   const grassMaterial = new THREE.ShaderMaterial({
     side: THREE.DoubleSide,
     vertexShader: 'varying vec2 vMap; void main(){ vMap=position.xy; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
@@ -659,17 +611,6 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   mergedMesh(group, sand.map((rings) => polygonGeometry(rings, .195)).filter((value): value is THREE.ShapeGeometry => value !== null), parcelMaterial('#f1d6ad', 'sand'))
   const plazas = data.plazas.map((polygon) => polygon.rings.map(transform))
   mergedMesh(group, plazas.map((rings) => polygonGeometry(rings, .205)).filter((value): value is THREE.ShapeGeometry => value !== null), parcelMaterial('#f4dec8', 'plaza'))
-  group.add(new THREE.Mesh(ribbonGeometry(water.flatMap((rings) => rings), 3, .25), new THREE.MeshBasicMaterial({ color: '#f8e9ce', side: THREE.DoubleSide })))
-  const waterLines: Point[][] = []
-  for (let x = corners[0][0] + 30; x < corners[1][0] - 30; x += 84) for (let y = corners[0][1] + 25; y < corners[1][1] - 25; y += 82) {
-    const point: Point = [x + (hash(`${x}:wave`) - .5) * 34, y + (hash(`${y}:wave`) - .5) * 30]
-    if (water.some((rings) => inside(point, rings[0]) && !rings.slice(1).some((hole) => inside(point, hole)))) {
-      const length = 12 + hash(`${x}:${y}:length`) * 16
-      waterLines.push([[point[0] - length, point[1]], [point[0], point[1] + 2], [point[0] + length, point[1]]])
-    }
-  }
-  group.add(new THREE.Mesh(ribbonGeometry(waterLines, 1.7, .255), new THREE.MeshBasicMaterial({ color: '#edfdfa', transparent: true, opacity: .68, side: THREE.DoubleSide })))
-
   const roads = data.roads.map((road) => ({ path: transform(road.path), major: /^(motorway|trunk|primary|secondary|tertiary)/.test(road.class), class: road.class }))
   const types = [
     { match: (type: string) => /^(motorway|trunk|primary|secondary)/.test(type), width: 20, walk: 10, border: 3, curb: '#d7b7a4', surface: '#fff3e5' },
@@ -712,7 +653,8 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     let signedArea = 0
     for (let i = 1; i < outer.length; i++) signedArea += outer[i - 1][0] * outer[i][1] - outer[i][0] * outer[i - 1][1]
     const area = Math.abs(signedArea) / 2
-    const specialised = item.kind === 'stadium' || item.kind === 'sports_hall'
+    const landmark = venueLandmark(item.id)
+    const specialised = Boolean(landmark) || item.kind === 'stadium' || item.kind === 'sports_hall'
     if (area < 18 || area > (specialised ? 60000 : 24000)) continue
     buildingCount++
     hideNativePaths.push(item.rings[0].map(([lng, lat]): Point => {
@@ -722,8 +664,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     const height = actualHeight(item, area)
     if (specialised) {
       const measured = Boolean(item.height || item.levels)
-      const landmark = venueLandmark(item.id)
-      group.add(landmark ? createLandmarkVenue(rings, landmark, measured ? height : undefined) : createVenueBuilding(rings, measured ? height : item.kind === 'stadium' ? 22 : 26, item.kind as 'stadium' | 'sports_hall'))
+      group.add(landmark ? createLandmarkVenue(rings, landmark, item.height ? Number(item.height) : undefined) : createVenueBuilding(rings, measured ? height : item.kind === 'stadium' ? 22 : 26, item.kind as 'stadium' | 'sports_hall'))
       continue
     }
     const kind: Archetype = height >= 90 ? 2 : area >= 900 && height < 55 ? 3 : height < 27 ? 0 : 1

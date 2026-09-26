@@ -52,6 +52,10 @@ try {
   await page.evaluate(() => window.sparseScene.api.focusPhoto(window.sparseScene.photo))
   await page.waitForFunction(() => document.querySelector('#region-preview')?.dataset.sceneState === 'ready', null, { timeout: 45000 })
   await page.waitForTimeout(2000)
+  if (process.env.SCENE_ZOOM) {
+    await page.evaluate(zoom => { sparseScene.map.setZoom(zoom, true) }, Number(process.env.SCENE_ZOOM))
+    await page.waitForTimeout(1200)
+  }
   await page.screenshot({ path: join(tmpdir(), `pw-amap-region-${sceneLng.toFixed(2)}-${sceneLat.toFixed(2)}.png`) })
   if (process.env.SCENE_CLOSEUPS === 'gongshu') {
     for (const [name, lng, lat, rotation] of [['umbrella',120.09662,30.31910,85],['jade',120.10155,30.31292,25]]) {
@@ -66,7 +70,9 @@ try {
     }
   }
   const sceneSource = await page.locator('.map-scene-source').last().isVisible()
+  const sceneInfo = await page.locator('#region-preview').evaluate(el => ({ ...el.dataset }))
+  if (process.env.SCENE_EXPECT_LANDMARK) assert.ok(sceneInfo.sceneLandmarks?.includes(process.env.SCENE_EXPECT_LANDMARK), 'registered landmark must exist in the actual map scene')
   assert.equal(sceneSource, true, '普通照片区域应加载场景数据')
   assert.deepEqual(errors, [], '地图预览不能出现浏览器运行时错误')
-  console.log(JSON.stringify({ sceneSource, errors }))
+  console.log(JSON.stringify({ sceneSource, sceneInfo, errors }))
 } finally { await browser.close() }

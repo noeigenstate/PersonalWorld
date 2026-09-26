@@ -8,7 +8,7 @@ export interface FilmPlan {
   shots: { assetId: string; caption: string; seconds: number; evidence: string; date: string }[]
 }
 export interface FilmJob {
-  id: string; batch: string; createdAt: number; expiresAt: number
+  id: string; batch: string; createdAt: number; expiresAt: number; version?: string
   status: 'planning' | 'awaiting-images' | 'queued' | 'rendering' | 'complete' | 'failed' | 'cancelled'
   progress: number; uploaded: string[]; plan?: FilmPlan; planner?: 'stepfun' | 'local'; warning?: string; error?: string
   duration?: number; bytes?: number; url?: string

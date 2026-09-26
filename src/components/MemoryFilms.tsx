@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Download, Film, LoaderCircle, Pause, Play, RotateCcw, X } from 'lucide-react'
 import type { MemoryAsset, MemoryEvent } from '../types'
-import { filmActive, filmBatch, filmImage, filmRequest, filmSources, type FilmJob } from '../lib/memoryFilm'
+import { filmActive, filmBatch, filmImage, filmRequest, filmSources, type FilmJob, type FilmSource } from '../lib/memoryFilm'
+import { discoverFilmStories, storyAlreadyMade } from '../lib/filmStories'
 import { loadFilmSettings, saveFilmSettings } from '../lib/storage'
 
 export function MemoryFilms({ assets, events, ready, analyzing }: { assets: MemoryAsset[]; events: MemoryEvent[]; ready: boolean; analyzing: boolean }) {
@@ -23,6 +24,7 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
   const alive = useRef(true), generation = useRef(0)
   const latestAssets = useRef(assets); latestAssets.current = assets
   const sources = useMemo(() => filmSources(assets, events), [assets, events])
+  const stories = useMemo(() => discoverFilmStories(sources), [sources])
   const assetKey = assets.map((a) => `${a.id}:${a.hash}`).sort().join('|')
   const current = jobs.find((j) => filmActive(j))
   const displayed = jobs.find((j) => j.id === selected) || current || jobs.find((j) => j.status === 'complete') || jobs[0]
@@ -47,13 +49,13 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
   }, [assetKey])
   useEffect(() => { if (settings) void saveFilmSettings(settings).catch(() => setError('自动生成设置未能保存')) }, [settings])
 
-  async function start(manual = false, fromJob?: string, attempt = batch) {
-    if (lock.current || current || (!fromJob && sources.length < 6) || !batch) return
+  async function start(manual = false, fromJob?: string, attempt = batch, candidates: FilmSource[] = sources) {
+    if (lock.current || current || (!fromJob && candidates.length < 2) || !batch) return
     lock.current = true; setStarting(true); setError('')
     const ticket = generation.current
     setSettings((s) => s ? { ...s, attempted: [...new Set([...s.attempted, attempt])].slice(-30) } : s)
     try {
-      const job = await filmRequest<FilmJob>('', { sources: fromJob ? undefined : sources, fromJob, batch, regenerate: manual })
+      const job = await filmRequest<FilmJob>('', { sources: fromJob ? undefined : candidates, fromJob, batch, regenerate: manual })
       if (alive.current && ticket !== generation.current) upsert(await filmRequest<FilmJob>(`/${job.id}/cancel`, {}))
       else if (alive.current) { upsert(job); setSelected(job.id) }
     } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : '生成失败') }
@@ -61,10 +63,13 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
   }
 
   useEffect(() => {
-    if (!loaded || !capable || !settings?.enabled || settings.attempted.includes(batch) || jobs.some((j) => j.batch === batch) || !batch || current || starting || analyzing || sources.length < 6) return
-    const timer = window.setTimeout(() => { void start() }, 10_000)
+    if (!loaded || !capable || !settings?.enabled || !batch || current || starting || analyzing || sources.length < 2) return
+    const next = stories.find(story => !settings.attempted.includes(story.key) && !storyAlreadyMade(story, jobs))
+    if (stories.length && !next) return
+    if (!stories.length && (settings.attempted.includes(batch) || jobs.some(j => j.batch === batch))) return
+    const timer = window.setTimeout(() => { void start(false, undefined, next?.key || batch, next?.sources || sources) }, 10_000)
     return () => window.clearTimeout(timer)
-  }, [loaded, capable, settings, batch, jobs, current, starting, analyzing, sources])
+  }, [loaded, capable, settings, batch, jobs, current, starting, analyzing, sources, stories])
 
   // A confirmed correction may arrive from this UI or an authorized assistant.
   // Re-edit only that film's photos, once per revision, respecting Pause.
@@ -75,6 +80,15 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
     const timer = window.setTimeout(() => { void start(false, corrected.id, correctionKey) }, 2000)
     return () => window.clearTimeout(timer)
   }, [correctionKey, settings, capable, current, starting, analyzing, batch])
+
+  // Repair the known short-source validation fallback once after the planner
+  // upgrade. Generic provider outages stay manual; Pause is always respected.
+  const repair = jobs.find(j => j.status === 'complete' && j.planner === 'local' && j.version !== 'memory-film-4' && j.warning?.includes('剪辑方案需要至少') && !settings?.attempted.includes(`repair:${j.id}:4`))
+  useEffect(() => {
+    if (!repair || !settings?.enabled || !capable || current || starting || analyzing || !batch) return
+    const timer = window.setTimeout(() => { void start(false, repair.id, `repair:${repair.id}:4`) }, 2000)
+    return () => window.clearTimeout(timer)
+  }, [repair?.id, settings, capable, current, starting, analyzing, batch])
 
   useEffect(() => {
     if (!current) return
@@ -159,7 +173,8 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
     return () => window.removeEventListener('keydown', close)
   }, [open])
 
-  const status = current?.status === 'planning' ? '正在寻找值得留住的故事…' : current?.status === 'awaiting-images' ? `正在准备照片 ${uploading || current.uploaded.length}/${current.plan?.shots.length || 0}` : current?.status === 'queued' ? '已排队，等待剪辑…' : current?.status === 'rendering' ? `正在剪辑 · ${current.progress}%` : analyzing ? '等照片理解完成后，自动剪一段回忆' : sources.length < 6 ? `已有 ${sources.length} 张可用照片，满 6 张后自动编排` : settings?.enabled ? '照片就绪后会自动编排，无需填写创意' : '自动生成已暂停'
+  const remaining = stories.filter(story => !settings?.attempted.includes(story.key) && !storyAlreadyMade(story, jobs))
+  const status = current?.status === 'planning' ? '正在寻找值得留住的故事…' : current?.status === 'awaiting-images' ? `正在准备照片 ${uploading || current.uploaded.length}/${current.plan?.shots.length || 0}` : current?.status === 'queued' ? '已排队，等待剪辑…' : current?.status === 'rendering' ? `正在剪辑 · ${current.progress}%` : analyzing ? '等照片理解完成后，自动剪一段回忆' : sources.length < 2 ? `已有 ${sources.length} 张可用照片，满 2 张后自动编排` : !settings?.enabled ? '自动生成已暂停' : remaining.length ? `还有 ${remaining.length} 段地点回忆，接着编排${remaining[0].place}` : '照片就绪后会自动编排，无需填写创意'
   return <>
     <button className={`button film-entry ${current || starting ? 'working' : ''}`} onClick={() => setOpen(true)} title="自动回忆短片" aria-label="回忆短片">
       {current || starting ? <LoaderCircle size={16} className="film-spin" /> : <Film size={16} />}<span>回忆短片</span>{jobs.some((j) => j.status === 'complete') && <i />}
@@ -181,7 +196,7 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
             {displayed?.plan && <><h3>{displayed.plan.title}</h3><p>{displayed.plan.reason}</p><span className="film-label">{displayed.plan.kind === 'outing' ? '一次游玩' : displayed.plan.kind === 'revisit' ? '同地重访' : '时光片段'} · {displayed.plan.shots.length} 张照片{displayed.duration ? ` · ${displayed.duration} 秒` : ''}</span></>}
             <div className="film-actions">
               {displayed?.status === 'complete' && <a className="button button-primary" href={displayed.url} download={`回忆-${displayed.id}.mp4`}><Download size={15} />保存视频</a>}
-              <button className="button button-subtle" disabled={Boolean(current) || starting || sources.length < 6 || capable !== true} onClick={() => void start(true, displayed?.plan ? displayed.id : undefined)}><RotateCcw size={14} />{displayed ? '重新编排一版' : '现在自动生成'}</button>
+              <button className="button button-subtle" disabled={Boolean(current) || starting || sources.length < 2 || capable !== true} onClick={() => void start(true, displayed?.plan ? displayed.id : undefined)}><RotateCcw size={14} />{displayed ? '重新编排一版' : '现在自动生成'}</button>
             </div>
             {error && <p role="alert" className="film-error">{error}</p>}
             {capable === false && <p className="film-error">服务端未找到 FFmpeg，暂时无法生成视频。</p>}

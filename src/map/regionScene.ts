@@ -96,13 +96,16 @@ export function photoSceneKey(photos: MapPhoto[], photo: MapPhoto) {
 }
 
 export async function fetchRegionScene(region: PhotoRegion, refresh = false): Promise<SceneData> {
-  const key = region.key || region.center.map((value) => value.toFixed(5)).join(',') + `:${region.radius || 900}`
+  // Match the server's derived geometry revision. A renderer hot update must
+  // not keep an older, pre-landmark district alive in the browser cache.
+  const revision = 'v5:'
+  const key = revision + (region.key || region.center.map((value) => value.toFixed(5)).join(',') + `:${region.radius || 900}`)
   if (refresh) sceneCache.delete(key)
   const cached = sceneCache.get(key)
   if (cached) return cached
   const request = requestRegionScene(region).then((data) => {
     rememberSceneVenues(data)
-    if (data.venue) sceneCache.set(`venue:${data.venue.id}`, Promise.resolve(data))
+    if (data.venue) sceneCache.set(`${revision}venue:${data.venue.id}`, Promise.resolve(data))
     return data
   }).catch((error) => { sceneCache.delete(key); throw error })
   sceneCache.set(key, request)

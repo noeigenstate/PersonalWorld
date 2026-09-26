@@ -25,7 +25,7 @@ const unitMetres = (zoom: number) => (156543.034 / 2 ** zoom) * PX_PER_UNIT
 
 interface Scaled { object: THREE.Object3D }
 
-export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCallbacks, AMap: AMapNS, mapStyle = 'amap://styles/fresh') {
+export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCallbacks, AMap: AMapNS, mapStyle = 'amap://styles/macaron') {
   const mapEl = document.createElement('div')
   mapEl.className = 'life-map-amap'
   const colorWash = document.createElement('div')
@@ -119,6 +119,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let scaled: Scaled[] = []
   let lines: LineMaterial[] = []
   let storyLines: THREE.Object3D[] = []
+  let overviewCities: THREE.Group[] = []
   let current: LifeMapData | null = null
   let lastSignature = ''
   let ready = false
@@ -137,6 +138,22 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let sceneAreas: BuildingArea[] = []
   let activeVenue: import('./styledDistrict').SceneVenue | undefined
   let frameFocusedVenue = false
+  let framingVenue = false
+  let venueFitFrame = 0
+  let venueFitVersion = 0
+  let landmarkBounds: THREE.Box3[] = []
+  let hasAnimatedWater = false
+  let waterFrame = 0
+  let lastWaterFrame = 0
+  function animateWater(now: number) {
+    waterFrame = 0
+    if (disposed || reduceMotion || document.hidden || !memoryWorld.visible || !hasAnimatedWater) return
+    if (now - lastWaterFrame >= 50) {
+      lastWaterFrame = now
+      renderer.render(scene, camera)
+    }
+    waterFrame = requestAnimationFrame(animateWater)
+  }
   const heights = new Map<string, number>() // label heights in scene units
 
   const gcj = (lat: number, lng: number): [number, number] => { const p = wgs84ToGcj02({ lat, lng }); return [p.lng, p.lat] }
@@ -179,6 +196,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     scaled = []
     lines = []
     storyLines = []
+    overviewCities = []
     heights.clear()
     container.dataset.storySegments = '0'
     const located = data.places.filter((p) => p.lat !== undefined && p.lng !== undefined)
@@ -201,6 +219,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       group.position.y = -LAND * s
       heights.set(place.city, (building(group, place.role, rnd) - LAND) * s + 0.2)
       group.traverse((child) => { child.userData.city = place.city })
+      overviewCities.push(group)
       if (selected && selected !== place.city) dim(group, 0.4)
       stand(group, pos)
       const spec = placeLabel(place, selected)
@@ -280,6 +299,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     camera.lookAt(lookAt[0], lookAt[1], lookAt[2])
     camera.updateProjectionMatrix()
     unit = unitMetres(map.getZoom())
+    container.classList.toggle('map-overview', map.getZoom() < 10)
+    colorWash.style.opacity = map.getZoom() < 10 ? '.55' : '.10'
+    for (const group of overviewCities) group.visible = map.getZoom() >= 10
     for (const line of storyLines) line.visible = map.getZoom() >= 12
     container.dataset.storyLinesVisible = String(storyLines.length > 0 && map.getZoom() >= 12)
     memoryWorld.visible = sceneEnabled && map.getZoom() >= (activeVenue ? VENUE_MIN_ZOOM : 16.7)
@@ -290,6 +312,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     for (const { object } of scaled) object.scale.setScalar(unit)
     for (const material of lines) material.resolution.set(size.w, size.h)
     renderer.render(scene, camera)
+    if (!waterFrame && !reduceMotion && !document.hidden && memoryWorld.visible && hasAnimatedWater) waterFrame = requestAnimationFrame(animateWater)
     const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit)
     // In a city's story the event labels carry the chronology. Lay them out first and
     // move photo buttons a short distance when they would cover a label.
@@ -298,7 +321,15 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     const labelRects = current?.selectedCity ? [...labelLayer.querySelectorAll<HTMLElement>('.map-label')]
       .filter((el) => el.style.visibility !== 'hidden')
       .map((el) => { const r = el.getBoundingClientRect(); return new DOMRect(r.left - host.left, r.top - host.top, r.width, r.height) }) : []
-    const taken = placePhotos(labelRects)
+    const landmarkRects: DOMRect[] = []
+    if (memoryWorld.visible) for (const bounds of landmarkBounds) {
+      const points = []
+      for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) points.push(new THREE.Vector3(x, y, z).project(camera))
+      if (points.some(p => p.z > 1)) continue
+      const xs = points.map(p => (p.x + 1) / 2 * size.w), ys = points.map(p => (1 - p.y) / 2 * size.h)
+      landmarkRects.push(new DOMRect(Math.min(...xs) - 6, Math.min(...ys) - 6, Math.max(...xs) - Math.min(...xs) + 12, Math.max(...ys) - Math.min(...ys) + 12))
+    }
+    const taken = placePhotos([...labelRects, ...landmarkRects])
     if (memoryWorld.visible && memoryAnchor) {
       const marker = memoryAnchor.clone().project(camera)
       const x = ((marker.x + 1) / 2) * size.w
@@ -312,7 +343,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
         const choices = candidates.map(([cx, cy]) => {
           const left = Math.max(8, Math.min(size.w - insets.right - width - 12, cx))
           const top = Math.max(65, Math.min(size.h - insets.bottom - height - 12, cy))
-          const overlap = [...taken, ...labelRects].reduce((sum, rect) => sum + Math.max(0, Math.min(left + width, rect.right) - Math.max(left, rect.left)) * Math.max(0, Math.min(top + height, rect.bottom) - Math.max(top, rect.top)), 0)
+          const overlap = [...taken, ...labelRects, ...landmarkRects].reduce((sum, rect) => sum + Math.max(0, Math.min(left + width, rect.right) - Math.max(left, rect.left)) * Math.max(0, Math.min(top + height, rect.bottom) - Math.max(top, rect.top)), 0)
           return { left, top, overlap }
         }).sort((a, b) => a.overlap - b.overlap)
         sceneCaption.style.transform = `translate(${choices[0].left}px, ${choices[0].top}px)`
@@ -324,6 +355,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
 
   const layer = new AMap.GLCustomLayer({ zIndex: 120, init() {}, render: draw })
   map.add(layer)
+  const visibility = () => { if (!document.hidden && !disposed) draw() }
+  document.addEventListener('visibilitychange', visibility)
 
   // Photo thumbnails clustered by screen position, with a count badge, like a phone album's map.
   // Drawn here rather than as AMap markers: AMap keeps its markers inside a stacking context that
@@ -411,6 +444,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     appliedBuildingStyle = signature
   }
   function disposeMemoryContent() {
+    landmarkBounds = []
+    hasAnimatedWater = false
     memoryWorld.traverse((child) => {
       const mesh = child as THREE.Mesh
       mesh.geometry?.dispose()
@@ -424,6 +459,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     memoryWorld.clear()
   }
   function clearMemoryScene() {
+    cancelVenueFit()
     sceneGeneration++
     disposeMemoryContent()
     memoryAnchor = null
@@ -442,24 +478,65 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     setSceneState('idle')
   }
 
+  function cancelVenueFit() {
+    cancelAnimationFrame(venueFitFrame)
+    venueFitFrame = 0
+    venueFitVersion++
+    framingVenue = false
+  }
+
   function frameVenue(venue: import('./styledDistrict').SceneVenue) {
+    cancelVenueFit()
+    const ticket = venueFitVersion
+    framingVenue = true
     const [west, south, east, north] = venue.bbox
-    map.setPitch(52, true)
-    map.setBounds(new AMap.Bounds(gcj(south, west), gcj(north, east)), true, [110, insets.bottom + 50, 90, insets.right + 90])
-    if (map.getZoom() < VENUE_MIN_ZOOM) map.setZoom(VENUE_MIN_ZOOM, true)
-    // A geographic box at a tilted camera can leave the park tiny in a sea of
-    // unrelated blocks. Fit the actual projected outline into the usable viewport.
-    const left = size.w < 700 ? 25 : 65, right = Math.max(left + 120, size.w - insets.right - left)
-    const top = 105, bottom = Math.max(top + 120, size.h - insets.bottom - 50)
-    for (let pass = 0; pass < 3; pass++) {
+    let phase = 0
+    const step = () => {
+      venueFitFrame = 0
+      if (disposed || ticket !== venueFitVersion) return
+      // AMap applies viewport/camera changes on its own frames. Never solve all
+      // passes synchronously against a stale camera, especially during resize.
+      if (phase < 2) { phase++; venueFitFrame = requestAnimationFrame(step); return }
+      if (phase === 2) {
+        resize()
+        map.setPitch(52, true)
+        map.setBounds(new AMap.Bounds(gcj(south, west), gcj(north, east)), true, [110, insets.bottom + 50, 90, insets.right + 90])
+        if (map.getZoom() < VENUE_MIN_ZOOM) map.setZoom(VENUE_MIN_ZOOM, true)
+        phase++; venueFitFrame = requestAnimationFrame(step); return
+      }
+      if (phase >= 8) { framingVenue = false; draw(); syncSceneForView(); return }
+      const left = size.w < 700 ? 25 : 65, right = Math.max(left + 120, size.w - insets.right - left)
+      const top = 105, bottom = Math.max(top + 120, size.h - insets.bottom - 50)
       const pixels = venue.polygons.flat(2).map(([lng, lat]) => map.lngLatToContainer(gcj(lat, lng)))
+      // The ground footprint cannot frame a 285 m tower. Include the tops of
+      // reconstructed landmarks inside this venue in the same camera fit.
+      if (origin && landmarkBounds.length) {
+        map.customCoords.setCenter(origin)
+        const params = map.customCoords.getCameraParams()
+        camera.position.set(params.position[0], params.position[1], params.position[2])
+        camera.up.set(params.up[0], params.up[1], params.up[2])
+        camera.lookAt(params.lookAt[0], params.lookAt[1], params.lookAt[2])
+        camera.near = params.near; camera.far = params.far; camera.fov = params.fov
+        camera.aspect = size.w / size.h; camera.updateProjectionMatrix(); camera.updateMatrixWorld()
+        const a = coord(south, west), b = coord(north, east)
+        for (const bounds of landmarkBounds) {
+          const center = bounds.getCenter(new THREE.Vector3())
+          if (center.x < Math.min(a.x,b.x) || center.x > Math.max(a.x,b.x) || center.y < Math.min(a.y,b.y) || center.y > Math.max(a.y,b.y)) continue
+          for (const x of [bounds.min.x,bounds.max.x]) for (const y of [bounds.min.y,bounds.max.y]) {
+            const p = new THREE.Vector3(x,y,bounds.max.z).project(camera)
+            if (p.z <= 1) pixels.push({ x:(p.x+1)/2*size.w, y:(1-p.y)/2*size.h })
+          }
+        }
+      }
       const minX = Math.min(...pixels.map((p: { x: number }) => p.x)), maxX = Math.max(...pixels.map((p: { x: number }) => p.x))
       const minY = Math.min(...pixels.map((p: { y: number }) => p.y)), maxY = Math.max(...pixels.map((p: { y: number }) => p.y))
       map.panBy((left + right - minX - maxX) / 2, (top + bottom - minY - maxY) / 2, 0)
       const ratio = Math.min((right - left) / Math.max(1, maxX - minX), (bottom - top) / Math.max(1, maxY - minY))
-      if (Math.abs(Math.log2(ratio)) < .08) break
-      map.setZoom(Math.max(VENUE_MIN_ZOOM, Math.min(19, map.getZoom() + Math.max(-.6, Math.min(.6, Math.log2(ratio) * .7)))), true)
+      if (Math.abs(Math.log2(ratio)) >= .05) map.setZoom(Math.max(VENUE_MIN_ZOOM, Math.min(19, map.getZoom() + Math.max(-.8, Math.min(.8, Math.log2(ratio) * .7)))), true)
+      phase++
+      venueFitFrame = requestAnimationFrame(step)
     }
+    venueFitFrame = requestAnimationFrame(step)
   }
 
   function focusMemoryScene(photo?: MapPhoto, retry = false, frameAfterLoad = false) {
@@ -523,6 +600,14 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       // building styles to an empty set between two successful district loads.
       disposeMemoryContent()
       memoryWorld.add(district.group)
+      district.group.updateMatrixWorld(true)
+      district.group.traverse(child => {
+        if (child.name.startsWith('landmark-')) landmarkBounds.push(new THREE.Box3().setFromObject(child))
+        if (child instanceof Reflector) hasAnimatedWater = true
+      })
+      const landmarkNames: string[] = []
+      district.group.traverse(child => { if (child.name.startsWith('landmark-')) landmarkNames.push(child.name) })
+      container.dataset.sceneLandmarks = landmarkNames.join(',')
       sceneAreas = areas
       // The server can discover a complete park/mall boundary on the first load.
       // All photos inside it then acquire one canonical scene key immediately.
@@ -546,7 +631,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       container.dataset.scenePhotos = String(count)
       container.dataset.sceneWater = String(data.water.length)
       container.dataset.sceneWaterways = String(data.waterways?.length || 0)
-      container.dataset.sceneSpecialBuildings = String(data.buildings.filter((b) => b.kind === 'stadium' || b.kind === 'sports_hall').length)
+      container.dataset.sceneSpecialBuildings = String(data.buildings.filter((b) => ['stadium', 'sports_hall', 'landmark'].includes(b.kind || '')).length)
       setSceneState('ready')
       if ((frameAfterLoad || frameFocusedVenue) && activeVenue) frameVenue(activeVenue)
       frameFocusedVenue = false
@@ -571,7 +656,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
 
   // Every precise photo group uses the same pipeline, including manual zoom/pan visits.
   function syncSceneForView() {
-    if (!ready || !origin || !sceneEnabled || disposed) return
+    if (!ready || !origin || !sceneEnabled || disposed || framingVenue) return
     if (map.getZoom() < (activeVenue ? VENUE_MIN_ZOOM : 16.7)) {
       if (requestedSceneKey || activeSceneKey) clearMemoryScene()
       return
@@ -737,7 +822,11 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   // AMap updates its internal viewport after the browser's ResizeObserver. Fit a
   // whole venue only after that update, otherwise a narrow screen keeps the old zoom.
   map.on('resize', () => {
-    if (ready && !disposed && activeVenue) frameVenue(activeVenue)
+    // Depending on frame scheduling, AMap's resize can precede our observer.
+    // Read actual DOM dimensions before fitting rather than using stale widths.
+    if (disposed) return
+    resize()
+    if (ready && activeVenue) frameVenue(activeVenue)
   })
 
   function resize() {
@@ -789,6 +878,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     // Close enough to see the building it was taken at
     focusPhoto(photo: MapPhoto) {
       if (!ready) { pendingFocus = photo; pendingLandmark = false; return }
+      cancelVenueFit()
       focusedId = photo.id
       frameFocusedVenue = true
       if (current) setPhotos(current.photos)
@@ -804,6 +894,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     },
     focusLandmark() {
       if (!ready) { pendingLandmark = true; pendingFocus = null; return }
+      cancelVenueFit()
       pendingLandmark = false
       focusedId = null
       map.setPitch(60, true)
@@ -822,6 +913,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     },
     dispose() {
       disposed = true
+      cancelAnimationFrame(waterFrame)
+      document.removeEventListener('visibilitychange', visibility)
       window.removeEventListener('keydown', escapePhotoMenu)
       observer.disconnect()
       clearMemoryScene()

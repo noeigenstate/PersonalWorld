@@ -59,7 +59,7 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       // A renderer upgrade may repair a known render failure. Recover its
       // existing validated edit once per renderer version, without another AI
       // call. The signed-in browser will re-supply just the selected originals.
-      if (job.status === 'failed' && job.plan?.shots?.length >= 6 && job.error?.startsWith('视频渲染失败') && job.renderVersion !== FILM_RENDER_VERSION) {
+      if (job.status === 'failed' && job.plan?.shots?.length >= 2 && job.error?.startsWith('视频渲染失败') && job.renderVersion !== FILM_RENDER_VERSION) {
         Object.assign(job, { status: 'awaiting-images', uploaded: [], progress: 10, renderVersion: FILM_RENDER_VERSION })
         delete job.error; persist(job)
       }
@@ -99,7 +99,7 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       const original = body.fromJob ? get(body.fromJob, user) : null
       if (body.fromJob && !original?.plan) return [404, { error: '原短片不存在或已过期' }]
       const sources = contexts.apply(user, readFilmSources(original ? selectedSources(original) : body.sources))
-      if (sources.length < 6) return [400, { error: '至少需要 6 张已有信息卡的照片' }]
+      if (sources.length < 2) return [400, { error: '至少需要 2 张已有信息卡的照片' }]
       const batch = original?.batch || (/^[a-f0-9]{16,64}$/.test(body.batch) ? body.batch : filmFingerprint(sources))
       const fingerprint = filmFingerprint(sources)
       const ongoing = [...jobs.values()].find((j) => j.userId === user.id && active.has(j.status))
@@ -110,7 +110,7 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       const job = { id: randomUUID(), userId: user.id, batch, fingerprint, version: FILM_VERSION, renderVersion: FILM_RENDER_VERSION, createdAt: Date.now(), expiresAt: Date.now() + lifetime, status: 'planning', progress: 2, sources, uploaded: [] }
       // Reserve before asynchronous cleanup: two tabs must see the same job.
       jobs.set(job.id, job); persist(job)
-      for (const old of previous.slice(2)) {
+      for (const old of previous.slice(7)) {
         try { await rm(directory(old.id), { recursive: true, force: true }); jobs.delete(old.id) } catch { /* Retry at expiry if a media reader holds the file. */ }
       }
       void planner(config, sources).then((result) => {

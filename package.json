@@ -19,6 +19,9 @@
     "test:metadata": "node tests/metadata.mjs",
     "test:film": "node tests/memory-film.mjs",
     "test:venues": "node tests/venue-models.mjs",
+    "test:landmarks": "node tests/landmark-expansion.mjs",
+    "test:overview": "node tests/map-overview.mjs",
+    "test:film-stories": "node --experimental-strip-types --test tests/film-stories.mjs",
     "test:skills": "node --test skills/*/test.mjs .claude/skills/*/test.mjs"
   },
   "dependencies": {

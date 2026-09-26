@@ -7,6 +7,7 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { containsPoint, loadSceneDetails } from './mapSceneDetails.mjs'
+import { addRegisteredLandmarks } from './mapLandmarks.mjs'
 
 const cacheDir = fileURLToPath(new URL('./data/map-scenes/', import.meta.url))
 const tileTemplate = process.env.MAP_SCENE_TILE_URL || 'https://tiles.openfreemap.org/planet/latest/{z}/{x}/{y}.pbf'
@@ -14,7 +15,7 @@ const zoom = 14
 const cacheAge = 7 * 24 * 60 * 60 * 1000
 // Invalidate older extracts that lack venue boundaries, waterways and source building
 // categories (v1 also treated the default 5 m height as a measurement).
-const sceneVersion = 3
+const sceneVersion = 5
 const inFlight = new Map()
 
 function bboxFor(lng, lat, radius = 900) {
@@ -204,7 +205,7 @@ async function buildScene(lng, lat, radius) {
     catch { /* Keep valid source polygons if topology is imperfect. */ }
   }
   delete scene.venueCandidates
-  return scene
+  return addRegisteredLandmarks(scene, [lng, lat])
 }
 
 export async function mapSceneForPoint(lng, lat, radius = 900) {

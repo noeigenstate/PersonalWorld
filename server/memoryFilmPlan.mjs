@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { chat, parseJsonAnswer } from './stepfun.mjs'
 import { loadSkill } from './skills.mjs'
 
-export const FILM_VERSION = 'memory-film-2'
+export const FILM_VERSION = 'memory-film-4'
 const clean = (v, length) => String(v || '').replace(/[\x00-\x1f]/g, ' ').trim().slice(0, length)
 
 export function readFilmSources(input) {
@@ -50,7 +50,8 @@ export function validateFilmPlan(answer, sources) {
     seen.add(source.id)
     return [{ assetId: source.id, caption: text(shot.caption, 28, source), seconds: Math.min(5, Math.max(3.5, Number(shot.seconds) || 4.5)), evidence: clean(shot.evidence, 180), date: source.date }]
   })
-  if (shots.length < 6) throw new Error('剪辑方案没有选出至少 6 张不同的已有照片')
+  const minimum = Math.min(6, sources.length)
+  if (minimum < 2 || shots.length < minimum) throw new Error(`剪辑方案需要至少 ${Math.max(2, minimum)} 张不同的已有照片`)
   const order = new Map(sources.map((s, i) => [s.id, i]))
   shots.sort((a, b) => order.get(a.assetId) - order.get(b.assetId))
   const dates = new Set(shots.map((s) => s.date).filter(Boolean))
@@ -61,11 +62,21 @@ export function validateFilmPlan(answer, sources) {
 
 export async function planFilm(config, sources) {
   try {
-    const answer = parseJsonAnswer(await chat(config, [
+    const messages = [
       { role: 'system', content: loadSkill('memory-film') },
       { role: 'user', content: JSON.stringify({ sources }) },
-    ], { json: true }))
-    return { plan: validateFilmPlan(answer, sources), planner: 'stepfun' }
+    ]
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const raw = await chat(config, messages, { json: true })
+      try { return { plan: validateFilmPlan(parseJsonAnswer(raw), sources), planner: 'stepfun' } }
+      catch (error) {
+        if (attempt) throw error
+        // One bounded structural repair, not repeated image calls. The validator
+        // remains authoritative; the second invalid response uses the fallback.
+        messages.push({ role: 'assistant', content: raw }, { role: 'user', content: `方案校验未通过：${clean(error.message, 160)}。输入共 ${sources.length} 张；少于 6 张时使用全部真实 ID，6 张以上选 6–12 张。请修正并只返回完整 JSON。` })
+      }
+    }
+    throw new Error('剪辑方案未完成')
   } catch (error) {
     return { plan: validateFilmPlan(fallbackFilm(sources), sources), planner: 'local', warning: `智能编排暂不可用，已按日期生成基础剪辑。${clean(error.message, 120)}` }
   }

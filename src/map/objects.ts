@@ -2,6 +2,7 @@
 import * as THREE from 'three'
 import type { MemoryEvent, Place, PlaceRole } from '../types'
 import { cityLabel, formatYearMonth, roleLabels } from '../lib/memory'
+import { cityStamp } from './cityStamp'
 
 export const LAND = 0.45
 export const PY = LAND + 0.34
@@ -144,6 +145,10 @@ export function createLabels(layer: HTMLElement) {
     add(className: string, anchor: THREE.Vector3, lines: [string, string][], onClick?: () => void, priority = 0) {
       const el = document.createElement(onClick ? 'button' : 'div')
       el.className = `map-label ${className}`
+      if (className.split(' ').includes('place')) {
+        el.append(cityStamp(lines.find(([tag]) => tag === 'strong')?.[1] || ''))
+        const hint = document.createElement('span'); hint.className = 'city-stamp-hint'; hint.textContent = '打开这座城的回忆'; el.append(hint)
+      }
       for (const [tag, text] of lines) line(el, tag, text)
       if (onClick) el.addEventListener('click', (event) => { event.stopPropagation(); onClick() })
       layer.append(el)

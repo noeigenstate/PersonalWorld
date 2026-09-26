@@ -1,8 +1,10 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { createPublicLandmark, type PublicLandmark } from './publicLandmarks'
+import registry from './landmarkSites.json'
 
 type Point = [number, number]
-type Landmark = 'gongshu-umbrella' | 'gongshu-jade'
+type Landmark = 'gongshu-umbrella' | 'gongshu-jade' | PublicLandmark
 
 // Registry entries refer to identified buildings, never an entire city or park.
 // Ground footprint: OSM. Shape language: architect's published plans/elevations.
@@ -10,6 +12,7 @@ type Landmark = 'gongshu-umbrella' | 'gongshu-jade'
 export function venueLandmark(id: string): Landmark | undefined {
   if (/^osm:way:1084641014(?::|$)/.test(id)) return 'gongshu-umbrella'
   if (/^osm:way:1084641019(?::|$)/.test(id)) return 'gongshu-jade'
+  return registry.buildings.find((building) => id === building.id || id.startsWith(building.id + ':'))?.model as PublicLandmark | undefined
 }
 
 // A small baked diffuse fill matches the district's existing pastel Lambert
@@ -75,6 +78,10 @@ function fittedOutline(ring: Point[]) {
 }
 
 export function createLandmarkVenue(rings: Point[][], id: Landmark, height?: number) {
+  if (id !== 'gongshu-umbrella' && id !== 'gongshu-jade') {
+    const source = registry.buildings.find((building) => building.model === id)
+    return createPublicLandmark(rings, id, height || Number(source?.height) || 30)
+  }
   const group = new THREE.Group(); group.name = id
   group.userData = { modelId: id, fidelity: 'reference-informed-cartoon', geometrySource: 'OSM footprint; authored roof and facade' }
   const { cx, cy, rx, ry, edge } = fittedOutline(rings[0])
