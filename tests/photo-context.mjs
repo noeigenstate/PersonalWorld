@@ -19,6 +19,7 @@ const requests = []
 await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'context-test', username: '测试', createdAt: '2026-09-24T00:00:00Z', privacyAccepted: true } } }))
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟', geocode: true } }))
 await page.route('**/api/geocode', (route) => route.fulfill({ json: { results: route.request().postDataJSON().points.map(fakeGeocode) } }))
+await page.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '测试照片', caption: '', scene: '测试画面', visibleText: '', clues: [], landmark: null, placeQuery: null, eventGuess: { type: '', reason: '' }, tags: [], questions: [] } }))
 await page.route('**/api/photo-context', (route) => {
   const body = route.request().postDataJSON()
   requests.push(body)

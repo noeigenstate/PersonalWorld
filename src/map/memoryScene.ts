@@ -1,6 +1,5 @@
 import * as THREE from 'three'
-import { seeded, toon } from './objects'
-import type { MapPhoto } from './scene'
+import { toon } from './objects'
 
 // These are art-directed memory miniatures, not parcel or building-footprint data.
 // AMap's Oriental Pearl POI: https://ditu.amap.com/place/B00150F6D6 (GCJ-02).
@@ -51,22 +50,6 @@ function tree(parent: THREE.Group, x: number, z: number, size = 1) {
   disc(parent, x, 3.8 * size, z, 1.2 * size, 7 * size, P.stone, 8)
   shape(parent, new THREE.IcosahedronGeometry(6.4 * size, 1), P.sage, x, 10 * size, z)
   shape(parent, new THREE.IcosahedronGeometry(4.7 * size, 1), P.mint, x + 1.3 * size, 12 * size, z)
-}
-
-function storybook(photo: MapPhoto): MemoryScene {
-  const group = new THREE.Group()
-  const random = seeded([...photo.id].reduce((hash, c) => (hash * 31 + c.charCodeAt(0)) % 2147483647, 7))
-  const accents = [P.pink, P.mint, P.lilac, P.blue]
-  const accent = accents[Math.floor(random() * accents.length)]
-  // A neutral memory marker leaves the actual local buildings to the map extract.
-  disc(group, 0, 1, 0, 23, 2, P.stone, 40)
-  disc(group, 0, 2.3, 0, 20, .7, P.cream, 40)
-  ring(group, 0, 2.8, 0, 19, .65, accent)
-  disc(group, 0, 7, 0, 3, 10, P.cream, 16)
-  shape(group, new THREE.SphereGeometry(8, 20, 14), accent, 0, 17, 0)
-  ring(group, 0, 17, 0, 8, .6, P.gold)
-  for (const [x, z, s] of [[-24, 13, .7], [25, -12, .75], [-8, -28, .6], [20, 24, .55]] as const) tree(group, x, z, s)
-  return { group, radius: 38, label: '照片地点 · 记忆锚点示意' }
 }
 
 function pearl(): MemoryScene {
@@ -134,10 +117,6 @@ function pearl(): MemoryScene {
     tree(group, Math.cos(a) * 37, Math.sin(a) * 37, 0.68)
   }
   return { group, radius: 125, label: '东方明珠 · 风格化地标' }
-}
-
-export function createMemoryScene(photo: MapPhoto): MemoryScene {
-  return isOrientalPearl(photo.landmark) ? pearl() : storybook(photo)
 }
 
 export const createOrientalPearlScene = pearl

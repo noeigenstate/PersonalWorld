@@ -56,6 +56,7 @@ let asrBytes = 0
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟 StepFun', geocode: true } }))
 await page.route('**/api/geocode', (route) => route.fulfill({ json: { results: route.request().postDataJSON().points.map(fakeGeocode) } }))
 await page.route('**/api/analyze', (route) => route.fulfill({ json: { title: '加班的夜晚', summary: '在办公室加班。', type: '工作', place: '', city: '上海市', people: [], visibleText: '', tags: [], questions: ['这是在公司吗？'], confidence: 0.6 } }))
+await page.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '测试照片', caption: '', scene: '测试画面', visibleText: '', clues: [], landmark: null, placeQuery: null, eventGuess: { type: '', reason: '' }, tags: [], questions: [] } }))
 await page.route('**/api/asr', (route) => { asrBytes = route.request().postDataBuffer()?.length || 0; return route.fulfill({ json: { text: '2019 年国庆那会儿发生了什么？' } }) })
 await page.route('**/api/tts', (route) => route.fulfill({ contentType: 'audio/wav', body: silentWav }))
 await page.route('**/api/butler', (route) => {

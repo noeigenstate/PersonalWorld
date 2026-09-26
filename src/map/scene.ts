@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
-import type { MemoryEvent, Place } from '../types'
+import type { MemoryEvent, PhotoCard, Place } from '../types'
 import { wgs84ToGcj02 } from '../lib/geo'
 import { LAND, PY, adder, arrowHead, box, building, createLabels, dim, eventLabel, placeLabel, seeded, toon, tree, tube } from './objects'
 
@@ -35,6 +35,8 @@ export interface MapPhoto {
   // A landmark identified in a photo card or in the located place details.
   landmark?: string
   landmarkSource?: 'photo' | 'place'
+  // Kept in the browser: only coordinates, never private photo text, go to map-scene API.
+  sceneCard?: Pick<PhotoCard, 'title' | 'caption' | 'scene' | 'tags' | 'eventGuess' | 'createdAt'>
 }
 
 const SPAN = 18 // scene units covered by the bases' bounding box

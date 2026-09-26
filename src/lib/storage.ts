@@ -55,12 +55,13 @@ async function adoptLegacyData(db: IDBPDatabase) {
 export async function loadMemory(): Promise<MemoryState> {
   const db = await current()
   const state = (await db.get('state', 'current')) as MemoryState | undefined
-  if (!state) return { assets: [], events: [], placeRoles: {} }
+  if (!state) return { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
   // Older saves lack the fields added with places
   const assets = state.assets.map(({ favorite: _favorite, ...asset }: MemoryState['assets'][number] & { favorite?: boolean }) => asset)
   return {
     assets,
     placeRoles: state.placeRoles || {},
+    autoPhotoCards: state.autoPhotoCards !== false,
     events: state.events.map((event) => {
       const photos = assets.filter((asset) => event.assetIds.includes(asset.id) && asset.latitude !== undefined && asset.longitude !== undefined)
       return {

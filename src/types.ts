@@ -126,6 +126,8 @@ export interface MemoryState {
   events: MemoryEvent[]
   // Roles the user has confirmed for a city; anything absent is inferred
   placeRoles: Record<string, PlaceRole>
+  // Automatically generate cards for imported photos; the user can pause the queue
+  autoPhotoCards?: boolean
 }
 
 export interface Place {
@@ -166,4 +168,5 @@ export interface AiConfig {
   message: string
   geocode: boolean
   amapJsKey?: string
+  amapStyle?: string
 }

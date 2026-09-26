@@ -63,7 +63,7 @@ export function AuthPage({ onSignedIn, notice }: { onSignedIn: (account: Account
           <button className="button button-primary auth-submit" type="submit" disabled={busy}>{busy ? '请稍候…' : registering ? '注册' : '登录'}<ArrowRight size={17} /></button>
         </form>
         <p className="auth-switch">{registering ? '已有账户？' : '还没有账户？'}<button type="button" onClick={switchMode}>{registering ? '登录' : '注册'}</button></p>
-        <p className="auth-local"><ShieldCheck size={15} />照片和记忆只保存在这台设备的浏览器里，按账户分开存放，不会上传。</p>
+        <p className="auth-local"><ShieldCheck size={15} />照片和记忆保存在本浏览器；使用 AI 分析时，图片会经本机服务转发给 StepFun。</p>
       </section>
       {showPrivacy && (
         <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowPrivacy(false) }}>

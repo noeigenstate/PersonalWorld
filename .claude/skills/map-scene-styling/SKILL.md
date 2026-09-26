@@ -7,9 +7,9 @@ description: 为 Personal World 的人生地图设计或实现统一的卡通地
 
 目标是让用户从照片中的一件事进入可辨认、可解释的个人记忆场景。先读 [路线与技术边界](../../../docs/MAP_SCENE_STYLE_2026-09-25.md)及[竞品视觉规则](../../../docs/MAP_STYLE_REFERENCES_2026-09-25.md)，再检查当前 `src/map/amapScene.ts`、`src/map/objects.ts` 与界面色板；高德和 Three.js 的坐标／相机细节见 [amap-threejs](../amap-threejs/SKILL.md)。
 
-当前场景按照片地点生成：`src/map/regionScene.ts` 将街道级或更精确的照片聚成约 450 米内的区域；放大或聚焦照片时，`server/mapScene.mjs` 根据该区域坐标读取 OpenFreeMap 的 OpenStreetMap／OpenMapTiles 矢量瓦片，截取约 1.8 公里的真实建筑、道路、水面与绿地轮廓。`src/map/styledDistrict.ts` 对这些轮廓使用统一的卡通楼体、屋顶、道路、树木、草坪与水面材质；按海岸、水岸、公园、街区识别区域类型。轮廓密度不足时保留高德原生 3D 楼体并铺设有数据依据的地面元素；定位只到城市或区县时，`src/map/memoryScene.ts` 只显示标为示意的地点锚点。东方明珠继续使用 `src/map/data/shanghai-pearl.json` 的精修快照和专属塔模型，左上角可直接跳转。`scripts/extract_shanghai_scene.py` 可复现该快照；运行时普通区域不需要 Python 或 Shapely。
+当前基准是 `fe86d44` 的武汉、杭州区域截图，见 [2026-09-26 恢复记录](../../../docs/MAP_REGIONS_RECOVERY_2026-09-26.md)。`src/map/regionScene.ts` 将街道级或更精确的照片聚成约 450 米内的区域。`server/mapScene.mjs` 按区域坐标读取 OpenFreeMap 的 OpenStreetMap／OpenMapTiles 矢量瓦片，截取约 1.8 公里的建筑、道路、水面与绿地。所有区域统一调用 `src/map/styledDistrict.ts` 的完整渲染器：楼体窗格、檐口、屋顶、道路、树、草坪、水面反射及阴影使用同一套参数，不按城市特调、不以照片主题识别为前提。不要把普通区域重新降成几棵树或少量装饰楼。普通照片不挖圆形空地、不加通用圆盘。东方明珠在同一街区渲染器上增加已有塔模型及其地标快照。
 
-`src/map/amapScene.ts` 同步高德相机与 Three.js，并在轮廓足够密集时隐藏区域内的高德楼块，开关关闭时恢复。服务端只接收坐标，不接收照片或故事；区域 JSON 在本机缓存 7 天。动态瓦片场景需在页面标注 `© OpenMapTiles` 与 `© OpenStreetMap contributors · ODbL`。用 `npm run test:amap` 对比不同城市、主动选中照片、缩放恢复和场景开关。该规则是开发用 Codex skill；照片证据驱动的运行时 Agent `sceneRecipe` 尚未接入。
+`src/map/amapScene.ts` 同步高德相机与 Three.js。只隐藏实际已生成卡通楼体的足迹；数据稀疏时不铺整块底板和用地面，以免盖住高德中仍需保留的楼。建筑少于 100 栋仍应生成同样的窗格材质；水面为空必须是正常输入。街区 key 只取区域位置，同组照片切换以及任意信息卡更新都不重建场景；异步加载完成后才替换原组，过期响应丢弃，失败显示重试入口。服务端只接收坐标；区域 JSON 缓存 7 天，并带版本文件名，改变派生规则时须更新缓存版本，避免旧默认楼高重新压扁楼群。动态场景保留 OSM／OpenMapTiles 署名。`npm run test:amap` 检查正常应用路径；`node tests/scene-regions.mjs` 用隔离账户和真实接口检查多个地区、同组切换、缩放恢复、开关、慢响应及失败重试。该文件是开发用 skill；`regionalMemory.ts`／`sceneRecipe.ts` 是上一轮保留的实验代码，当前基础地图不调用它们。照片主题装饰属于后续独立层，不可再次替换掉完整街区。
 
 上海快照还包含有类别的 OSM 用地面和标注树列。先用用地面区分街区铺地，按道路等级画路面、路缘和小径，再在原建筑足迹内按高度与占地选择低楼、中层、高楼或大占地楼的窗、檐口和屋顶。颜色、缺失楼高、贴图、额外树木和屋顶细节属于艺术推断；道路宽度也是表现参数。概念参照与当前真实截图见[还原进度](../../../docs/MAP_CONCEPT_FIDELITY_2026-09-25.md)。
 

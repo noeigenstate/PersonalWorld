@@ -197,6 +197,7 @@ const server = http.createServer(async (req, res) => {
         message: ready ? `StepFun ${stepfun.model} 已配置，连接尚未验证` : stepfun.agentUrl ? '已填写 Agent 地址，仍需核对该 Agent 的 API 请求格式' : '未配置 StepFun API Key；本地整理仍可使用',
         geocode: Boolean(amap.serviceKey),
         amapJsKey: amap.jsKey && amap.securityCode ? amap.jsKey : undefined,
+        amapStyle: /^amap:\/\/styles\/[A-Za-z0-9]+$/.test(process.env.AMAP_MAP_STYLE || '') ? process.env.AMAP_MAP_STYLE : undefined,
       })
     }
     if (req.method === 'GET' && path === '/api/health') return send(res, 200, { ok: true })

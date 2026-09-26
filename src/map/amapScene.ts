@@ -6,9 +6,10 @@ import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import type { MemoryEvent } from '../types'
 import { wgs84ToGcj02 } from '../lib/geo'
 import { LAND, adder, box, building, createLabels, dim, eventLabel, placeLabel, seeded } from './objects'
-import { createMemoryScene, createOrientalPearlScene, isOrientalPearl, ORIENTAL_PEARL_GCJ } from './memoryScene'
+import { createOrientalPearlScene, isOrientalPearl, ORIENTAL_PEARL_GCJ } from './memoryScene'
 import { createStyledDistrict, shanghaiScene, type SceneData } from './styledDistrict'
-import { fetchRegionScene, hasStreetLocation, metresApart, regionForPhoto } from './regionScene'
+import { fetchRegionScene, hasStreetLocation, metresApart, photoSceneKey, regionForPhoto } from './regionScene'
+import { clusterProjectedPhotos } from './photoClusters'
 import type { AMapNS } from './amap'
 import type { LifeMapCallbacks, LifeMapData, MapPhoto } from './scene'
 
@@ -23,9 +24,12 @@ const unitMetres = (zoom: number) => (156543.034 / 2 ** zoom) * PX_PER_UNIT
 
 interface Scaled { object: THREE.Object3D }
 
-export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCallbacks, AMap: AMapNS) {
+export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCallbacks, AMap: AMapNS, mapStyle = 'amap://styles/fresh') {
   const mapEl = document.createElement('div')
   mapEl.className = 'life-map-amap'
+  const colorWash = document.createElement('div')
+  colorWash.className = 'map-color-wash'
+  colorWash.hidden = mapStyle !== 'amap://styles/macaron'
   const canvas = document.createElement('canvas')
   canvas.className = 'life-map-canvas overlay'
   const atmosphere = document.createElement('div')
@@ -33,9 +37,12 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   atmosphere.hidden = true
   const photoLayer = document.createElement('div')
   photoLayer.className = 'life-map-photos'
+  const photoLeaders = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  photoLeaders.classList.add('map-photo-leaders')
+  photoLayer.append(photoLeaders)
   const labelLayer = document.createElement('div')
   labelLayer.className = 'life-map-labels'
-  container.append(mapEl, canvas, atmosphere, photoLayer, labelLayer)
+  container.append(mapEl, colorWash, canvas, atmosphere, photoLayer, labelLayer)
   const sceneSource = document.createElement('div')
   sceneSource.className = 'map-scene-source'
   const osmCredit = document.createElement('a')
@@ -63,7 +70,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     pitch: 50,
     zoom: 5,
     center: [108.9, 34.3],
-    mapStyle: 'amap://styles/fresh',
+    mapStyle,
     features: ['bg', 'road'],
     showLabel: false,
     showBuildingBlock: false,
@@ -86,7 +93,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   const scene = new THREE.Scene()
   scene.add(new THREE.HemisphereLight(0xfff7e9, 0xc7d8d1, .95))
   const sun = new THREE.DirectionalLight(0xffecd7, 1.3)
-  sun.position.set(-0.55, -0.7, 1.1) // z is up in AMap's frame
+  sun.position.set(-800, -750, 1200) // z is up; overview objects are hundreds of metres tall
   sun.castShadow = true
   sun.shadow.mapSize.set(window.innerWidth < 700 ? 1024 : 2048, window.innerWidth < 700 ? 1024 : 2048)
   sun.shadow.camera.left = sun.shadow.camera.bottom = -1300
@@ -116,6 +123,11 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let sceneEnabled = true
   let memoryAnchor: THREE.Vector3 | null = null
   let activeSceneKey = ''
+  let requestedSceneKey = ''
+  let sceneState: 'idle' | 'loading' | 'ready' | 'error' = 'idle'
+  let sceneBuilds = 0
+  let appliedBuildingStyle = '[]'
+  let disposed = false
   let hasStyledDistrict = false
   let sceneGeneration = 0
   let shadowSceneWasVisible = false
@@ -268,21 +280,36 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     for (const { object } of scaled) object.scale.setScalar(unit)
     for (const material of lines) material.resolution.set(size.w, size.h)
     renderer.render(scene, camera)
-    const taken = placePhotos()
+    const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit)
+    // In a city's story the event labels carry the chronology. Lay them out first and
+    // move photo buttons a short distance when they would cover a label.
+    if (current?.selectedCity) labels.place(camera, size.w, size.h, projectLabel)
+    const host = container.getBoundingClientRect()
+    const labelRects = current?.selectedCity ? [...labelLayer.querySelectorAll<HTMLElement>('.map-label')]
+      .filter((el) => el.style.visibility !== 'hidden')
+      .map((el) => { const r = el.getBoundingClientRect(); return new DOMRect(r.left - host.left, r.top - host.top, r.width, r.height) }) : []
+    const taken = placePhotos(labelRects)
     if (memoryWorld.visible && memoryAnchor) {
       const marker = memoryAnchor.clone().project(camera)
       const x = ((marker.x + 1) / 2) * size.w
       const y = ((1 - marker.y) / 2) * size.h
       sceneCaption.hidden = marker.z > 1 || x < 0 || x > size.w || y < 0 || y > size.h
       if (!sceneCaption.hidden) {
-        const narrow = size.w < 640
-        const captionX = Math.max(8, Math.min(size.w - insets.right - 220, narrow ? x - 60 : x + 158))
-        const captionY = narrow ? y + 95 : insets.right ? y + 65 : y - 80
-        sceneCaption.style.transform = `translate(${captionX}px, ${Math.max(65, Math.min(size.h - insets.bottom - 80, captionY))}px)`
+        const width = 200, height = 72
+        const candidates = size.w < 640
+          ? [[x - 90, y + 105], [x - 90, y - 110], [x + 20, y + 35]]
+          : [[x + 105, y - 100], [x - 225, y - 100], [x + 105, y + 55], [x - 225, y + 55]]
+        const choices = candidates.map(([cx, cy]) => {
+          const left = Math.max(8, Math.min(size.w - insets.right - width - 12, cx))
+          const top = Math.max(65, Math.min(size.h - insets.bottom - height - 12, cy))
+          const overlap = [...taken, ...labelRects].reduce((sum, rect) => sum + Math.max(0, Math.min(left + width, rect.right) - Math.max(left, rect.left)) * Math.max(0, Math.min(top + height, rect.bottom) - Math.max(top, rect.top)), 0)
+          return { left, top, overlap }
+        }).sort((a, b) => a.overlap - b.overlap)
+        sceneCaption.style.transform = `translate(${choices[0].left}px, ${choices[0].top}px)`
       }
     } else sceneCaption.hidden = true
-    // Overview: place labels step around photos. In a city's story, event labels come first.
-    labels.place(camera, size.w, size.h, (anchor) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit), current?.selectedCity ? [] : taken)
+    // Keep both photo buttons and story labels reachable at every zoom.
+    if (!current?.selectedCity) labels.place(camera, size.w, size.h, projectLabel, taken)
   }
 
   const layer = new AMap.GLCustomLayer({ zIndex: 120, init() {}, render: draw })
@@ -295,9 +322,85 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let photoKey = ''
   let focusedId: string | null = null
   const shown = new Map<string, HTMLButtonElement>()
-  const CELL = 84
-  function clearMemoryScene() {
-    sceneGeneration++
+  const photoMenu = document.createElement('div')
+  photoMenu.className = 'map-photo-menu'
+  photoMenu.setAttribute('role', 'dialog')
+  photoMenu.setAttribute('aria-label', '选择照片')
+  photoMenu.hidden = true
+  container.append(photoMenu)
+  let menuPhotoIds = ''
+  function closePhotoMenu() { photoMenu.hidden = true; photoMenu.replaceChildren(); menuPhotoIds = '' }
+  function openPhotoMenu(members: MapPhoto[], x: number, y: number) {
+    const ids = members.map((photo) => photo.id).sort().join('|')
+    if (!photoMenu.hidden && menuPhotoIds === ids) { closePhotoMenu(); return }
+    menuPhotoIds = ids
+    photoMenu.replaceChildren()
+    const heading = document.createElement('div')
+    heading.className = 'map-photo-menu-heading'
+    const title = document.createElement('strong')
+    title.textContent = `这里有 ${members.length} 张照片`
+    const close = document.createElement('button')
+    close.type = 'button'
+    close.textContent = '关闭'
+    close.addEventListener('click', closePhotoMenu)
+    heading.append(title, close)
+    const list = document.createElement('div')
+    list.className = 'map-photo-menu-list'
+    let rendered = 0
+    const appendRows = () => {
+      list.querySelector('.map-photo-menu-more')?.remove()
+      const end = Math.min(members.length, rendered + 36)
+      for (let index = rendered; index < end; index++) {
+        const photo = members[index]
+        const item = document.createElement('button')
+        item.type = 'button'
+        item.className = 'map-photo-menu-item'
+        item.setAttribute('aria-label', `打开照片 ${photo.name}`)
+        const img = document.createElement('img')
+        img.src = photo.preview
+        img.alt = ''
+        const label = document.createElement('span')
+        label.textContent = photo.name
+        const number = document.createElement('small')
+        number.textContent = `${index + 1} / ${members.length}`
+        item.append(img, label, number)
+        item.addEventListener('click', (event) => { event.stopPropagation(); closePhotoMenu(); callbacks.onOpenPhoto?.(photo.id) })
+        list.append(item)
+      }
+      rendered = end
+      if (rendered < members.length) {
+        const more = document.createElement('button')
+        more.type = 'button'
+        more.className = 'map-photo-menu-more'
+        more.textContent = `继续显示（剩余 ${members.length - rendered} 张）`
+        more.addEventListener('click', appendRows)
+        list.append(more)
+      }
+    }
+    appendRows()
+    photoMenu.append(heading, list)
+    const width = Math.min(310, size.w - 16)
+    const usableRight = Math.max(width + 8, size.w - insets.right - 8)
+    photoMenu.style.width = `${width}px`
+    photoMenu.style.left = `${Math.max(8, Math.min(usableRight - width, x + 24))}px`
+    photoMenu.style.top = `${Math.max(72, Math.min(size.h - insets.bottom - 220, y - 80))}px`
+    photoMenu.hidden = false
+  }
+  const escapePhotoMenu = (event: KeyboardEvent) => { if (event.key === 'Escape') closePhotoMenu() }
+  window.addEventListener('keydown', escapePhotoMenu)
+  const sceneKey = (photo: MapPhoto) => photoSceneKey(photos.map((entry) => entry.photo), photo)
+  function setSceneState(value: typeof sceneState) {
+    sceneState = value
+    // Counts and load state make a missing scene diagnosable without reading private photos.
+    container.dataset.sceneState = value
+  }
+  function applyBuildingAreas(areas: BuildingArea[]) {
+    const signature = JSON.stringify(areas)
+    if (signature === appliedBuildingStyle) return
+    buildings.setStyle({ hideWithoutStyle: false, areas })
+    appliedBuildingStyle = signature
+  }
+  function disposeMemoryContent() {
     memoryWorld.traverse((child) => {
       const mesh = child as THREE.Mesh
       mesh.geometry?.dispose()
@@ -309,142 +412,136 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       }
     })
     memoryWorld.clear()
+  }
+  function clearMemoryScene() {
+    sceneGeneration++
+    disposeMemoryContent()
     memoryAnchor = null
     activeSceneKey = ''
+    requestedSceneKey = ''
     hasStyledDistrict = false
     sceneAreas = []
     sceneCaption.hidden = true
     sceneSource.hidden = true
-    buildings.setStyle({ hideWithoutStyle: false, areas: [] })
+    applyBuildingAreas([])
+    container.dataset.sceneBuildings = '0'
+    delete container.dataset.sceneSurfaces
+    setSceneState('idle')
   }
 
-  function focusMemoryScene(photo?: MapPhoto) {
-    clearMemoryScene()
-    const generation = sceneGeneration
-    const pearl = !photo || isOrientalPearl(photo.landmark)
-    const point = pearl ? ORIENTAL_PEARL_GCJ : photo.gcj
+  function focusMemoryScene(photo?: MapPhoto, retry = false) {
+    if (!sceneEnabled || disposed) return
+    const region = photo ? regionForPhoto(photos.map((entry) => entry.photo), photo) : undefined
+    if (photo && !region) { clearMemoryScene(); return }
+    const key = photo ? sceneKey(photo) : 'public:oriental-pearl'
+    if (!retry && key === requestedSceneKey && sceneState !== 'idle') return
+    const generation = ++sceneGeneration
+    requestedSceneKey = key
+    const center = region?.center || ORIENTAL_PEARL_GCJ
+    // The landmark is an addition at its real location. Every region uses the same
+    // district renderer; a photo-card keyword never gates the materials or moves a scene.
+    const pearl = metresApart(center, ORIENTAL_PEARL_GCJ) < 500
+    const point = pearl ? ORIENTAL_PEARL_GCJ : center
     if (!origin) origin = point
     map.customCoords.setCenter(origin)
     const [x, y] = map.customCoords.lngLatsToCoords([point])[0]
-    memoryAnchor = new THREE.Vector3(x, y, 0)
-    const miniature = photo ? createMemoryScene(photo) : createOrientalPearlScene()
-    activeSceneKey = photo ? `${photo.id}:${photo.landmark || ''}:${photo.landmarkSource || ''}:${photo.gcj.join(',')}` : 'public:oriental-pearl'
-    const upright = new THREE.Group()
-    upright.rotation.x = Math.PI / 2
-    upright.position.copy(memoryAnchor)
-    upright.add(miniature.group)
-    upright.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.castShadow = true
-        child.receiveShadow = true
-      }
-    })
-    memoryWorld.add(upright)
-    sun.position.copy(memoryAnchor).add(new THREE.Vector3(-800, -750, 1200))
-    sun.target.position.copy(memoryAnchor)
-    sun.target.updateMatrixWorld()
-    sun.shadow.camera.updateProjectionMatrix()
-    renderer.shadowMap.needsUpdate = true
+    const pointAt = new THREE.Vector3(x, y, 0)
+    memoryAnchor = pointAt
+    setSceneState('loading')
     sceneCaption.replaceChildren()
     const title = document.createElement('strong')
-    title.textContent = miniature.label
+    title.textContent = '正在加载照片地点场景…'
     const note = document.createElement('small')
-    note.textContent = `${!photo ? '高德地标位置' : photo.landmarkSource === 'place' ? '照片定位邻近该地标' : photo.inferred ? '地点由照片线索推断' : '照片自带定位'} · 周边装饰为艺术示意`
+    note.textContent = '建筑、道路、树木和水面将一起呈现'
     sceneCaption.append(title, note)
-    const [lng, lat] = point
-    const latRadius = miniature.radius / 111320
-    const lngRadius = miniature.radius / (111320 * Math.cos((lat * Math.PI) / 180))
-    const rect = (west: number, south: number, east: number, north: number): [number, number][] => {
-      const sx = 1 / (111320 * Math.cos((lat * Math.PI) / 180))
-      const sy = 1 / 111320
-      return [[lng + west * sx, lat + south * sy], [lng + east * sx, lat + south * sy], [lng + east * sx, lat + north * sy], [lng + west * sx, lat + north * sy], [lng + west * sx, lat + south * sy]]
-    }
-    const path: [number, number][] = Array.from({ length: 16 }, (_, i) => {
-      const angle = (i / 16) * Math.PI * 2
-      return [lng + Math.cos(angle) * lngRadius, lat + Math.sin(angle) * latRadius]
-    })
-    path.push(path[0])
-    // The two WebGL canvases have no shared depth buffer. Give the custom landmark a small
-    // clearing in AMap.Buildings, keeping all buildings outside the memory scene untouched.
-    sceneAreas = [
-      { color1: '#fff0e7', color2: '#e8c0b9', path: rect(125, -290, 560, 300) },
-      { color1: '#e8f1df', color2: '#bbd5bd', path: rect(-290, -560, 260, -125) },
-      { color1: '#f0e8f8', color2: '#cdbbdc', path: rect(-560, -260, -125, 220) },
-      { visible: false, path },
-    ]
-    if (sceneEnabled) buildings.setStyle({ hideWithoutStyle: false, areas: sceneAreas })
-    const attachDistrict = (data: SceneData, regionCount = 0) => {
-      if (generation !== sceneGeneration) return
-      if (!data.buildings.length && !data.roads.length && !data.water.length && !data.green.length) return
+    const attachDistrict = (data: SceneData) => {
+      if (disposed || generation !== sceneGeneration) return
+      if (!data.buildings.length && !data.roads.length && !data.water.length && !data.green.length && !data.treeRows.length && !data.sand?.length && !data.plazas.length) throw new Error('该地点暂缺可用的地图资料')
       map.customCoords.setCenter(origin!)
-      const district = createStyledDistrict((points) => map.customCoords.lngLatsToCoords(points), point, pearl ? 45 : miniature.radius, data)
+      const district = createStyledDistrict((points) => map.customCoords.lngLatsToCoords(points), point, pearl ? 45 : 0, data)
+      const areas: BuildingArea[] = district.hideNativePaths.map((path) => ({ visible: false, path }))
+      if (pearl) {
+        const miniature = createOrientalPearlScene()
+        const upright = new THREE.Group()
+        upright.rotation.x = Math.PI / 2
+        upright.position.copy(pointAt)
+        upright.add(miniature.group)
+        upright.traverse((child) => {
+          if (child instanceof THREE.Mesh) child.castShadow = child.receiveShadow = true
+        })
+        district.group.add(upright)
+        const latRadius = miniature.radius / 111320
+        const lngRadius = latRadius / Math.cos(point[1] * Math.PI / 180)
+        const path: [number, number][] = Array.from({ length: 16 }, (_, i) => {
+          const angle = i / 16 * Math.PI * 2
+          return [point[0] + Math.cos(angle) * lngRadius, point[1] + Math.sin(angle) * latRadius]
+        })
+        path.push(path[0])
+        areas.push({ visible: false, path })
+      }
+      // Finish the replacement before disposing the old group. Never reset native
+      // building styles to an empty set between two successful district loads.
+      disposeMemoryContent()
       memoryWorld.add(district.group)
+      sceneAreas = areas
+      activeSceneKey = key
       hasStyledDistrict = true
       tileCredit.hidden = !data.provider
-      if (district.hideNativeBuildings) sceneAreas.splice(sceneAreas.length - 1, 0, { visible: false, path: [
-        gcj(district.bounds[1], district.bounds[0]),
-        gcj(district.bounds[1], district.bounds[2]),
-        gcj(district.bounds[3], district.bounds[2]),
-        gcj(district.bounds[3], district.bounds[0]),
-        gcj(district.bounds[1], district.bounds[0]),
-      ] })
-      if (photo && !pearl) title.textContent = `照片地点 · 风格化${district.kind}${regionCount > 1 ? ` · ${regionCount} 张照片` : ''}`
-      note.textContent = `${photo?.inferred ? '照片线索推断地点' : photo ? '照片自带定位' : '高德地标位置'} · 地理轮廓来自 OpenStreetMap，细节为艺术示意`
-      if (sceneEnabled) buildings.setStyle({ hideWithoutStyle: false, areas: sceneAreas })
+      const count = region?.photoIds.length || 0
+      title.textContent = pearl ? '东方明珠 · 风格化地标' : `照片地点 · 风格化${district.kind}${count > 1 ? ` · ${count} 张照片` : ''}`
+      note.textContent = district.completeSurface ? '地理轮廓来自 OpenStreetMap，窗、树和材质为艺术表现' : '地图建筑资料较少，保留未替换的原有楼体'
+      sun.position.copy(pointAt).add(new THREE.Vector3(-800, -750, 1200))
+      sun.target.position.copy(pointAt)
+      sun.target.updateMatrixWorld()
+      applyBuildingAreas(sceneEnabled ? sceneAreas : [])
+      container.dataset.sceneBuildings = String(district.buildingCount)
+      container.dataset.sceneSurfaces = district.completeSurface ? 'full' : 'partial'
+      container.dataset.sceneBuilds = String(++sceneBuilds)
+      setSceneState('ready')
       renderer.shadowMap.needsUpdate = true
       draw()
     }
-    if (metresApart(point, ORIENTAL_PEARL_GCJ) < 650) attachDistrict(shanghaiScene)
-    else if (photo && hasStreetLocation(photo)) {
-      const region = regionForPhoto(photos.map((entry) => entry.photo), photo)
-      if (region) {
-        note.textContent = '正在整理这一组照片地点的街区轮廓…'
-        fetchRegionScene(region.center).then((data) => attachDistrict(data, region.photoIds.length)).catch(() => {
-          if (generation === sceneGeneration) { note.textContent = '区域轮廓暂不可用 · 当前显示地点小景'; draw() }
-        })
-      }
-    } else if (photo) note.textContent = '地点尚未精确到街道 · 当前显示示意小景'
-    // AMap may finish its final map frame before moveend/zoomend rebuilds this group.
-    // Draw the independent canvas now so the scene and caption never wait for another pan.
+    const loading = pearl ? Promise.resolve(shanghaiScene) : fetchRegionScene(center, retry)
+    loading.then(attachDistrict).catch(() => {
+      if (disposed || generation !== sceneGeneration) return
+      setSceneState('error')
+      title.textContent = '该地点场景暂未加载'
+      note.textContent = '地图资料暂时不可用，可以重试'
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = '重新加载场景'
+      button.addEventListener('click', (event) => { event.stopPropagation(); focusMemoryScene(photo, true) })
+      sceneCaption.append(button)
+      draw()
+    })
     draw()
   }
 
-  // A user can arrive by wheel zoom or drag, without opening a photo card. Build only the
-  // nearest local scene; the curated landmark is available even before a photo is analyzed.
+  // Every precise photo group uses the same pipeline, including manual zoom/pan visits.
   function syncSceneForView() {
-    if (!ready || !origin) return
+    if (!ready || !origin || !sceneEnabled || disposed) return
     if (map.getZoom() < 16.7) {
-      if (activeSceneKey) clearMemoryScene()
+      if (requestedSceneKey || activeSceneKey) clearMemoryScene()
       return
     }
     const center = map.getCenter()
     const at: [number, number] = [center.lng, center.lat]
-    let candidate: MapPhoto | undefined
     const focused = photos.find(({ photo }) => photo.id === focusedId)?.photo
-    if (focused && metresApart(focused.gcj, at) < 450) {
-      const key = `${focused.id}:${focused.landmark || ''}:${focused.landmarkSource || ''}:${focused.gcj.join(',')}`
-      if (key !== activeSceneKey) focusMemoryScene(focused)
+    if (focused && hasStreetLocation(focused) && metresApart(focused.gcj, at) < 700) {
+      focusMemoryScene(focused)
       return
     }
-    if (metresApart(at, ORIENTAL_PEARL_GCJ) < 500) {
-      candidate = photos.map(({ photo }) => photo).find((photo) => isOrientalPearl(photo.landmark) && metresApart(photo.gcj, ORIENTAL_PEARL_GCJ) < 900)
-      const key = candidate ? `${candidate.id}:${candidate.landmark || ''}:${candidate.landmarkSource || ''}:${candidate.gcj.join(',')}` : 'public:oriental-pearl'
-      if (key !== activeSceneKey) focusMemoryScene(candidate)
-      return
-    }
+    if (requestedSceneKey === 'public:oriental-pearl' && metresApart(at, ORIENTAL_PEARL_GCJ) < 700) return
     const nearby = photos
-      .filter(({ photo }) => metresApart(photo.gcj, at) < 450)
-      .sort((a, b) => (a.photo.id === focusedId ? -1 : b.photo.id === focusedId ? 1 : metresApart(a.photo.gcj, at) - metresApart(b.photo.gcj, at)))
-    candidate = nearby[0]?.photo
-    const key = candidate ? `${candidate.id}:${candidate.landmark || ''}:${candidate.landmarkSource || ''}:${candidate.gcj.join(',')}` : ''
-    if (key !== activeSceneKey) {
-      if (candidate) focusMemoryScene(candidate)
-      else if (activeSceneKey) clearMemoryScene()
-    }
+      .filter(({ photo }) => hasStreetLocation(photo) && metresApart(photo.gcj, at) < 700)
+      .sort((a, b) => metresApart(a.photo.gcj, at) - metresApart(b.photo.gcj, at))
+    const candidate = nearby[0]?.photo
+    if (candidate) focusMemoryScene(candidate)
+    else if (requestedSceneKey || activeSceneKey) clearMemoryScene()
   }
 
   function setPhotos(next: MapPhoto[] = []) {
-    const key = next.map((p) => `${p.id}:${p.gcj.join(',')}:${p.inferred}:${p.precision || ''}:${p.landmark || ''}:${p.landmarkSource || ''}`).join('|') + `#${focusedId}`
+    const key = next.map((p) => `${p.id}:${p.gcj.join(',')}:${p.inferred}:${p.precision || ''}:${p.landmark || ''}:${p.landmarkSource || ''}:${p.sceneCard?.createdAt || ''}:${p.sceneCard?.scene || ''}:${p.sceneCard?.tags?.join(',') || ''}`).join('|') + `#${focusedId}`
     // With no located place yet, the photos themselves anchor the scene
     if (!origin && next.length) origin = next[0].gcj
     if (key === photoKey || !origin) return
@@ -469,13 +566,12 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       const badge = document.createElement('b')
       badge.textContent = String(members.length)
       el.append(badge)
-      el.setAttribute('aria-label', `这里有 ${members.length} 张照片，点击放大`)
+      el.setAttribute('aria-label', `这里有 ${members.length} 张照片，点击选择`)
       el.addEventListener('click', (event) => {
         event.stopPropagation()
-        const lngs = members.map((m) => m.gcj[0])
-        const lats = members.map((m) => m.gcj[1])
-        const pad = 0.002
-        map.setBounds(new AMap.Bounds([Math.min(...lngs) - pad, Math.min(...lats) - pad], [Math.max(...lngs) + pad, Math.max(...lats) + pad]), false, [150, insets.bottom + 60, 120, insets.right + 120])
+        const rect = el.getBoundingClientRect()
+        const host = container.getBoundingClientRect()
+        openPhotoMenu(members, rect.left - host.left, rect.top - host.top)
       })
     } else {
       el.setAttribute('aria-label', `打开照片 ${cover.name}`)
@@ -485,39 +581,59 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     return el
   }
 
-  function placePhotos(): DOMRect[] {
+  function placePhotos(obstacles: DOMRect[] = []): DOMRect[] {
     const taken: DOMRect[] = []
+    const leaders: SVGPathElement[] = []
     const v = new THREE.Vector3()
-    const cells = new Map<string, { x: number; y: number; members: MapPhoto[] }>()
+    const projected: { photo: MapPhoto; x: number; y: number }[] = []
     for (const { photo, at } of photos) {
       v.copy(at).project(camera)
       if (v.z > 1) continue
       const x = ((v.x + 1) / 2) * size.w
       const y = ((1 - v.y) / 2) * size.h
-      if (x < -CELL || y < -CELL || x > size.w + CELL || y > size.h + CELL) continue
-      const key = `${Math.floor(x / CELL)}:${Math.floor(y / CELL)}`
-      const cell = cells.get(key)
-      if (cell) cell.members.push(photo)
-      else cells.set(key, { x, y, members: [photo] })
+      if (x < -96 || y < -96 || x > size.w + 96 || y > size.h + 96) continue
+      projected.push({ photo, x, y })
     }
     const seen = new Set<string>()
-    for (const { x, y, members } of cells.values()) {
+    for (const { x, y, members } of clusterProjectedPhotos(projected)) {
       // The cover is a photo with its own GPS when there is one
-      const cover = members.find((m) => !m.inferred) || members[0]
-      const id = `${cover.id}|${members.length}|${members.every((m) => m.inferred)}|${cover.id === focusedId}`
+      const cover = members.find((m) => m.id === focusedId) || members.find((m) => !m.inferred) || members[0]
+      // Include every ID: reusing a button with a different member list kept an old click handler.
+      const id = `${members.map((m) => m.id).sort().join('|')}|${cover.id}|${focusedId}`
       seen.add(id)
       const el = shown.get(id) || thumb(cover, members)
       shown.set(id, el)
       // A flag: the tip at the bottom-left touches the place, the picture stands to the right
-      const sceneOffset = members.length === 1 && cover.id === focusedId && Boolean(memoryAnchor) && memoryWorld.visible
-      el.classList.toggle('scene-offset', sceneOffset)
-      const left = Math.round(x) + (sceneOffset ? 55 : -10)
-      const top = Math.round(y) - el.offsetHeight + (sceneOffset ? 15 : -10)
+      const sceneOffset = members.length === 1 && cover.id === focusedId && isOrientalPearl(cover.landmark) && Boolean(memoryAnchor) && memoryWorld.visible
+      const baseLeft = Math.round(x) + (sceneOffset ? 55 : -10)
+      const baseTop = Math.round(y) - el.offsetHeight + (sceneOffset ? 15 : -10)
+      const offsets = [[0, 0], [96, 0], [-96, 0], [0, -96], [0, 96], [96, -96], [-96, -96], [96, 96], [-96, 96], [192, 0], [-192, 0], [0, -192], [0, 192]]
+      const occupied = [...obstacles, ...taken]
+      const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right + 6 && a.right + 6 > b.left && a.top < b.bottom + 6 && a.bottom + 6 > b.top
+      let choice = offsets[0]
+      let lowest = Infinity
+      for (const offset of offsets) {
+        const rect = new DOMRect(baseLeft + offset[0], baseTop + offset[1] - 12, el.offsetWidth + 12, el.offsetHeight + 22)
+        if (rect.left < 8 || rect.top < 8 || rect.right > size.w - insets.right - 8 || rect.bottom > size.h - insets.bottom - 8) continue
+        const collisions = occupied.filter((area) => overlaps(rect, area)).length
+        if (collisions < lowest) { choice = offset; lowest = collisions }
+        if (!collisions) break
+      }
+      const left = baseLeft + choice[0]
+      const top = baseTop + choice[1]
+      el.classList.toggle('scene-offset', sceneOffset && !choice[0] && !choice[1])
       el.style.transform = `translate(${left}px, ${top}px)`
+      if (choice[0] || choice[1]) {
+        const leader = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+        leader.setAttribute('d', `M ${Math.round(x)} ${Math.round(y)} L ${left + 10} ${top + el.offsetHeight}`)
+        leaders.push(leader)
+      }
       // Count badge sticks out 12 px above and to the right
       taken.push(new DOMRect(left, top - 12, el.offsetWidth + 12, el.offsetHeight + 22))
     }
     for (const [id, el] of shown) if (!seen.has(id)) { el.remove(); shown.delete(id) }
+    photoLeaders.setAttribute('viewBox', `0 0 ${size.w} ${size.h}`)
+    photoLeaders.replaceChildren(...leaders)
     return taken
   }
 
@@ -546,12 +662,14 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   }
 
   map.on('click', (event: { pixel: { x: number; y: number } }) => {
+    closePhotoMenu()
     const pointer = new THREE.Vector2((event.pixel.x / size.w) * 2 - 1, -(event.pixel.y / size.h) * 2 + 1)
     raycaster.setFromCamera(pointer, camera)
     const hit = raycaster.intersectObjects(world.children, true).find((h) => h.object.userData.eventId || h.object.userData.city)
     if (hit?.object.userData.eventId) callbacks.onOpenEvent(hit.object.userData.eventId)
     else if (hit?.object.userData.city) callbacks.onSelectCity(hit.object.userData.city)
   })
+  map.on('movestart', closePhotoMenu)
   map.on('moveend', syncSceneForView)
   map.on('zoomend', syncSceneForView)
 
@@ -565,18 +683,27 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
 
   let pending: LifeMapData | null = null
   let pendingLandmark = false
+  let pendingFocus: MapPhoto | null = null
   map.on('complete', () => {
+    if (disposed) return
     ready = true
-    if (pending) api.update(pending)
+    if (pending) { const data = pending; pending = null; api.update(data) }
     syncSceneForView()
-    if (pendingLandmark) api.focusLandmark()
+    if (pendingFocus) { const photo = pendingFocus; pendingFocus = null; api.focusPhoto(photo) }
+    else if (pendingLandmark) api.focusLandmark()
   })
 
   const api = {
     setSceneEnabled(visible: boolean) {
+      if (sceneEnabled === visible) return
       sceneEnabled = visible
+      if (!visible && sceneState === 'loading') {
+        sceneGeneration++
+        requestedSceneKey = activeSceneKey
+        setSceneState(activeSceneKey ? 'ready' : 'idle')
+      }
       if (visible) syncSceneForView()
-      buildings.setStyle({ hideWithoutStyle: false, areas: visible ? sceneAreas : [] })
+      applyBuildingAreas(visible ? sceneAreas : [])
       draw()
     },
     update(data: LifeMapData) {
@@ -594,19 +721,21 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     },
     // Close enough to see the building it was taken at
     focusPhoto(photo: MapPhoto) {
+      if (!ready) { pendingFocus = photo; pendingLandmark = false; return }
       focusedId = photo.id
       if (current) setPhotos(current.photos)
-      focusMemoryScene(photo)
-      map.setPitch(60, reduceMotion)
-      map.setZoomAndCenter(17.2, photo.gcj, reduceMotion)
+      map.setPitch(60, true)
+      map.setZoomAndCenter(hasStreetLocation(photo) ? 18 : 13, photo.gcj, true)
+      if (hasStreetLocation(photo)) focusMemoryScene(photo)
+      else clearMemoryScene()
     },
     focusLandmark() {
-      if (!ready) { pendingLandmark = true; return }
+      if (!ready) { pendingLandmark = true; pendingFocus = null; return }
       pendingLandmark = false
       focusedId = null
+      map.setPitch(60, true)
+      map.setZoomAndCenter(17.2, ORIENTAL_PEARL_GCJ, true)
       focusMemoryScene()
-      map.setPitch(60, reduceMotion)
-      map.setZoomAndCenter(17.2, ORIENTAL_PEARL_GCJ, reduceMotion)
     },
     setInsets(next: { right: number; bottom: number }) {
       if (next.right === insets.right && next.bottom === insets.bottom) return
@@ -616,15 +745,19 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       if (current && ready) frame(current, false)
     },
     dispose() {
+      disposed = true
+      window.removeEventListener('keydown', escapePhotoMenu)
       observer.disconnect()
       clearMemoryScene()
       map.destroy()
       sun.shadow.dispose()
       renderer.dispose()
       mapEl.remove()
+      colorWash.remove()
       canvas.remove()
       atmosphere.remove()
       photoLayer.remove()
+      photoMenu.remove()
       labelLayer.remove()
       sceneSource.remove()
     },

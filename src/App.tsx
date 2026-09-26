@@ -21,7 +21,7 @@ import { LifeMapView } from './components/LifeMapView'
 import { TimelineBar } from './components/TimelineBar'
 
 type Tab = 'map' | 'butler'
-const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {} }
+const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
 const BUTLER_WIDTH = 432
 const TIMEBAR_HEIGHT = 128
 const uid = () => crypto.randomUUID()
@@ -42,6 +42,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [sceneEnabled, setSceneEnabled] = useState(true)
   const [locating, setLocating] = useState<{ done: number; total: number } | null>(null)
   const stopLocating = useRef(false)
+  const autoRun = useRef(false)
+  const [autoBusyIds, setAutoBusyIds] = useState<string[]>([])
   const [importOpen, setImportOpen] = useState(false)
   const [importing, setImporting] = useState(false)
   const [trayOpen, setTrayOpen] = useState(false)
@@ -134,6 +136,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const storyIds = useMemo(() => new Set(story.map((e) => e.id)), [story])
   const firsts = useMemo(() => firstsOf(events), [events])
   const needsWork = events.filter((e) => !e.city || e.status === 'draft')
+  const analyzablePhotos = memory.assets.filter((a) => a.preview && a.kind !== 'video')
+  const pendingPhotoCards = analyzablePhotos.filter((a) => !a.card).length
   const activeEvent = events.find((e) => e.id === activeEventId)
   // Every photo with a place, for the map's photo layer
   const mapPhotos = useMemo<MapPhoto[]>(() => memory.assets.flatMap((a) => {
@@ -143,7 +147,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     const cardLandmark = a.card?.landmark && a.card.landmark.confidence >= 0.7 ? a.card.landmark.name : undefined
     const nearbyLandmark = a.location?.poi?.name || (a.location?.precision === 'poi' ? a.location.label : undefined)
     const placeLandmark = /东方明珠|oriental\s*pearl/i.test(nearbyLandmark || '') ? nearbyLandmark : undefined
-    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision: a.location?.precision || 'point', landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined }]
+    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision: a.location?.precision || 'point', landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined, sceneCard: a.card ? { title: a.card.title, caption: a.card.caption, scene: a.card.scene, tags: a.card.tags, eventGuess: a.card.eventGuess, createdAt: a.card.createdAt } : undefined }]
   }), [memory.assets])
 
   function openPhoto(assetId: string) {
@@ -153,13 +157,16 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     setActiveEventId(event.id)
   }
 
-  // Photos without their own place: read the picture (photo card → landmark / place name → map
-  // search), a couple at a time, then let the rest of each event inherit what was found.
+  // Analyze actual imported photos in the browser's account database, two at a time. Existing
+  // cards are kept. Photos without their own location can additionally use the card's place clue.
   useEffect(() => {
     const key = aiConfig.amapJsKey
-    if (!ready || !aiConfig.available || !key || locating) return
-    const queue = memory.assets.filter((a) => !a.location && !a.locateTried && a.latitude === undefined && !a.metaPlace && a.preview && a.kind !== 'video')
+    if (!ready || !aiConfig.available || memory.autoPhotoCards === false || autoRun.current) return
+    const queue = memory.assets.filter((a) => a.preview && a.kind !== 'video' && (
+      !a.card || (key && !a.location && !a.locateTried && a.latitude === undefined && !a.metaPlace)
+    )).sort((a, b) => Number(!b.location && b.latitude === undefined) - Number(!a.location && a.latitude === undefined))
     if (!queue.length) return
+    autoRun.current = true
     stopLocating.current = false
     setLocating({ done: 0, total: queue.length })
     ;(async () => {
@@ -167,13 +174,15 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       const worker = async () => {
         for (let asset = queue.shift(); asset && !stopLocating.current; asset = queue.shift()) {
           const event = memory.events.find((e) => e.assetIds.includes(asset!.id))
+          setAutoBusyIds((ids) => [...ids, asset.id])
           try {
             const card = asset.card || { ...(await generatePhotoCard(asset, factsOf(asset, event))), createdAt: new Date().toISOString() }
-            const found = card.placeQuery ? await searchPlace(key, card.placeQuery).catch(() => undefined) : undefined
+            const needsPlace = !asset.location && asset.latitude === undefined && !asset.metaPlace
+            const found = needsPlace && key && card.placeQuery ? await searchPlace(key, card.placeQuery).catch(() => undefined) : undefined
             const id = asset.id
             setMemory((current) => ({
               ...current,
-              assets: current.assets.map((a) => (a.id === id ? { ...a, card, locateTried: true, location: better(a.location, found) } : a)),
+              assets: current.assets.map((a) => (a.id === id ? { ...a, card: a.card || card, locateTried: needsPlace && key ? true : a.locateTried, location: better(a.location, found) } : a)),
               // The event takes the place too (a dashed, unconfirmed city), with coordinates so the map can draw it
               events: found?.city || found?.province ? current.events.map((e) => {
                 if (!e.assetIds.includes(id) || e.city) return e
@@ -183,22 +192,32 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
             }))
           } catch (error) {
             stopLocating.current = true
-            setNotice(error instanceof Error ? `自动定位已暂停：${error.message}` : '自动定位已暂停')
+            setMemory((current) => ({ ...current, autoPhotoCards: false }))
+            setNotice(error instanceof Error ? `自动分析已暂停：${error.message}` : '自动分析已暂停')
+          } finally {
+            setAutoBusyIds((ids) => ids.filter((id) => id !== asset.id))
           }
           done++
           setLocating((p) => (p ? { ...p, done } : p))
         }
       }
-      await Promise.all([worker(), worker()])
-      // Share places within events
-      setMemory((current) => {
-        const inherited = inheritFromEvent(current.assets, current.events)
-        if (!inherited.size) return current
-        return { ...current, assets: current.assets.map((a) => (inherited.has(a.id) ? { ...a, location: inherited.get(a.id) } : a)) }
-      })
-      setLocating(null)
-    })()
-  }, [memory.assets, memory.events, ready, aiConfig.available, aiConfig.amapJsKey, locating]) // eslint-disable-line react-hooks/exhaustive-deps
+      try {
+        await Promise.all([worker(), worker()])
+        // Share places within events
+        setMemory((current) => {
+          const inherited = inheritFromEvent(current.assets, current.events)
+          if (!inherited.size) return current
+          return { ...current, assets: current.assets.map((a) => (inherited.has(a.id) ? { ...a, location: inherited.get(a.id) } : a)) }
+        })
+      } finally {
+        autoRun.current = false
+        setLocating(null)
+      }
+    })().catch((error) => {
+      setMemory((current) => ({ ...current, autoPhotoCards: false }))
+      setNotice(error instanceof Error ? `自动分析已暂停：${error.message}` : '自动分析已暂停')
+    })
+  }, [memory.assets, memory.events, memory.autoPhotoCards, ready, aiConfig.available, aiConfig.amapJsKey])
   const selectedPlace = places.find((p) => p.city === selectedCity)
   const panelOpen = tab === 'butler' || Boolean(selectedCity)
 
@@ -276,6 +295,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
 
   async function makePhotoCard(asset: MemoryAsset, facts: PhotoFacts) {
     if (!aiConfig.available) { setNotice('请先在 .env 中配置 StepFun API Key，重启服务后再生成'); return }
+    if (autoBusyIds.includes(asset.id)) return
     setCardBusyId(asset.id)
     try {
       const card = await generatePhotoCard(asset, facts)
@@ -479,6 +499,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       <main className="stage">
         {configChecked && <LifeMapView
           amapKey={aiConfig.amapJsKey}
+          amapStyle={aiConfig.amapStyle}
           sceneEnabled={sceneEnabled}
           onMapError={setNotice}
           places={places}
@@ -520,18 +541,20 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                 className={`building-toggle ${sceneEnabled ? 'active' : ''}`}
                 type="button"
                 aria-pressed={sceneEnabled}
-                title="放大到街区后，在华东照片地点查看风格化记忆场景"
+                title="放大到有精确定位的照片地点后查看风格化记忆场景"
                 onClick={() => setSceneEnabled((enabled) => !enabled)}
               >
                 3D 记忆场景 {sceneEnabled ? '开' : '关'}
-                <small>华东照片点</small>
+                <small>真实照片地点</small>
               </button>
-              <button className="scene-preview" type="button" onClick={() => { setTab('map'); selectCity(null, false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>
+              {!mapPhotos.length && <button className="scene-preview" type="button" onClick={() => { setTab('map'); selectCity(null, false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>}
             </>)}
-            {locating && (
-              <div className="locating-chip" role="status">
-                <span>正在从画面识别地点 {locating.done}/{locating.total}</span>
-                <button onClick={() => { stopLocating.current = true }}>停止</button>
+            {aiConfig.available && analyzablePhotos.length > 0 && (
+              <div className="locating-chip" role="status" aria-label="照片自动分析状态">
+                <span>{locating ? `StepFun 正在分析真实照片 ${locating.done}/${locating.total}` : pendingPhotoCards ? `${memory.autoPhotoCards === false ? '已暂停' : '待分析'} ${pendingPhotoCards} 张照片` : `已生成 ${analyzablePhotos.length} 张照片信息卡`}</span>
+                {locating
+                  ? <button onClick={() => { stopLocating.current = true; setMemory((current) => ({ ...current, autoPhotoCards: false })) }}>暂停</button>
+                  : pendingPhotoCards > 0 && memory.autoPhotoCards === false ? <button onClick={() => { stopLocating.current = false; setMemory((current) => ({ ...current, autoPhotoCards: true })) }}>继续分析</button> : null}
               </div>
             )}
             {needsWork.length > 0 && <button className="tray-chip" onClick={() => setTrayOpen((open) => !open)}><CircleHelp size={14} />{needsWork.length} 件事待整理</button>}
@@ -611,7 +634,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           onAnalyze={() => void runAnalysis(activeEvent)}
           onSave={(next) => { updateEvent(next); setNotice('事件已确认并保存') }}
           onDeleteAsset={(id) => void deleteAsset(id)}
-          cardBusyId={cardBusyId}
+          cardBusyIds={[...(cardBusyId ? [cardBusyId] : []), ...autoBusyIds]}
           onGenerateCard={(asset, facts) => void makePhotoCard(asset, facts)}
           peers={{
             candidateCount: (asset) => pickReferences(asset, memory.assets, memory.events, signatures).length,

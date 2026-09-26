@@ -58,7 +58,7 @@ try {
   assert.match(await facts.innerText(), /540 × 960/)
   assert.match(await page.locator('.lightbox-caption').innerText(), /文件名中的保存时间/)
 
-  await page.getByRole('button', { name: '生成信息卡' }).click()
+  // Import now starts the information-card queue without a manual click.
   await page.locator('.photo-card h2').filter({ hasText: '新居装修验收' }).waitFor()
   assert.equal(cardRequest.facts.timeSource, 'filename', '模型应被告知时间来源')
   assert.ok(cardRequest.image.dataUrl.startsWith('data:image/jpeg;base64,'))

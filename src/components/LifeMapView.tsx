@@ -6,6 +6,7 @@ import { createLifeMap, type LifeMapData, type MapPhoto } from '../map/scene'
 interface Props extends LifeMapData {
   // With a key the cartoon layer sits on the real AMap 3D map; without one, on a cartoon board
   amapKey?: string
+  amapStyle?: string
   insetRight: number
   insetBottom: number
   sceneEnabled: boolean
@@ -27,11 +28,11 @@ interface MapApi {
   setSceneEnabled?: (visible: boolean) => void
 }
 
-export function LifeMapView({ amapKey, insetRight, insetBottom, sceneEnabled, onSelectCity, onOpenEvent, onOpenPhoto, onMapError, focus, landmarkPreviewAt = 0, ...data }: Props) {
+export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, sceneEnabled, onSelectCity, onOpenEvent, onOpenPhoto, onMapError, focus, landmarkPreviewAt = 0, ...data }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const map = useRef<MapApi | null>(null)
-  const latest = useRef({ data, insets: { right: insetRight, bottom: insetBottom }, sceneEnabled, landmarkPreviewAt })
-  latest.current = { data, insets: { right: insetRight, bottom: insetBottom }, sceneEnabled, landmarkPreviewAt }
+  const latest = useRef({ data, insets: { right: insetRight, bottom: insetBottom }, sceneEnabled, landmarkPreviewAt, focus })
+  latest.current = { data, insets: { right: insetRight, bottom: insetBottom }, sceneEnabled, landmarkPreviewAt, focus }
   const callbacks = useRef({ onSelectCity, onOpenEvent, onOpenPhoto, onMapError })
   callbacks.current = { onSelectCity, onOpenEvent, onOpenPhoto, onMapError }
 
@@ -50,11 +51,12 @@ export function LifeMapView({ amapKey, insetRight, insetBottom, sceneEnabled, on
       api.setInsets(latest.current.insets)
       api.setSceneEnabled?.(latest.current.sceneEnabled)
       api.update(latest.current.data)
-      if (latest.current.landmarkPreviewAt) api.focusLandmark?.()
+      if (latest.current.focus) api.focusPhoto?.(latest.current.focus.photo)
+      else if (latest.current.landmarkPreviewAt) api.focusLandmark?.()
     }
     if (amapKey) {
       loadAmap(amapKey)
-        .then((AMap) => mount(createAmapLifeMap(el, handlers, AMap)))
+        .then((AMap) => mount(createAmapLifeMap(el, handlers, AMap, amapStyle)))
         .catch((error) => {
           callbacks.current.onMapError(`${error instanceof Error ? error.message : '高德地图加载失败'}，已改用卡通底板`)
           mount(createLifeMap(el, handlers))
@@ -63,7 +65,7 @@ export function LifeMapView({ amapKey, insetRight, insetBottom, sceneEnabled, on
       mount(createLifeMap(el, handlers))
     }
     return () => { cancelled = true; map.current?.dispose(); map.current = null }
-  }, [amapKey])
+  }, [amapKey, amapStyle])
 
   // Insets first, so the camera is framed for the space the panels leave free
   useEffect(() => { map.current?.setInsets({ right: insetRight, bottom: insetBottom }) }, [insetRight, insetBottom])

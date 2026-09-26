@@ -499,8 +499,13 @@ function illustrateTraffic(group: THREE.Group, roads: { path: Point[]; major: bo
 
 export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL_PEARL_GCJ, clearRadius = 45, data: SceneData = shanghaiScene) {
   const group = new THREE.Group()
-  // Sparse vector data must not erase the more complete native AMap buildings.
-  const replaceNativeBuildings = data.buildings.length >= 100
+  // Dense extracts use the complete surface treatment from the accepted Wuhan/Hangzhou
+  // scenes. In sparse extracts, keep the native ground visible: a flat landuse polygon
+  // on our separate canvas would paint over native buildings missing from OSM.
+  // Building materials themselves must never depend on an arbitrary building count.
+  const completeSurface = data.buildings.length >= 100
+  const hideNativePaths: Point[][] = []
+  let buildingCount = 0
   const transform = (points: Point[]) => convert(points.map(([lng, lat]) => {
     const p = wgs84ToGcj02({ lng, lat })
     return [p.lng, p.lat]
@@ -516,7 +521,8 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     fragmentShader: 'varying vec2 vUv; void main(){ float e=min(min(vUv.x,1.-vUv.x),min(vUv.y,1.-vUv.y)); float a=smoothstep(0.,.09,e); gl_FragColor=vec4(.942,.895,.832,a); }',
   }))
   ground.position.set((corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2, .02)
-  if (replaceNativeBuildings) group.add(ground)
+  if (completeSurface) group.add(ground)
+  else { ground.geometry.dispose(); ground.material.dispose() }
 
   const water = data.water.map((polygon) => polygon.rings.map(transform))
   const parks = data.green.map((polygon) => polygon.rings.map(transform))
@@ -530,13 +536,13 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     ['university', '#e7dcf2'],
     ['hospital', '#dce9ec'],
   ] as const) {
-    const surfaces = data.landuse.filter((polygon) => polygon.kind === kind)
+    const surfaces = (completeSurface ? data.landuse : []).filter((polygon) => polygon.kind === kind)
       .map((polygon) => polygonGeometry(polygon.rings.map(transform), .07))
       .filter((value): value is THREE.ShapeGeometry => value !== null)
     if (surfaces.length) mergedMesh(group, surfaces, parcelMaterial(color, kind))
   }
   const waterShapes = water.map((rings) => polygonGeometry(rings, .15)).filter((value): value is THREE.ShapeGeometry => value !== null)
-  const waterGeometry = mergeGeometries(waterShapes, false)
+  const waterGeometry = waterShapes.length ? mergeGeometries(waterShapes, false) : null
   waterShapes.forEach((geometry) => geometry.dispose())
   if (waterGeometry) {
     // One planar camera reflects the actual Three.js buildings, tower and trees. A small
@@ -656,12 +662,16 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     if (outer.length < 4) continue
     const center: Point = [outer.reduce((sum, point) => sum + point[0], 0) / outer.length, outer.reduce((sum, point) => sum + point[1], 0) / outer.length]
     occupied.push(outer)
-    if (!replaceNativeBuildings) continue
     if (Math.hypot(center[0] - anchor[0], center[1] - anchor[1]) < clearRadius) continue
     let signedArea = 0
     for (let i = 1; i < outer.length; i++) signedArea += outer[i - 1][0] * outer[i][1] - outer[i][0] * outer[i - 1][1]
     const area = Math.abs(signedArea) / 2
     if (area < 18 || area > 24000) continue
+    buildingCount++
+    hideNativePaths.push(item.rings[0].map(([lng, lat]): Point => {
+      const p = wgs84ToGcj02({ lng, lat })
+      return [p.lng, p.lat]
+    }))
     const height = actualHeight(item, area)
     const kind: Archetype = height >= 90 ? 2 : area >= 900 && height < 55 ? 3 : height < 27 ? 0 : 1
     const [tileWidth, tileHeight] = ([[17, 14], [13, 12], [12, 15], [19, 11]] as const)[kind]
@@ -757,5 +767,6 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   const waterArea = water.reduce((sum, rings) => sum + polygonArea(rings), 0)
   const greenArea = parks.reduce((sum, rings) => sum + polygonArea(rings), 0)
   const kind = data.coast ? '海岸' : waterArea > 18000 ? '水岸' : greenArea > 15000 ? '公园' : data.buildings.length > 20 ? '街区' : '地点'
-  return { group, bounds: data.bbox, kind, hideNativeBuildings: replaceNativeBuildings }
+  group.name = 'photo-region-district'
+  return { group, bounds: data.bbox, kind, buildingCount, completeSurface, hideNativePaths }
 }

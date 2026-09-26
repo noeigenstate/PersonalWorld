@@ -37,14 +37,14 @@ interface Props {
   onAnalyze: () => void
   onSave: (event: MemoryEvent) => void
   onDeleteAsset: (id: string) => void
-  cardBusyId: string | null
+  cardBusyIds: string[]
   onGenerateCard: (asset: MemoryAsset, facts: PhotoFacts) => void
   peers: PeerTools
   // Open straight on this photo (e.g. clicked on the map)
   initialAssetId?: string | null
 }
 
-export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose, onAnalyze, onSave, onDeleteAsset, cardBusyId, onGenerateCard, peers, initialAssetId }: Props) {
+export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose, onAnalyze, onSave, onDeleteAsset, cardBusyIds, onGenerateCard, peers, initialAssetId }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(event)
   const [activeAssetId, setActiveAssetId] = useState<string | null>(initialAssetId ?? null)
@@ -168,7 +168,7 @@ export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose,
               <div className="lightbox-stage">{activeAsset.kind === 'video' && videoUrl ? <video src={videoUrl} controls autoPlay /> : <AssetImage asset={activeAsset} />}</div>
               <div className="lightbox-caption"><Clock3 size={16} />{formatDate(activeAsset.capturedAt, { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{activeAsset.dateSource !== 'exif' && <span>（{activeAsset.dateSource === 'filename' ? '文件名中的保存时间' : '文件时间'}）</span>}</div>
             </div>
-            <PhotoCard asset={activeAsset} event={event} aiAvailable={aiAvailable} busy={cardBusyId === activeAsset.id} onGenerate={(facts) => onGenerateCard(activeAsset, facts)} peers={peers} />
+            <PhotoCard asset={activeAsset} event={event} aiAvailable={aiAvailable} busy={cardBusyIds.includes(activeAsset.id)} onGenerate={(facts) => onGenerateCard(activeAsset, facts)} peers={peers} />
           </div>
         </div>
       )}

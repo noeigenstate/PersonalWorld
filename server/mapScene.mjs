@@ -11,6 +11,9 @@ const cacheDir = fileURLToPath(new URL('./data/map-scenes/', import.meta.url))
 const tileTemplate = process.env.MAP_SCENE_TILE_URL || 'https://tiles.openfreemap.org/planet/latest/{z}/{x}/{y}.pbf'
 const zoom = 14
 const cacheAge = 7 * 24 * 60 * 60 * 1000
+// Earlier extracts stored OpenMapTiles' default 5 m as a measured building height.
+// Version derived data so those old files cannot flatten otherwise identical scenes.
+const sceneVersion = 2
 const inFlight = new Map()
 
 function bboxFor(lng, lat) {
@@ -127,7 +130,7 @@ function appendTile(scene, tile, x, y) {
 
 async function buildScene(lng, lat) {
   const bbox = bboxFor(lng, lat)
-  const scene = { source: 'OpenStreetMap contributors', license: 'ODbL-1.0', provider: 'OpenMapTiles / OpenFreeMap', bbox, buildings: [], roads: [], water: [], green: [], sand: [], landuse: [], plazas: [], treeRows: [], coast: false }
+  const scene = { version: sceneVersion, source: 'OpenStreetMap contributors', license: 'ODbL-1.0', provider: 'OpenMapTiles / OpenFreeMap', bbox, buildings: [], roads: [], water: [], green: [], sand: [], landuse: [], plazas: [], treeRows: [], coast: false }
   const [west, south, east, north] = bbox
   const [firstX, firstY] = tileAt(west, north)
   const [lastX, lastY] = tileAt(east, south)
@@ -143,7 +146,7 @@ export async function mapSceneForPoint(lng, lat) {
   // Nearby photos share one neighbourhood, and revisits reuse the same local extract.
   const centerLng = Number(lng.toFixed(3)), centerLat = Number(lat.toFixed(3))
   const key = `${centerLng.toFixed(3)}_${centerLat.toFixed(3)}`
-  const path = join(cacheDir, `${key}.json`)
+  const path = join(cacheDir, `v${sceneVersion}_${key}.json`)
   try {
     if (Date.now() - (await stat(path)).mtimeMs < cacheAge) return JSON.parse(await readFile(path, 'utf8'))
   } catch (error) { if (error.code !== 'ENOENT') throw error }

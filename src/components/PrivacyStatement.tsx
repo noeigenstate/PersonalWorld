@@ -1,5 +1,5 @@
 // Keep in sync with PRIVACY_VERSION in server/users.mjs
-export const PRIVACY_VERSION = '2026-09-24'
+export const PRIVACY_VERSION = '2026-09-25'
 
 export function PrivacyStatement() {
   return (
@@ -8,11 +8,11 @@ export function PrivacyStatement() {
       <h3>保存什么、保存在哪</h3>
       <ul>
         <li><b>账户</b>：用户名、加盐哈希后的密码和登录状态，保存在运行 Personal World 服务的电脑上。</li>
-        <li><b>照片、视频、事件和信息卡</b>：只保存在你这台设备的浏览器里，按账户分开存放，不上传到 Personal World 的服务器。</li>
+        <li><b>照片、视频、事件和信息卡</b>：按账户保存在这台设备的浏览器里。分析照片时，图片会临时经 Personal World 服务转发给 StepFun；服务不持久保存图片。</li>
       </ul>
       <h3>使用功能时会发送给第三方的内容</h3>
       <ul>
-        <li><b>StepFun（阶跃星辰）</b>：事件分析和照片信息卡发送照片预览图（最长边 1200 像素）和元数据；人生管家发送事件的文字记录；按住说话发送录音；朗读发送回答文字。</li>
+        <li><b>StepFun（阶跃星辰）</b>：导入或再次打开后，默认自动逐张生成照片信息卡，可在地图上暂停；信息卡发送从原图缩放的 JPEG（最长边 2560 像素，失败时用预览图）及元数据。手动分析事件时发送最多 6 张最长边约 1200 像素的预览图；人生管家发送事件文字，语音功能发送录音或回答文字。</li>
         <li><b>高德地图</b>：发送照片的定位坐标以识别城市，并加载地图。</li>
       </ul>
       <h3>照片里的敏感文字</h3>
