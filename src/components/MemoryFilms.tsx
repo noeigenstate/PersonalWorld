@@ -5,8 +5,9 @@ import type { MemoryAsset, MemoryEvent } from '../types'
 import { filmActive, filmBatch, filmImage, filmRequest, filmSources, boundedFilmSources, type FilmJob, type FilmSource } from '../lib/memoryFilm'
 import { discoverFilmStories, storyAlreadyMade, storyAttempted } from '../lib/filmStories'
 import { loadFilmSettings, saveFilmSettings } from '../lib/storage'
+import type { MemoryGraphState, StoryChapter } from '../lib/memoryGraph'
 
-export function MemoryFilms({ assets, events, ready, analyzing }: { assets: MemoryAsset[]; events: MemoryEvent[]; ready: boolean; analyzing: boolean }) {
+export function MemoryFilms({ assets, events, ready, analyzing, graph, requestedChapter }: { assets: MemoryAsset[]; events: MemoryEvent[]; ready: boolean; analyzing: boolean; graph:MemoryGraphState|null; requestedChapter:{chapter:StoryChapter;at:number}|null }) {
   const [open, setOpen] = useState(false)
   const [jobs, setJobs] = useState<FilmJob[]>([])
   const [settings, setSettings] = useState<{ enabled: boolean; attempted: string[] } | null>(null)
@@ -24,8 +25,23 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
   const alive = useRef(true), generation = useRef(0)
   const latestAssets = useRef(assets); latestAssets.current = assets
   const sources = useMemo(() => filmSources(assets, events), [assets, events])
-  const stories = useMemo(() => discoverFilmStories(sources), [sources])
-  const round = `auto-v2:${batch}:`
+  const stories = useMemo(() => {
+    const chapters=graph?.graph.chapters||[]
+    const found=discoverFilmStories(sources).map(story=>{
+      const chapter=chapters.find(c=>c.assetIds.length===story.sources.length&&story.sources.every(s=>c.assetIds.includes(s.id)))
+      return {...story,key:story.key+(chapter?':'+chapter.revision:''),chapterId:chapter?.id,chapterRevision:chapter?.revision,automatic:true}
+    })
+    if(!found.length&&sources.length>=2)found.push({key:`album:${sources.map(s=>s.id).join(',')}`,place:'这些日子里的片段',sources,chapterId:undefined,chapterRevision:undefined,automatic:true})
+    for(const chapter of chapters){
+      if(found.some(s=>s.chapterId===chapter.id||s.sources.length===chapter.assetIds.length&&s.sources.every(a=>chapter.assetIds.includes(a.id))))continue
+      const candidates=sources.filter(s=>chapter.assetIds.includes(s.id));if(candidates.length<2)continue
+      found.push({key:`chapter:${chapter.id}:${chapter.revision}`,place:chapter.title,sources:candidates,chapterId:chapter.id,chapterRevision:chapter.revision,automatic:chapter.kind==='person'})
+    }
+    return found
+  }, [sources,graph?.graph.revision])
+  const round = `auto-v3:${batch}:`
+  const attempted=(key:string)=>storyAttempted((settings?.attempted||[]).filter(v=>v.startsWith('auto-v3:')||v.startsWith('manual-v3:')),key)
+  const made=(story:typeof stories[number])=>storyAlreadyMade(story,jobs.filter(j=>j.version==='memory-film-6'&&(!story.chapterId||j.chapterId===story.chapterId&&j.chapterRevision===story.chapterRevision)))
   const roundUsed = settings?.attempted.filter(key => key.startsWith(round)).length || 0
   const assetKey = assets.map((a) => `${a.id}:${a.hash}`).sort().join('|')
   const current = jobs.find((j) => filmActive(j))
@@ -51,28 +67,50 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
   }, [assetKey])
   useEffect(() => { if (settings) void saveFilmSettings(settings).catch(() => setError('自动生成设置未能保存')) }, [settings])
 
-  async function start(manual = false, fromJob?: string, attempt = batch, candidates: FilmSource[] = sources) {
+  async function start(manual = false, fromJob?: string, attempt = batch, candidates: FilmSource[] = sources, chapterId?:string) {
     if (lock.current || current || (!fromJob && candidates.length < 2) || !batch) return
     lock.current = true; setStarting(true); setError('')
     const ticket = generation.current
     setSettings((s) => s ? { ...s, attempted: [...new Set([...s.attempted, attempt])].slice(-256) } : s)
     try {
-      const job = await filmRequest<FilmJob>('', { sources: fromJob ? undefined : boundedFilmSources(candidates), fromJob, batch, regenerate: manual })
+      const job = await filmRequest<FilmJob>('', { sources: fromJob ? undefined : boundedFilmSources(candidates), fromJob, batch, regenerate: manual, chapterId })
       if (alive.current && ticket !== generation.current) upsert(await filmRequest<FilmJob>(`/${job.id}/cancel`, {}))
       else if (alive.current) { upsert(job); setSelected(job.id) }
     } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : '生成失败') }
     finally { lock.current = false; if (alive.current) setStarting(false) }
   }
 
+  const chapterHandled=useRef(0)
+  useEffect(()=>{
+    if(!requestedChapter||chapterHandled.current===requestedChapter.at||!batch||!loaded||!capable)return
+    setOpen(true)
+    if(current||starting)return
+    const chapter=graph?.graph.chapters.find(c=>c.id===requestedChapter.chapter.id)||requestedChapter.chapter
+    chapterHandled.current=requestedChapter.at
+    void start(true,undefined,`chapter:${chapter.id}:${chapter.revision}`,sources.filter(s=>chapter.assetIds.includes(s.id)),chapter.id)
+  },[requestedChapter,batch,loaded,capable,current,starting,graph])
+
   useEffect(() => {
     if (!loaded || !capable || !settings?.enabled || !batch || current || starting || analyzing || sources.length < 2) return
     if (roundUsed >= 3) return
-    const next = stories.find(story => !storyAttempted(settings.attempted, story.key) && !storyAlreadyMade(story, jobs))
+    const next = stories.find(story => story.automatic && !attempted(story.key) && !made(story))
     if (stories.length && !next) return
-    if (!stories.length && (settings.attempted.includes(batch) || jobs.some(j => j.batch === batch))) return
-    const timer = window.setTimeout(() => { void start(false, undefined, next ? round + next.key : batch, next?.sources || sources) }, 10_000)
+    if (!stories.length && (settings.attempted.includes(round+'album') || jobs.some(j => j.batch === batch&&j.version==='memory-film-6'))) return
+    const timer = window.setTimeout(() => { void start(false, undefined, next ? round + next.key : round+'album', next?.sources || sources,next?.chapterId) }, 10_000)
     return () => window.clearTimeout(timer)
   }, [loaded, capable, settings, batch, jobs, current, starting, analyzing, sources, stories])
+
+  // Confirmed identities and factual corrections invalidate their own chapter.
+  // Track the revision durably so a correction never becomes an endless render.
+  const changedChapter=(graph?.graph.chapters||[]).find(chapter=>{
+    const latest=jobs.find(j=>j.chapterId===chapter.id&&j.status==='complete'&&j.version==='memory-film-6')
+    return latest&&latest.chapterRevision!==chapter.revision&&!settings?.attempted.includes(`identity:${chapter.id}:${chapter.revision}`)
+  })
+  useEffect(()=>{
+    if(!changedChapter||!settings?.enabled||!capable||current||starting||analyzing||!batch)return
+    const timer=window.setTimeout(()=>{void start(false,undefined,`identity:${changedChapter.id}:${changedChapter.revision}`,sources.filter(s=>changedChapter.assetIds.includes(s.id)),changedChapter.id)},4000)
+    return()=>window.clearTimeout(timer)
+  },[changedChapter?.revision,settings,capable,current,starting,analyzing,batch])
 
   // A confirmed correction may arrive from this UI or an authorized assistant.
   // Re-edit only that film's photos, once per revision, respecting Pause.
@@ -176,7 +214,7 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
     return () => window.removeEventListener('keydown', close)
   }, [open])
 
-  const remaining = stories.filter(story => !storyAttempted(settings?.attempted || [], story.key) && !storyAlreadyMade(story, jobs))
+  const remaining = stories.filter(story => !attempted(story.key) && !made(story))
   const status = current?.status === 'planning' ? '正在寻找值得留住的故事…' : current?.status === 'awaiting-images' ? `正在准备照片 ${uploading || current.uploaded.length}/${current.plan?.shots.length || 0}` : current?.status === 'queued' ? '已排队，等待剪辑…' : current?.status === 'rendering' ? `正在剪辑 · ${current.progress}%` : analyzing ? '等照片理解完成后，自动剪一段回忆' : sources.length < 2 ? `已有 ${sources.length} 张可用照片，满 2 张后自动编排` : !settings?.enabled ? '自动生成已暂停' : roundUsed >= 3 ? '这批照片已尝试编排 3 段回忆，还可选择下方主题' : remaining.length ? `发现 ${remaining.length} 段回忆，接着编排${remaining[0].place}` : '照片就绪后会自动编排，无需填写创意'
   return <>
     <button className={`button film-entry ${current || starting ? 'working' : ''}`} onClick={() => setOpen(true)} title="自动回忆短片" aria-label="回忆短片">
@@ -202,8 +240,8 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
               <button className="button button-subtle" disabled={Boolean(current) || starting || sources.length < 2 || capable !== true} onClick={() => void start(true, displayed?.plan ? displayed.id : undefined)}><RotateCcw size={14} />{displayed ? '重新编排一版' : '现在自动生成'}</button>
             </div>
             {error && <p role="alert" className="film-error">{error}</p>}
-            {remaining.length > 0 && <details><summary>还有哪些回忆可以成片</summary><div className="film-history">{remaining.map(story => <button key={story.key} disabled={Boolean(current) || starting} onClick={() => void start(false, undefined, story.key, story.sources)}>{story.place} · {story.sources.length} 张</button>)}</div></details>}
-            {capable === false && <p className="film-error">服务端未找到 FFmpeg，暂时无法生成视频。</p>}
+            {remaining.length > 0 && <details><summary>还有哪些回忆可以成片</summary><div className="film-history">{remaining.map(story => <button key={story.key} disabled={Boolean(current) || starting} onClick={() => void start(false, undefined, 'manual-v3:'+story.key, story.sources,story.chapterId)}>{story.place} · {story.sources.length} 张</button>)}</div></details>}
+            {capable === false && <p className="film-error">请检查服务端 FFmpeg、Python 和 Pillow，当前无法生成视频。</p>}
             {displayed?.error && <p className="film-error">{displayed.error}</p>}
             {displayed?.warning && <p className="film-warning">{displayed.warning}</p>}
             {displayed?.exportError && <p className="film-warning">{displayed.exportError}</p>}

@@ -106,3 +106,10 @@ export async function saveFilmSettings(settings: { enabled: boolean; attempted: 
   await db.put('state', settings, 'film-settings')
 }
 
+export async function loadPreference<T>(key: string, fallback: T): Promise<T> {
+  return (await (await current()).get('state', key)) ?? fallback
+}
+export async function savePreference<T>(key: string, value: T): Promise<void> {
+  await (await current()).put('state', value, key)
+}
+

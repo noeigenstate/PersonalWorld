@@ -2,7 +2,7 @@ import type { MemoryAsset, MemoryEvent } from '../types'
 import { getFile } from './storage'
 import { heicAsJpeg, isHeic } from './import'
 
-export interface FilmSource { id: string; date: string; observed: string; confirmed: string; place: string; tags: string[] }
+export interface FilmSource { id: string; date: string; capturedAt?:string; observed: string; confirmed: string; place: string; tags: string[] }
 export interface FilmPlan {
   treatment?: 'snow-journal' | 'sweet-moments' | 'little-makers' | 'warm-album'
   kind: 'outing' | 'revisit' | 'season'; title: string; closing: string; reason: string
@@ -15,6 +15,7 @@ export interface FilmJob {
   duration?: number; bytes?: number; url?: string
   exportedAt?: string; exportError?: string
   storyContext?: { text: string; notes: { text: string; count: number }[]; revision: string; changed: boolean }
+  chapterId?:string;chapterRevision?:string;chapterChanged?:boolean;currentChapterRevision?:string
 }
 export const filmActive = (job?: FilmJob) => Boolean(job && ['planning', 'awaiting-images', 'queued', 'rendering'].includes(job.status))
 
@@ -28,7 +29,7 @@ export function filmSources(assets: MemoryAsset[], events: MemoryEvent[]): FilmS
     hashes.add(hash)
     const event = events.find((e) => e.assetIds.includes(asset.id))
     const date = asset.dateSource === 'file' ? '' : new Date(asset.capturedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })
-    return [{ id: asset.id, date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '', observed: asset.card.scene, confirmed: event?.status === 'confirmed' ? `${event.title}。${event.summary}` : '', place: asset.location?.aoi || asset.location?.poi?.name || event?.city || '', tags: asset.card.tags }]
+    return [{ id: asset.id, date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '', capturedAt:asset.dateSource==='exif'?asset.capturedAt:'', observed: asset.card.scene, confirmed: event?.status === 'confirmed' ? `${event.title}。${event.summary}` : '', place: asset.location?.aoi || asset.location?.poi?.name || event?.city || '', tags: asset.card.tags }]
   })
   // Discover stories across the entire library first. Global sampling before
   // grouping can erase a small outing when the library grows.

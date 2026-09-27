@@ -13,6 +13,7 @@ import { mapSceneForPoint } from './mapScene.mjs'
 import { createFilmService } from './memoryFilms.mjs'
 import { filmCapability } from './memoryFilmRender.mjs'
 import { createMemoryReview } from './memoryReview.mjs'
+import { createMemoryGraph } from './memoryGraph.mjs'
 
 loadEnv({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
@@ -22,7 +23,8 @@ const amap = amapConfig()
 const usersFile = process.env.USERS_FILE || fileURLToPath(new URL('./data/users.json', import.meta.url))
 const users = createUserStore(usersFile)
 // Isolated account stores (including tests) must also have isolated media jobs.
-const films = createFilmService(stepfun, { root: process.env.MEMORY_FILMS_DIR || join(dirname(usersFile), 'memory-films') })
+const graph = createMemoryGraph(join(dirname(usersFile),'memory-graph'))
+const films = createFilmService(stepfun, { root: process.env.MEMORY_FILMS_DIR || join(dirname(usersFile), 'memory-films'), enrichSources:(user,sources)=>graph.enrich(user,sources), chapterFor:(user,id)=>graph.chapter(user,id) })
 const review = createMemoryReview(join(dirname(usersFile), 'memory-review'))
 
 function send(res, status, body) {
@@ -128,7 +130,7 @@ const routes = {
     return [200, { results: await reverseGeocode(amap, points) }]
   },
 
-  async 'POST /api/butler'(body) {
+  async 'POST /api/butler'(body, user) {
     const question = String(body.question || '').trim()
     if (!question || question.length > 500) return [400, { error: '问题不能为空，且不能超过 500 字' }]
     const events = (Array.isArray(body.memory?.events) ? body.memory.events : []).slice(0, 300).map(compactEvent)
@@ -142,7 +144,7 @@ const routes = {
     const history = (Array.isArray(body.history) ? body.history : []).slice(-8)
       .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string')
       .map((m) => ({ role: m.role, content: m.content.slice(0, 600) }))
-    const memory = JSON.stringify({ today: new Date().toISOString().slice(0, 10), focus, places, events })
+    const memory = JSON.stringify({ today: new Date().toISOString().slice(0, 10), focus, places, events,storyGraph:graph.context(user) })
     const answer = parseJsonAnswer(await chat(stepfun, [
       { role: 'system', content: `${loadSkill('life-butler')}\n\n记忆：${memory}` },
       ...history,
@@ -196,6 +198,21 @@ const server = http.createServer(async (req, res) => {
     // Personal data and the external map services below need a signed-in user.
     const currentUser = () => users.userForToken(readCookie(req, SESSION_COOKIE))
     const signedIn = () => Boolean(currentUser())
+    if(path==='/api/memory-graph'||path.startsWith('/api/memory-graph/')){
+      const user=currentUser()
+      if(!user)return send(res,401,{error:'请先登录'})
+      if(user.privacyVersion!==PRIVACY_VERSION)return send(res,403,{error:'请先确认隐私声明'})
+      if(req.method==='GET'&&path==='/api/memory-graph')return send(res,200,await graph.read(user))
+      const face=/^\/api\/memory-graph\/faces\/([a-f0-9]{32})$/.exec(path)
+      if(req.method==='GET'&&face){
+        const image=await graph.face(user,face[1]);if(!image)return send(res,404,{error:'人脸缩略图不存在'})
+        res.writeHead(200,{'Content-Type':'image/jpeg','Cache-Control':'private, no-store'});return res.end(image)
+      }
+      if(req.method!=='POST'||req.headers['x-memory-agent']!=='web')return send(res,403,{error:'请求来源未通过校验'})
+      const action=path.slice('/api/memory-graph/'.length)
+      if(!['sync','analyze','correct','undo','fact','settle'].includes(action))return send(res,404,{error:'接口不存在'})
+      return send(res,200,await graph[action](user,await readJson(req)))
+    }
     if (path === '/api/memory-review' && process.env.MEMORY_REVIEW_LOCAL === '1') {
       const user = currentUser()
       if (!user) return send(res, 401, { error: '请先登录' })

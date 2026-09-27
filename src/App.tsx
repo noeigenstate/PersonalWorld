@@ -22,6 +22,10 @@ import { LifeMapView } from './components/LifeMapView'
 import { TimelineBar } from './components/TimelineBar'
 import { MemoryFilms } from './components/MemoryFilms'
 import { useSceneCoverage } from './lib/useSceneCoverage'
+import { useMemoryGraph } from './lib/useMemoryGraph'
+import { MemoryLibrary } from './components/MemoryLibrary'
+import { SceneCoverage } from './components/SceneCoverage'
+import type { StoryChapter } from './lib/memoryGraph'
 
 type Tab = 'map' | 'butler'
 const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
@@ -33,6 +37,7 @@ const years = (from: string, to: string) => Math.max(1, Math.round((new Date(to)
 export default function App({ account, onSignOut }: { account: Account; onSignOut: () => void }) {
   const [memory, setMemory] = useState<MemoryState>(initialMemory)
   const [ready, setReady] = useState(false)
+  const [filmChapter, setFilmChapter] = useState<{chapter:StoryChapter;at:number}|null>(null)
   const [aiConfig, setAiConfig] = useState<AiConfig>({ available: false, mode: 'unconfigured', message: '正在检查 AI 连接…', geocode: false })
   const [configChecked, setConfigChecked] = useState(false)
   const [tab, setTab] = useState<Tab>('map')
@@ -156,6 +161,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision: a.location?.precision || 'point', venueName: a.location?.aoi || a.location?.poi?.name, landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined, sceneCard: a.card ? { title: a.card.title, caption: a.card.caption, scene: a.card.scene, tags: a.card.tags, eventGuess: a.card.eventGuess, createdAt: a.card.createdAt } : undefined }]
   }), [memory.assets])
   const sceneCoverage = useSceneCoverage(memory.assets, mapPhotos, ready && !locating)
+  const library = useMemoryGraph(memory.assets, memory.events, ready, importing || autoBusyIds.length > 0 || Boolean(cardBusyId))
 
   function openPhoto(assetId: string) {
     const event = memory.events.find((e) => e.assetIds.includes(assetId))
@@ -497,7 +503,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           <button className={tab === 'butler' ? 'on' : ''} onClick={() => setTab('butler')} aria-current={tab === 'butler' ? 'page' : undefined}>人生管家</button>
         </nav>
         <div className="app-actions">
-          <MemoryFilms assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId)} />
+          <MemoryLibrary library={library} assets={memory.assets} onPhoto={openPhoto} onFilm={chapter=>setFilmChapter({chapter,at:Date.now()})} />
+          <MemoryFilms assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId) || library.busy} graph={library.state} requestedChapter={filmChapter} />
           <span className={`connection-status ${aiConfig.available ? 'online' : ''}`} title={aiConfig.message}><span />{aiConfig.available ? 'StepFun 已连接' : '本地模式'}</span>
           <button className="button button-primary top-import" onClick={() => setImportOpen(true)}><Plus size={16} />导入影像</button>
           <span className="account" title={`已登录：${account.username}`}><UserRound size={15} /><span>{account.username}</span></span>
@@ -564,6 +571,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                 3D 记忆场景 {sceneEnabled ? '开' : '关'}
                 <small>{sceneCoverage.total ? sceneCoverage.done < sceneCoverage.total ? `检查街区 ${sceneCoverage.done}/${sceneCoverage.total}` : `${sceneCoverage.total} 处街区资料${sceneCoverage.partial + sceneCoverage.failed ? ` · ${sceneCoverage.partial + sceneCoverage.failed} 处待补` : ''}` : '真实照片地点'}</small>
               </button>
+              {mapPhotos.length>0&&<SceneCoverage coverage={sceneCoverage} onFocus={id=>{const photo=mapPhotos.find(p=>p.id===id);if(photo){setTab('map');setMapFocus({photo,at:Date.now()})}}}/>}
               {!mapPhotos.length && <button className="scene-preview" type="button" onClick={() => { setTab('map'); selectCity(null, false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>}
             </>)}
             {aiConfig.available && analyzablePhotos.length > 0 && (
@@ -648,6 +656,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           busy={busyEventId === activeEvent.id}
           onClose={() => { setActiveEventId(null); setOpenPhotoId(null) }}
           initialAssetId={openPhotoId}
+          identities={Object.fromEntries(Object.entries(library.state?.graph.memberships||{}).map(([id,people])=>[id,people.map(pid=>{const p=library.state?.people.find(p=>p.id===pid);return p?.name||p?.relationship||'已确认人物'})]))}
           onAnalyze={() => void runAnalysis(activeEvent)}
           onSave={(next) => { updateEvent(next); setNotice('事件已确认并保存') }}
           onDeleteAsset={(id) => void deleteAsset(id)}

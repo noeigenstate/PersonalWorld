@@ -73,3 +73,8 @@ test('回忆补充持久化、修改、清除，隔离账户和照片并改变�
   assert.equal(filmContextSummary(store.apply(user, sources)).revision, filmContextSummary(original).revision)
   assert.throws(() => store.save(user, [sources[0].id], '太长'.repeat(201)))
 })
+test('EXIF 时刻决定同日顺序，裁切只用服务端人脸框，不添写睡醒或疲惫',()=>{
+ const pair=readFilmSources([{id:'early',date:'2026-01-02',capturedAt:'2026-01-02T06:30:00Z',observed:'在雪地玩雪'},{id:'late',date:'2026-01-02',capturedAt:'2026-01-02T06:40:00Z',observed:'靠在肩头闭着眼睛'}])
+ const plan=validateFilmPlan({title:'雪地',shots:[{assetId:'late',caption:'玩累了，靠在肩上睡着了'},{assetId:'early',caption:'醒啦'}]},pair)
+ assert.deepEqual(plan.shots.map(s=>s.assetId),['early','late']);assert.equal(plan.shots[0].caption,'');assert.equal(plan.shots[1].caption,'靠在肩上闭着眼睛');assert.equal(new Set(plan.shots.map(s=>s.layout)).size,2)
+})

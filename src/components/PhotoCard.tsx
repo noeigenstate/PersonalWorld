@@ -20,6 +20,7 @@ interface Props {
   busy: boolean
   onGenerate: (facts: ReturnType<typeof photoFacts>) => void
   peers: PeerTools
+  identities?:string[]
 }
 
 const fillLabels = { city: '城市', place: '地点', time: '时间', event: '事件' } as const
@@ -33,7 +34,7 @@ function Marked({ text }: { text: string }) {
   return <>{text.split(/(〔[^〕]*〕)/).map((part, i) => (part.startsWith('〔') && part.endsWith('〕') ? <span className="inferred" key={i}>{part.slice(1, -1)}</span> : part))}</>
 }
 
-export function PhotoCard({ asset, event, aiAvailable, busy, onGenerate, peers }: Props) {
+export function PhotoCard({ asset, event, aiAvailable, busy, onGenerate, peers, identities }: Props) {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | undefined>()
 
   // Photos imported before sizes were recorded: read the size from the original file
@@ -61,6 +62,7 @@ export function PhotoCard({ asset, event, aiAvailable, busy, onGenerate, peers }
       <div className="pc-kicker">照片信息卡</div>
       {card ? <h2>{card.title}</h2> : <h2 className="pc-placeholder">这张照片记录了什么？</h2>}
       {card?.caption && <p className="pc-caption"><Marked text={card.caption} /></p>}
+      {Boolean(identities?.length)&&<section><h3>人物库关联</h3><p>{identities!.join(' · ')}</p><small>使用你确认过的称呼。自动匹配若有误，可在“人物与故事”中调整。</small></section>}
 
       <section>
         <h3>程序读到的</h3>

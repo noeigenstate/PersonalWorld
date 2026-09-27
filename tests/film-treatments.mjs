@@ -6,7 +6,7 @@ import {join} from 'node:path'
 import assert from 'node:assert/strict'
 import {createHash} from 'node:crypto'
 import {chromium} from 'playwright'
-import {renderFilm,runMedia,makeFilmMusic} from '../server/memoryFilmRender.mjs'
+import {renderFilm,runMedia,makeCreativeMusic} from '../server/memoryFilmRender.mjs'
 
 const root=await mkdtemp(join(tmpdir(),'pw-film-directions-'))
 const browser=await chromium.launch({channel:'chrome'})
@@ -32,7 +32,7 @@ for(const treatment of directions){
   await runMedia('ffmpeg',['-v','error','-i',join(directory,'film.mp4'),'-f','null','-'])
   await runMedia('ffmpeg',['-v','error','-y','-ss',String(result.duration-1.1),'-i',join(directory,'film.mp4'),'-frames:v','1',join(directory,'ending.jpg')])
   assert.ok((await readFile(join(directory,'film.mp4'))).length>4096)
-  music.add(createHash('sha256').update(makeFilmMusic(5,treatment)).digest('hex'))
+  music.add(createHash('sha256').update(makeCreativeMusic(5,treatment)).digest('hex'))
 }
 assert.equal(music.size,3)
 console.log(JSON.stringify({directory:root,directions,fullDecode:true,musicVariants:music.size}))

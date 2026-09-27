@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { createPublicLandmark, type PublicLandmark } from './publicLandmarks'
 import registry from './landmarkSites.json'
+import { landmarkRecord } from './landmarkCatalog'
 
 type Point = [number, number]
 type Landmark = 'gongshu-umbrella' | 'gongshu-jade' | PublicLandmark
@@ -10,9 +11,7 @@ type Landmark = 'gongshu-umbrella' | 'gongshu-jade' | PublicLandmark
 // Ground footprint: OSM. Shape language: architect's published plans/elevations.
 // Heights, panel spacing and finishes remain authored cartoon approximations.
 export function venueLandmark(id: string): Landmark | undefined {
-  if (/^osm:way:1084641014(?::|$)/.test(id)) return 'gongshu-umbrella'
-  if (/^osm:way:1084641019(?::|$)/.test(id)) return 'gongshu-jade'
-  return registry.buildings.find((building) => id === building.id || id.startsWith(building.id + ':'))?.model as PublicLandmark | undefined
+  return landmarkRecord(id)?.model as Landmark | undefined
 }
 
 // A small baked diffuse fill matches the district's existing pastel Lambert

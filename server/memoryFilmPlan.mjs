@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { chat, parseJsonAnswer } from './stepfun.mjs'
 import { loadSkill } from './skills.mjs'
 
-export const FILM_VERSION = 'memory-film-5'
+export const FILM_VERSION = 'memory-film-6'
 const clean = (v, length) => String(v || '').replace(/[\x00-\x1f]/g, ' ').trim().slice(0, length)
 
 export function readFilmSources(input) {
@@ -12,7 +12,8 @@ export function readFilmSources(input) {
     if (!/^[\w-]+$/.test(id) || seen.has(id)) return []
     seen.add(id)
     const date = /^\d{4}-\d{2}-\d{2}$/.test(v.date) && Number.isFinite(Date.parse(v.date)) ? v.date : ''
-    return [{ id, date, observed: clean(v.observed, 320), confirmed: clean(v.confirmed, 220), place: clean(v.place, 60), tags: Array.isArray(v.tags) ? v.tags.slice(0, 6).map((t) => clean(t, 20)) : [] }]
+    const capturedAt=typeof v.capturedAt==='string'&&Number.isFinite(Date.parse(v.capturedAt))?new Date(v.capturedAt).toISOString():''
+    return [{ id, date, capturedAt, observed: clean(v.observed, 700), confirmed: clean(v.confirmed, 400), place: clean(v.place, 60), tags: Array.isArray(v.tags) ? v.tags.slice(0, 6).map((t) => clean(t, 20)) : [] }]
   }).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))
 }
 
@@ -38,13 +39,16 @@ export function validateFilmPlan(answer, sources) {
   const known = new Map(sources.map((s) => [s.id, s]))
   const seen = new Set()
   const text = (value, max, source) => {
-    const result = clean(value, max)
+    let result = clean(value, max)
     // Strong personal claims need user-confirmed evidence, never only AI guesses.
     const claims = result.match(/第一次[^，。！!?？]{0,12}|第[一1](?:支|个|口|步)|首次|\d+\s*岁|[一二三四五六七八九十]+岁|生日|女儿|儿子|妈妈|爸爸|母亲|父亲|父女|母女|父子|母子|奶奶|爷爷|外婆|外公|姥姥|姥爷|祖孙|长辈|亲子|家长|最爱|爱吃|长高|长大/g) || []
     const facts = source ? `${source.confirmed} ${source.story || ''}` : chosen.map((s) => `${s.confirmed} ${s.story || ''}`).join(' ')
     const evidence = source ? `${source.observed} ${facts}` : chosen.map(s => `${s.observed} ${s.confirmed} ${s.story || ''}`).join(' ')
+    if(!/玩累|疲惫|疲倦/.test(evidence))result=result.replace(/玩累了[，,]?/g,'')
+    if(!/睡着|熟睡|入睡/.test(evidence))result=result.replace(/睡着了/g,'闭着眼睛')
     const timeClaims = result.match(/清晨|早晨|上午|中午|午后|下午|傍晚|黄昏|夜晚|深夜/g) || []
-    return claims.some((claim) => !facts.includes(claim)) || timeClaims.some(claim => !evidence.includes(claim)) ? '' : result
+    const causalClaims=result.match(/醒来|醒啦|睡醒|终于|不肯|舍不得|迫不及待/g)||[]
+    return claims.some((claim) => !facts.includes(claim)) || [...timeClaims,...causalClaims].some(claim => !evidence.includes(claim)) ? '' : result
   }
   const shots = (Array.isArray(answer?.shots) ? answer.shots : []).slice(0, 12).flatMap((shot) => {
     const source = known.get(shot?.assetId)
@@ -52,13 +56,21 @@ export function validateFilmPlan(answer, sources) {
     seen.add(source.id)
     return [{ assetId: source.id, caption: text(shot.caption, 28, source), seconds: Math.min(5.5, Math.max(3.2, Number(shot.seconds) || 4.5)), evidence: clean(shot.evidence, 180), date: source.date,
       beat: ['opening','action','detail','rest','closing'].includes(shot.beat) ? shot.beat : 'detail',
+      capturedAt:source.capturedAt||'',factIds:source.factIds||[],
+      faceBoxes:(source.faceBoxes||[]).filter(b=>Array.isArray(b)&&b.length===4&&b.every(v=>Number.isFinite(v)&&v>=0&&v<=1)),
+      layout:['hero','pair','page','full'].includes(shot.layout)?shot.layout:'hero',
       motion: ['still','push','pull','drift'].includes(shot.motion) ? shot.motion : 'push' }]
   })
   const minimum = Math.min(6, sources.length)
   if (minimum < 2 || shots.length < minimum) throw new Error(`剪辑方案需要至少 ${Math.max(2, minimum)} 张不同的已有照片`)
-  // Date is reliable; within a day this input has no capture time. Preserve the
-  // director's environment/action/detail ordering instead of sorting UUIDs.
+  // Honor exact EXIF order when all chosen shots on that day have a timestamp.
+  // Incomplete time evidence retains editorial order without invented causality.
   shots.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))
+  for(const day of new Set(shots.map(s=>s.date))){
+    const positions=shots.flatMap((s,i)=>s.date===day?[i]:[]),group=positions.map(i=>shots[i])
+    if(day&&group.every(s=>s.capturedAt)){group.sort((a,b)=>a.capturedAt.localeCompare(b.capturedAt));positions.forEach((at,i)=>{shots[at]=group[i]})}
+  }
+  if(new Set(shots.map(s=>s.layout)).size===1)shots.forEach((s,i)=>{s.layout=['hero','pair','page'][i%3]})
   const dates = new Set(shots.map((s) => s.date).filter(Boolean))
   const kind = dates.size <= 1 ? 'outing' : answer.kind === 'revisit' ? 'revisit' : 'season'
   const chosen = shots.map((shot) => known.get(shot.assetId))
@@ -72,9 +84,10 @@ export function validateFilmPlan(answer, sources) {
 
 export async function planFilm(config, sources) {
   try {
+    const modelSources=sources.map(({faceBoxes:_boxes,identityRevision:_revision,photoStory:_localNote,...source})=>source)
     const messages = [
       { role: 'system', content: loadSkill('memory-film') },
-      { role: 'user', content: JSON.stringify({ sources }) },
+      { role: 'user', content: JSON.stringify({ sources:modelSources }) },
     ]
     for (let attempt = 0; attempt < 2; attempt++) {
       const raw = await chat(config, messages, { json: true })

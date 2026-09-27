@@ -12,7 +12,7 @@ export function createFilmContextStore(root) {
   return {
     apply(user, sources) {
       const records = read(user)
-      return sources.map((s) => ({ ...s, story: records[s.id]?.text || '' }))
+      return sources.map((s) => ({ ...s, story: records[s.id]?.text || '', photoStory:records[s.id]?.text || '' }))
     },
     save(user, assetIds, value) {
       if (typeof value !== 'string' || value.length > 400) throw new Error('回忆补充请控制在 400 字以内')
@@ -31,6 +31,7 @@ export function createFilmContextStore(root) {
 }
 
 export function filmContextSummary(sources) {
+  sources=sources.map(s=>({...s,story:s.photoStory??s.story}))
   const groups = new Map()
   for (const s of sources) if (s.story) groups.set(s.story, (groups.get(s.story) || 0) + 1)
   const notes = [...groups].map(([text, count]) => ({ text, count }))
