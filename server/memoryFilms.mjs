@@ -6,11 +6,12 @@ import { fileURLToPath } from 'node:url'
 import { filmFingerprint, planFilm, readFilmSources, FILM_VERSION } from './memoryFilmPlan.mjs'
 import { filmCapability, renderFilm, FILM_RENDER_VERSION } from './memoryFilmRender.mjs'
 import { createFilmContextStore, filmContextSummary } from './memoryFilmContext.mjs'
+import { exportCompletedFilm } from './memoryFilmExport.mjs'
 
 const active = new Set(['planning', 'awaiting-images', 'queued', 'rendering'])
 const lifetime = 24 * 60 * 60 * 1000
 
-export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR || fileURLToPath(new URL('./data/memory-films/', import.meta.url)), planner = planFilm, renderer = renderFilm } = {}) {
+export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR || fileURLToPath(new URL('./data/memory-films/', import.meta.url)), exportRoot = process.env.MEMORY_FILM_EXPORT_DIR, planner = planFilm, renderer = renderFilm } = {}) {
   root = path.resolve(root)
   mkdirSync(root, { recursive: true })
   const contexts = createFilmContextStore(root)
@@ -34,6 +35,17 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
     return { ...job, storyContext, url: job.status === 'complete' ? `/api/memory-films/${job.id}/video` : undefined }
   }
   const get = (id, user) => { const job = jobs.get(id); return job?.userId === user.id ? job : null }
+  async function deliver(job) {
+    if (!exportRoot || job.status !== 'complete') return true
+    if (job.exportedAt) return true
+    try {
+      job.exportedAt = await exportCompletedFilm(job, directory(job.id), exportRoot)
+      delete job.exportError; persist(job); return true
+    } catch {
+      job.exportError = '本地导出尚未成功，将自动重试；当前成片仍可播放和下载'
+      persist(job); return false
+    }
+  }
   async function clearInputs(job) {
     const dir = directory(job.id)
     for (const file of await readdir(dir).catch(() => [])) {
@@ -43,6 +55,7 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
   async function prune() {
     for (const [id, job] of jobs) {
       if (Date.now() - job.createdAt < lifetime) continue
+      if (!await deliver(job)) continue
       controllers.get(id)?.abort(); jobs.delete(id)
       await rm(directory(id), { recursive: true, force: true, maxRetries: 3 }).catch(() => {})
     }
@@ -66,7 +79,9 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       jobs.set(id, job)
     } catch { /* Ignore incomplete directories. */ }
   }
-  void prune()
+  // Recover deliveries made before durable export was configured, and retry an
+  // interrupted copy before allowing the temporary preview cache to expire.
+  void (async () => { for (const job of jobs.values()) await deliver(job); await prune() })()
   const cleanupTimer = setInterval(() => { void prune() }, 60 * 60 * 1000)
   cleanupTimer.unref()
 
@@ -81,6 +96,7 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       const result = await renderer(directory(job.id), job.plan, { signal: controller.signal, onProgress: (p) => { job.progress = p } })
       controller.signal.throwIfAborted()
       Object.assign(job, result, { status: 'complete', progress: 100 })
+      await deliver(job)
     } catch (error) {
       if (job.status !== 'cancelled') { job.status = 'failed'; job.error = String(error.message || error).slice(0, 500) }
     } finally {
@@ -111,6 +127,7 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       // Reserve before asynchronous cleanup: two tabs must see the same job.
       jobs.set(job.id, job); persist(job)
       for (const old of previous.slice(7)) {
+        if (!await deliver(old)) continue
         try { await rm(directory(old.id), { recursive: true, force: true }); jobs.delete(old.id) } catch { /* Retry at expiry if a media reader holds the file. */ }
       }
       void planner(config, sources).then((result) => {

@@ -12,6 +12,7 @@ import { cardMessages, readCard } from './photoCard.mjs'
 import { mapSceneForPoint } from './mapScene.mjs'
 import { createFilmService } from './memoryFilms.mjs'
 import { filmCapability } from './memoryFilmRender.mjs'
+import { createMemoryReview } from './memoryReview.mjs'
 
 loadEnv({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
@@ -22,6 +23,7 @@ const usersFile = process.env.USERS_FILE || fileURLToPath(new URL('./data/users.
 const users = createUserStore(usersFile)
 // Isolated account stores (including tests) must also have isolated media jobs.
 const films = createFilmService(stepfun, { root: process.env.MEMORY_FILMS_DIR || join(dirname(usersFile), 'memory-films') })
+const review = createMemoryReview(join(dirname(usersFile), 'memory-review'))
 
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -194,6 +196,14 @@ const server = http.createServer(async (req, res) => {
     // Personal data and the external map services below need a signed-in user.
     const currentUser = () => users.userForToken(readCookie(req, SESSION_COOKIE))
     const signedIn = () => Boolean(currentUser())
+    if (path === '/api/memory-review' && process.env.MEMORY_REVIEW_LOCAL === '1') {
+      const user = currentUser()
+      if (!user) return send(res, 401, { error: '请先登录' })
+      if (user.privacyVersion !== PRIVACY_VERSION) return send(res, 403, { error: '请先确认隐私声明' })
+      if (req.method === 'GET') return send(res, 200, await review.read(user))
+      if (req.method === 'POST' && req.headers['x-memory-agent'] === 'web') return send(res, 200, await review.save(user, await readJson(req)))
+      return send(res, 403, { error: '请求来源未通过校验' })
+    }
     if (path === '/api/memory-films' || path.startsWith('/api/memory-films/')) {
       const user = currentUser()
       if (!user) return send(res, 401, { error: '请先登录' })
@@ -226,6 +236,7 @@ const server = http.createServer(async (req, res) => {
         mode: ready ? 'model' : stepfun.agentUrl ? 'agent-needs-adapter' : 'unconfigured',
         message: ready ? `StepFun ${stepfun.model} 已配置，连接尚未验证` : stepfun.agentUrl ? '已填写 Agent 地址，仍需核对该 Agent 的 API 请求格式' : '未配置 StepFun API Key；本地整理仍可使用',
         geocode: Boolean(amap.serviceKey),
+        localReview: process.env.MEMORY_REVIEW_LOCAL === '1',
         amapJsKey: amap.jsKey && amap.securityCode ? amap.jsKey : undefined,
         amapStyle: /^amap:\/\/styles\/[A-Za-z0-9]+$/.test(process.env.AMAP_MAP_STYLE || '') ? process.env.AMAP_MAP_STYLE : undefined,
       })

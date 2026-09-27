@@ -10,6 +10,7 @@ import { createOrientalPearlScene, isOrientalPearl, ORIENTAL_PEARL_GCJ } from '.
 import { createStyledDistrict, shanghaiScene, type SceneData } from './styledDistrict'
 import { fetchRegionScene, hasStreetLocation, metresApart, photoRegions, photoSceneKey, regionForPhoto } from './regionScene'
 import { clusterProjectedPhotos } from './photoClusters'
+import { sceneCoverage } from './sceneCoverage'
 import type { AMapNS } from './amap'
 import type { LifeMapCallbacks, LifeMapData, MapPhoto } from './scene'
 
@@ -92,7 +93,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   renderer.shadowMap.type = THREE.PCFShadowMap
   renderer.shadowMap.autoUpdate = false
   const scene = new THREE.Scene()
-  scene.add(new THREE.HemisphereLight(0xfff7e9, 0xc7d8d1, .95))
+  const sky = new THREE.HemisphereLight(0xfff7e9, 0xc7d8d1, 1.25)
+  sky.position.set(0, 0, 1) // Map geometry is Z-up; the default hemisphere is Y-up.
+  scene.add(sky)
   const sun = new THREE.DirectionalLight(0xffecd7, 1.3)
   sun.position.set(-800, -750, 1200) // z is up; overview objects are hundreds of metres tall
   sun.castShadow = true
@@ -300,6 +303,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     camera.updateProjectionMatrix()
     unit = unitMetres(map.getZoom())
     container.classList.toggle('map-overview', map.getZoom() < 10)
+    container.classList.toggle('map-neighbourhood', map.getZoom() >= 15 && mapStyle === 'amap://styles/macaron')
     colorWash.style.opacity = map.getZoom() < 10 ? '.55' : '.10'
     for (const group of overviewCities) group.visible = map.getZoom() >= 10
     for (const line of storyLines) line.visible = map.getZoom() >= 12
@@ -619,13 +623,15 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       tileCredit.hidden = !data.provider
       const count = resolved?.photoIds.length || region?.photoIds.length || 0
       title.textContent = pearl ? '东方明珠 · 风格化地标' : `${activeVenue?.name || `照片地点 · 风格化${district.kind}`}${count > 1 ? ` · ${count} 张照片` : ''}`
-      note.textContent = activeVenue ? '整片地点共同呈现，照片仍在各自拍摄位置' : district.completeSurface ? '地理轮廓来自 OpenStreetMap，窗、树和材质为艺术表现' : '地图建筑资料较少，保留未替换的原有楼体'
+      const coverage = sceneCoverage(data)
+      note.textContent = coverage.needsDetail ? coverage.note : activeVenue ? '整片地点共同呈现，照片仍在各自拍摄位置' : coverage.note
+      container.dataset.sceneCoverage = coverage.level
       sun.position.copy(pointAt).add(new THREE.Vector3(-800, -750, 1200))
       sun.target.position.copy(pointAt)
       sun.target.updateMatrixWorld()
       applyBuildingAreas(sceneEnabled ? sceneAreas : [])
       container.dataset.sceneBuildings = String(district.buildingCount)
-      container.dataset.sceneSurfaces = district.completeSurface ? 'full' : 'partial'
+      container.dataset.sceneSurfaces = district.surfaceMode
       container.dataset.sceneBuilds = String(++sceneBuilds)
       container.dataset.sceneVenue = activeVenue?.id || ''
       container.dataset.scenePhotos = String(count)

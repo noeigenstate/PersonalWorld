@@ -5,7 +5,7 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
-const cacheDir = fileURLToPath(new URL('./data/map-scenes/details/', import.meta.url))
+const cacheDir = fileURLToPath(new URL('./data/map-scenes/details-v4/', import.meta.url))
 const inFlight = new Map()
 const age = 7 * 86400000
 
@@ -58,7 +58,7 @@ export function extractDetails(elements) {
     const inner = stitch(members('inner')).map(points).filter((ring) => ring.length >= 4)
     return outer.map((ring) => [ring, ...inner.filter((hole) => containsPoint(hole[0], [ring]))])
   }
-  const result = { venues: [], buildings: [], grounds: [], water: [], treeRows: [] }
+  const result = { venues: [], buildings: [], grounds: [], water: [], green: [], treeRows: [] }
   for (const item of elements) {
     const tags = item.tags || {}
     if (tags.natural === 'tree_row' && item.type === 'way') {
@@ -78,10 +78,13 @@ export function extractDetails(elements) {
     }
     for (const [part, rings] of ringsList.entries()) {
       const base = { id: `${id}:${part}`, rings }
-      const buildingKind = tags.building === 'stadium' || tags.leisure === 'stadium' ? 'stadium' : tags.leisure === 'sports_hall' || tags.building === 'sports_hall' ? 'sports_hall' : null
-      if (buildingKind && tags.building) result.buildings.push({ ...base, kind: buildingKind, name: tags.name, height: tags.height || null, levels: tags['building:levels'] || null })
+      const buildingKind = tags.building === 'stadium' || tags.leisure === 'stadium' ? 'stadium' : tags.leisure === 'sports_hall' || tags.building === 'sports_hall' ? 'sports_hall'
+        : tags.shop === 'mall' || /^(retail|commercial)$/.test(tags.building || '') ? 'commercial'
+          : /^(school|kindergarten|college|university)$/.test(tags.amenity || tags.building || '') ? 'school' : tags.building || ''
+      if (tags.building && tags.building !== 'no' && !tags['building:part'] && !tags.min_height) result.buildings.push({ ...base, kind: buildingKind, name: tags.name, height: tags.height || null, levels: tags['building:levels'] || null })
       if (tags.leisure === 'pitch' || tags.leisure === 'track') result.grounds.push({ ...base, kind: tags.leisure, sport: tags.sport || '' })
       if (tags.natural === 'water' || tags.waterway === 'riverbank') result.water.push(base)
+      if (/^(wood|scrub|grassland)$/.test(tags.natural || '') || /^(grass|forest|meadow)$/.test(tags.landuse || '') || /^(park|garden)$/.test(tags.leisure || '')) result.green.push(base)
     }
   }
   return result

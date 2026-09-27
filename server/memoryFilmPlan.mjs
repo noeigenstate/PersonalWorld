@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { chat, parseJsonAnswer } from './stepfun.mjs'
 import { loadSkill } from './skills.mjs'
 
-export const FILM_VERSION = 'memory-film-4'
+export const FILM_VERSION = 'memory-film-5'
 const clean = (v, length) => String(v || '').replace(/[\x00-\x1f]/g, ' ').trim().slice(0, length)
 
 export function readFilmSources(input) {
@@ -40,24 +40,34 @@ export function validateFilmPlan(answer, sources) {
   const text = (value, max, source) => {
     const result = clean(value, max)
     // Strong personal claims need user-confirmed evidence, never only AI guesses.
-    const claims = result.match(/第一次[^，。！!?？]{0,12}|\d+\s*岁|[一二三四五六七八九十]+岁|生日|女儿|儿子|妈妈|爸爸|母亲|父亲|父女|母女|父子|母子|奶奶|爷爷|外婆|外公|姥姥|姥爷|祖孙|长辈|最爱|爱吃|长高|长大/g) || []
+    const claims = result.match(/第一次[^，。！!?？]{0,12}|第[一1](?:支|个|口|步)|首次|\d+\s*岁|[一二三四五六七八九十]+岁|生日|女儿|儿子|妈妈|爸爸|母亲|父亲|父女|母女|父子|母子|奶奶|爷爷|外婆|外公|姥姥|姥爷|祖孙|长辈|亲子|家长|最爱|爱吃|长高|长大/g) || []
     const facts = source ? `${source.confirmed} ${source.story || ''}` : chosen.map((s) => `${s.confirmed} ${s.story || ''}`).join(' ')
-    return claims.some((claim) => !facts.includes(claim)) ? '' : result
+    const evidence = source ? `${source.observed} ${facts}` : chosen.map(s => `${s.observed} ${s.confirmed} ${s.story || ''}`).join(' ')
+    const timeClaims = result.match(/清晨|早晨|上午|中午|午后|下午|傍晚|黄昏|夜晚|深夜/g) || []
+    return claims.some((claim) => !facts.includes(claim)) || timeClaims.some(claim => !evidence.includes(claim)) ? '' : result
   }
   const shots = (Array.isArray(answer?.shots) ? answer.shots : []).slice(0, 12).flatMap((shot) => {
     const source = known.get(shot?.assetId)
     if (!source || seen.has(source.id)) return []
     seen.add(source.id)
-    return [{ assetId: source.id, caption: text(shot.caption, 28, source), seconds: Math.min(5, Math.max(3.5, Number(shot.seconds) || 4.5)), evidence: clean(shot.evidence, 180), date: source.date }]
+    return [{ assetId: source.id, caption: text(shot.caption, 28, source), seconds: Math.min(5.5, Math.max(3.2, Number(shot.seconds) || 4.5)), evidence: clean(shot.evidence, 180), date: source.date,
+      beat: ['opening','action','detail','rest','closing'].includes(shot.beat) ? shot.beat : 'detail',
+      motion: ['still','push','pull','drift'].includes(shot.motion) ? shot.motion : 'push' }]
   })
   const minimum = Math.min(6, sources.length)
   if (minimum < 2 || shots.length < minimum) throw new Error(`剪辑方案需要至少 ${Math.max(2, minimum)} 张不同的已有照片`)
-  const order = new Map(sources.map((s, i) => [s.id, i]))
-  shots.sort((a, b) => order.get(a.assetId) - order.get(b.assetId))
+  // Date is reliable; within a day this input has no capture time. Preserve the
+  // director's environment/action/detail ordering instead of sorting UUIDs.
+  shots.sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'))
   const dates = new Set(shots.map((s) => s.date).filter(Boolean))
   const kind = dates.size <= 1 ? 'outing' : answer.kind === 'revisit' ? 'revisit' : 'season'
   const chosen = shots.map((shot) => known.get(shot.assetId))
-  return { kind, title: text(answer.title, 22) || '把这些小日子留住', closing: text(answer.closing, 28) || '平常的小事，也值得记住', reason: clean(answer.reason, 240), shots }
+  const count = re => chosen.filter(s => re.test(s.observed)).length / chosen.length
+  // Render direction derives from actual selected subject matter, not random skins.
+  const treatment = count(/积雪|雪地|滑雪|雪场/) >= .6 ? 'snow-journal'
+    : count(/冰淇淋|冰激凌|甜筒|雪糕/) >= .6 ? 'sweet-moments'
+      : count(/手工|画画|绘画|砂画|马克笔|涂鸦/) >= .6 ? 'little-makers' : 'warm-album'
+  return { kind, treatment, title: text(answer.title, 22) || '把这些小日子留住', closing: text(answer.closing, 28) || '平常的小事，也值得记住', reason: text(answer.reason, 240) || '围绕选中照片里共同出现的活动，按可靠日期编排。', shots }
 }
 
 export async function planFilm(config, sources) {

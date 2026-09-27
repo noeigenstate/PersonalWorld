@@ -5,7 +5,7 @@ import { wgs84ToGcj02 } from '../lib/geo'
 import snapshot from './data/shanghai-pearl.json'
 import { ORIENTAL_PEARL_GCJ } from './memoryScene'
 import polygonClipping from 'polygon-clipping'
-import { createVenueBuilding, createSportsGround } from './venueArchitecture'
+import { createVenueBuilding, createSportsGround, createCommercialBuilding } from './venueArchitecture'
 import { createLandmarkVenue, venueLandmark } from './landmarkVenues'
 
 // A deliberately art-directed district, anchored to independently sourced OSM geometry.
@@ -444,8 +444,8 @@ function decorate(group: THREE.Group, parks: Point[][][], plazas: Point[][][], w
     group.add(beds)
   }
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(1.4, 1.8, 5.2, 7), new THREE.MeshLambertMaterial({ color: '#b99b75' }), treePositions.length)
-  const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(9.1, 1), new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), treePositions.length)
-  const shrubs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(4.4, 1), new THREE.MeshLambertMaterial({ color: '#ffffff', flatShading: true }), treePositions.length * 2)
+  const crowns = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(9.8, 2), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .92, emissive:'#9cbc79', emissiveIntensity:.16 }), treePositions.length)
+  const shrubs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(4.6, 2), new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: .95, emissive:'#aac989', emissiveIntensity:.12 }), treePositions.length * 2)
   trunks.castShadow = crowns.castShadow = shrubs.castShadow = true
   crowns.receiveShadow = shrubs.receiveShadow = true
   const dummy = new THREE.Object3D()
@@ -460,7 +460,7 @@ function decorate(group: THREE.Group, parks: Point[][][], plazas: Point[][][], w
     dummy.rotation.set(0, 0, hash(`${index}:angle`) * Math.PI)
     dummy.updateMatrix()
     crowns.setMatrixAt(index, dummy.matrix)
-    crowns.setColorAt(index, new THREE.Color(['#8db785', '#a4c795', '#7eab80', '#bdd29b'][Math.floor(hash(`${index}:leaf`) * 4)]))
+    crowns.setColorAt(index, new THREE.Color(['#91b96d', '#a6c67b'][Math.floor(hash(`${index}:leaf`) * 2)]))
     for (let j = 0; j < 2; j++) {
       const angle = hash(`${index}:${j}:shrub`) * Math.PI * 2
       dummy.position.set(x + Math.cos(angle) * 9 * scale, y + Math.sin(angle) * 9 * scale, 4.2 * scale)
@@ -519,11 +519,10 @@ function illustrateTraffic(group: THREE.Group, roads: { path: Point[]; major: bo
 
 export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL_PEARL_GCJ, clearRadius = 45, data: SceneData = shanghaiScene) {
   const group = new THREE.Group()
-  // Dense extracts use the complete surface treatment from the accepted Wuhan/Hangzhou
-  // scenes. In sparse extracts, keep the native ground visible: a flat landuse polygon
-  // on our separate canvas would paint over native buildings missing from OSM.
-  // Building materials themselves must never depend on an arbitrary building count.
-  const completeSurface = data.buildings.length >= 100
+  // Even a dense extract can miss a whole housing block. On a separate canvas,
+  // an opaque district floor or residential landuse parcel paints over those
+  // retained native buildings. Draw mapped physical surfaces (parks, water,
+  // roads, plazas), never a blanket inferred from the total building count.
   const hideNativePaths: Point[][] = []
   let buildingCount = 0
   const transform = (points: Point[]) => convert(points.map(([lng, lat]) => {
@@ -534,15 +533,6 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   const corners = transform([[west, south], [east, north]])
   const width = corners[1][0] - corners[0][0]
   const height = corners[1][1] - corners[0][1]
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
-    fragmentShader: 'varying vec2 vUv; void main(){ float e=min(min(vUv.x,1.-vUv.x),min(vUv.y,1.-vUv.y)); float a=smoothstep(0.,.09,e); gl_FragColor=vec4(.942,.895,.832,a); }',
-  }))
-  ground.position.set((corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2, .02)
-  if (completeSurface) group.add(ground)
-  else { ground.geometry.dispose(); ground.material.dispose() }
 
   let water = data.water.map((polygon) => polygon.rings.map(transform))
   const channelPolygons: Point[][][] = []
@@ -565,21 +555,6 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     catch { water.push(...channelPolygons) }
   }
   const parks = data.green.map((polygon) => polygon.rings.map(transform))
-  for (const [kind, color] of [
-    ['commercial', '#f4ddc6'],
-    ['retail', '#f3d5c7'],
-    ['residential', '#d9e9c6'],
-    ['brownfield', '#e5d6c8'],
-    ['school', '#e7dcf2'],
-    ['college', '#e7dcf2'],
-    ['university', '#e7dcf2'],
-    ['hospital', '#dce9ec'],
-  ] as const) {
-    const surfaces = (completeSurface ? data.landuse : []).filter((polygon) => polygon.kind === kind)
-      .map((polygon) => polygonGeometry(polygon.rings.map(transform), .07))
-      .filter((value): value is THREE.ShapeGeometry => value !== null)
-    if (surfaces.length) mergedMesh(group, surfaces, parcelMaterial(color, kind))
-  }
   // A park polygon often includes its lake. Water must sit above grass and plazas,
   // while paths/bridges sit above water. Otherwise the lake becomes a green lawn.
   const waterShapes = water.map((rings) => polygonGeometry(rings, .24)).filter((value): value is THREE.ShapeGeometry => value !== null)
@@ -654,7 +629,8 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     for (let i = 1; i < outer.length; i++) signedArea += outer[i - 1][0] * outer[i][1] - outer[i][0] * outer[i - 1][1]
     const area = Math.abs(signedArea) / 2
     const landmark = venueLandmark(item.id)
-    const specialised = Boolean(landmark) || item.kind === 'stadium' || item.kind === 'sports_hall'
+    const commercial = item.kind === 'commercial' && area >= 500 && actualHeight(item, area) <= 65
+    const specialised = Boolean(landmark) || commercial || item.kind === 'stadium' || item.kind === 'sports_hall'
     if (area < 18 || area > (specialised ? 60000 : 24000)) continue
     buildingCount++
     hideNativePaths.push(item.rings[0].map(([lng, lat]): Point => {
@@ -664,7 +640,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     const height = actualHeight(item, area)
     if (specialised) {
       const measured = Boolean(item.height || item.levels)
-      group.add(landmark ? createLandmarkVenue(rings, landmark, item.height ? Number(item.height) : undefined) : createVenueBuilding(rings, measured ? height : item.kind === 'stadium' ? 22 : 26, item.kind as 'stadium' | 'sports_hall'))
+      group.add(landmark ? createLandmarkVenue(rings, landmark, item.height ? Number(item.height) : undefined) : commercial ? createCommercialBuilding(rings, height) : createVenueBuilding(rings, measured ? height : item.kind === 'stadium' ? 22 : 26, item.kind as 'stadium' | 'sports_hall'))
       continue
     }
     const kind: Archetype = height >= 90 ? 2 : area >= 900 && height < 55 ? 3 : height < 27 ? 0 : 1
@@ -748,7 +724,7 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
     new THREE.PlaneGeometry(width, height),
     new THREE.ShadowMaterial({ color: '#544952', opacity: .36, depthWrite: false }),
   )
-  shadowGround.position.set(ground.position.x, ground.position.y, .34)
+  shadowGround.position.set((corners[0][0] + corners[1][0]) / 2, (corners[0][1] + corners[1][1]) / 2, .34)
   shadowGround.receiveShadow = true
   shadowGround.name = 'real-scene-shadows'
   group.add(shadowGround)
@@ -762,5 +738,5 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   const greenArea = parks.reduce((sum, rings) => sum + polygonArea(rings), 0)
   const kind = data.coast ? '海岸' : waterArea > 18000 ? '水岸' : greenArea > 15000 ? '公园' : data.buildings.length > 20 ? '街区' : '地点'
   group.name = 'photo-region-district'
-  return { group, bounds: data.bbox, kind, buildingCount, completeSurface, hideNativePaths }
+  return { group, bounds: data.bbox, kind, buildingCount, surfaceMode: 'mapped-only' as const, hideNativePaths }
 }

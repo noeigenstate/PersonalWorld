@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Download, Film, LoaderCircle, Pause, Play, RotateCcw, X } from 'lucide-react'
 import type { MemoryAsset, MemoryEvent } from '../types'
-import { filmActive, filmBatch, filmImage, filmRequest, filmSources, type FilmJob, type FilmSource } from '../lib/memoryFilm'
-import { discoverFilmStories, storyAlreadyMade } from '../lib/filmStories'
+import { filmActive, filmBatch, filmImage, filmRequest, filmSources, boundedFilmSources, type FilmJob, type FilmSource } from '../lib/memoryFilm'
+import { discoverFilmStories, storyAlreadyMade, storyAttempted } from '../lib/filmStories'
 import { loadFilmSettings, saveFilmSettings } from '../lib/storage'
 
 export function MemoryFilms({ assets, events, ready, analyzing }: { assets: MemoryAsset[]; events: MemoryEvent[]; ready: boolean; analyzing: boolean }) {
@@ -25,6 +25,8 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
   const latestAssets = useRef(assets); latestAssets.current = assets
   const sources = useMemo(() => filmSources(assets, events), [assets, events])
   const stories = useMemo(() => discoverFilmStories(sources), [sources])
+  const round = `auto-v2:${batch}:`
+  const roundUsed = settings?.attempted.filter(key => key.startsWith(round)).length || 0
   const assetKey = assets.map((a) => `${a.id}:${a.hash}`).sort().join('|')
   const current = jobs.find((j) => filmActive(j))
   const displayed = jobs.find((j) => j.id === selected) || current || jobs.find((j) => j.status === 'complete') || jobs[0]
@@ -53,9 +55,9 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
     if (lock.current || current || (!fromJob && candidates.length < 2) || !batch) return
     lock.current = true; setStarting(true); setError('')
     const ticket = generation.current
-    setSettings((s) => s ? { ...s, attempted: [...new Set([...s.attempted, attempt])].slice(-30) } : s)
+    setSettings((s) => s ? { ...s, attempted: [...new Set([...s.attempted, attempt])].slice(-256) } : s)
     try {
-      const job = await filmRequest<FilmJob>('', { sources: fromJob ? undefined : candidates, fromJob, batch, regenerate: manual })
+      const job = await filmRequest<FilmJob>('', { sources: fromJob ? undefined : boundedFilmSources(candidates), fromJob, batch, regenerate: manual })
       if (alive.current && ticket !== generation.current) upsert(await filmRequest<FilmJob>(`/${job.id}/cancel`, {}))
       else if (alive.current) { upsert(job); setSelected(job.id) }
     } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : '生成失败') }
@@ -64,10 +66,11 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
 
   useEffect(() => {
     if (!loaded || !capable || !settings?.enabled || !batch || current || starting || analyzing || sources.length < 2) return
-    const next = stories.find(story => !settings.attempted.includes(story.key) && !storyAlreadyMade(story, jobs))
+    if (roundUsed >= 3) return
+    const next = stories.find(story => !storyAttempted(settings.attempted, story.key) && !storyAlreadyMade(story, jobs))
     if (stories.length && !next) return
     if (!stories.length && (settings.attempted.includes(batch) || jobs.some(j => j.batch === batch))) return
-    const timer = window.setTimeout(() => { void start(false, undefined, next?.key || batch, next?.sources || sources) }, 10_000)
+    const timer = window.setTimeout(() => { void start(false, undefined, next ? round + next.key : batch, next?.sources || sources) }, 10_000)
     return () => window.clearTimeout(timer)
   }, [loaded, capable, settings, batch, jobs, current, starting, analyzing, sources, stories])
 
@@ -83,7 +86,7 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
 
   // Repair the known short-source validation fallback once after the planner
   // upgrade. Generic provider outages stay manual; Pause is always respected.
-  const repair = jobs.find(j => j.status === 'complete' && j.planner === 'local' && j.version !== 'memory-film-4' && j.warning?.includes('剪辑方案需要至少') && !settings?.attempted.includes(`repair:${j.id}:4`))
+  const repair = jobs.find(j => j.status === 'complete' && j.planner === 'local' && ['memory-film-1','memory-film-2','memory-film-3'].includes(j.version || '') && j.warning?.includes('剪辑方案需要至少') && !settings?.attempted.includes(`repair:${j.id}:4`))
   useEffect(() => {
     if (!repair || !settings?.enabled || !capable || current || starting || analyzing || !batch) return
     const timer = window.setTimeout(() => { void start(false, repair.id, `repair:${repair.id}:4`) }, 2000)
@@ -173,8 +176,8 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
     return () => window.removeEventListener('keydown', close)
   }, [open])
 
-  const remaining = stories.filter(story => !settings?.attempted.includes(story.key) && !storyAlreadyMade(story, jobs))
-  const status = current?.status === 'planning' ? '正在寻找值得留住的故事…' : current?.status === 'awaiting-images' ? `正在准备照片 ${uploading || current.uploaded.length}/${current.plan?.shots.length || 0}` : current?.status === 'queued' ? '已排队，等待剪辑…' : current?.status === 'rendering' ? `正在剪辑 · ${current.progress}%` : analyzing ? '等照片理解完成后，自动剪一段回忆' : sources.length < 2 ? `已有 ${sources.length} 张可用照片，满 2 张后自动编排` : !settings?.enabled ? '自动生成已暂停' : remaining.length ? `还有 ${remaining.length} 段地点回忆，接着编排${remaining[0].place}` : '照片就绪后会自动编排，无需填写创意'
+  const remaining = stories.filter(story => !storyAttempted(settings?.attempted || [], story.key) && !storyAlreadyMade(story, jobs))
+  const status = current?.status === 'planning' ? '正在寻找值得留住的故事…' : current?.status === 'awaiting-images' ? `正在准备照片 ${uploading || current.uploaded.length}/${current.plan?.shots.length || 0}` : current?.status === 'queued' ? '已排队，等待剪辑…' : current?.status === 'rendering' ? `正在剪辑 · ${current.progress}%` : analyzing ? '等照片理解完成后，自动剪一段回忆' : sources.length < 2 ? `已有 ${sources.length} 张可用照片，满 2 张后自动编排` : !settings?.enabled ? '自动生成已暂停' : roundUsed >= 3 ? '这批照片已尝试编排 3 段回忆，还可选择下方主题' : remaining.length ? `发现 ${remaining.length} 段回忆，接着编排${remaining[0].place}` : '照片就绪后会自动编排，无需填写创意'
   return <>
     <button className={`button film-entry ${current || starting ? 'working' : ''}`} onClick={() => setOpen(true)} title="自动回忆短片" aria-label="回忆短片">
       {current || starting ? <LoaderCircle size={16} className="film-spin" /> : <Film size={16} />}<span>回忆短片</span>{jobs.some((j) => j.status === 'complete') && <i />}
@@ -199,9 +202,11 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
               <button className="button button-subtle" disabled={Boolean(current) || starting || sources.length < 2 || capable !== true} onClick={() => void start(true, displayed?.plan ? displayed.id : undefined)}><RotateCcw size={14} />{displayed ? '重新编排一版' : '现在自动生成'}</button>
             </div>
             {error && <p role="alert" className="film-error">{error}</p>}
+            {remaining.length > 0 && <details><summary>还有哪些回忆可以成片</summary><div className="film-history">{remaining.map(story => <button key={story.key} disabled={Boolean(current) || starting} onClick={() => void start(false, undefined, story.key, story.sources)}>{story.place} · {story.sources.length} 张</button>)}</div></details>}
             {capable === false && <p className="film-error">服务端未找到 FFmpeg，暂时无法生成视频。</p>}
             {displayed?.error && <p className="film-error">{displayed.error}</p>}
             {displayed?.warning && <p className="film-warning">{displayed.warning}</p>}
+            {displayed?.exportError && <p className="film-warning">{displayed.exportError}</p>}
             {displayed?.plan && <details className="film-context">
               <summary>人物与故事补充（可选）{displayed.storyContext?.notes.length ? ' · 已记住' : ''}</summary>
               <p>可以补充人物关系或这次出游的小故事。只用于本片的 {displayed.plan.shots.length} 张照片；留空也能自动成片。</p>
@@ -213,7 +218,7 @@ export function MemoryFilms({ assets, events, ready, analyzing }: { assets: Memo
             </details>}
             {displayed?.plan && <details><summary>这段回忆用了哪些照片</summary><ol className="film-shot-list">{displayed.plan.shots.map((shot) => <li key={shot.assetId}><img src={assets.find((a) => a.id === shot.assetId)?.preview} alt="选中的照片" /><div><b>{shot.caption || '保留照片原本的瞬间'}</b><small>{shot.date} · {shot.seconds} 秒</small><p>{shot.evidence}</p></div></li>)}</ol></details>}
             {jobs.filter((j) => j.status === 'complete').length > 1 && <div className="film-history">{jobs.filter((j) => j.status === 'complete').map((j) => <button key={j.id} onClick={() => setSelected(j.id)}>{j.plan?.title} · {new Date(j.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</button>)}</div>}
-            <p className="film-footnote">自动选故事、照片与字幕，配上轻柔的原创合成音乐。仅选中的照片传到本机服务制作；成片保留 24 小时，请及时保存。照片原件仍留在你的相册中。</p>
+            <p className="film-footnote">自动选故事、照片与字幕，配上轻柔的原创合成音乐。{displayed?.exportedAt ? 'MP4 已自动保存到本机导出目录；这里的在线预览保留 24 小时。' : '仅选中的照片传到本机服务制作；在线预览保留 24 小时，可随时保存 MP4。'}照片原件仍留在你的相册中。</p>
           </div>
         </div>
       </section>

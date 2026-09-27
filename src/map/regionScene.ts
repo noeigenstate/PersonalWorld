@@ -26,7 +26,7 @@ export function rememberSceneVenues(data: SceneData) {
 
 // Only geocoder AOI/POI names participate, never guessed photo-card descriptions.
 export function venueName(value?: string) {
-  return value?.match(/^(.{2,}?(?:公园|购物中心|购物城|商场|商城|商业中心|体育中心|景区|游乐园|动物园|博物馆|广场))(?:[-·（(].*)?$/)?.[1] || ''
+  return value?.match(/^(.{2,}?(?:公园|购物中心|购物城|万象城|大悦城|银泰城|商场|商城|商业中心|体育中心|活动中心|景区|游乐园|动物园|博物馆|广场|未来谷))(?:[-·（(A-Za-z0-9].*)?$/)?.[1] || ''
 }
 
 export function metresApart(a: Point, b: Point) {
@@ -98,7 +98,7 @@ export function photoSceneKey(photos: MapPhoto[], photo: MapPhoto) {
 export async function fetchRegionScene(region: PhotoRegion, refresh = false): Promise<SceneData> {
   // Match the server's derived geometry revision. A renderer hot update must
   // not keep an older, pre-landmark district alive in the browser cache.
-  const revision = 'v5:'
+  const revision = 'v6:'
   const key = revision + (region.key || region.center.map((value) => value.toFixed(5)).join(',') + `:${region.radius || 900}`)
   if (refresh) sceneCache.delete(key)
   const cached = sceneCache.get(key)

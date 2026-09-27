@@ -15,7 +15,7 @@ const zoom = 14
 const cacheAge = 7 * 24 * 60 * 60 * 1000
 // Invalidate older extracts that lack venue boundaries, waterways and source building
 // categories (v1 also treated the default 5 m height as a measurement).
-const sceneVersion = 5
+const sceneVersion = 6
 const inFlight = new Map()
 
 function bboxFor(lng, lat, radius = 900) {
@@ -166,9 +166,10 @@ async function buildScene(lng, lat, radius) {
   let scene = emptyScene(bboxFor(lng, lat, radius))
   const loaded = new Map()
   await fillTiles(scene, loaded)
-  // Enrich only neighbourhoods with a named public venue; ordinary districts keep
-  // their fast vector-only path. The source request is bounded, cached and optional.
-  if (scene.venueCandidates.length) {
+  // Every visited neighbourhood can be enriched. Unnamed residential districts,
+  // small campuses and rural leisure places need the same detailed source data.
+  // Sequential account preparation and the cache keep requests bounded.
+  {
     try {
       const details = await loadSceneDetails(scene.bbox)
       const venue = details.venues.filter((v) => v.polygons.some((rings) => containsPoint([lng, lat], rings)))
@@ -191,10 +192,31 @@ async function buildScene(lng, lat, radius) {
         const middle = [(Math.min(...points.map((p) => p[0])) + Math.max(...points.map((p) => p[0]))) / 2, (Math.min(...points.map((p) => p[1])) + Math.max(...points.map((p) => p[1]))) / 2]
         return containsPoint(middle, b.rings) || points.filter((p) => containsPoint(p, b.rings)).length > points.length / 2
       }
-      scene.buildings = scene.buildings.filter((item) => !specialised.some((detail) => overlapping(item, detail))).concat(specialised)
+      // Tile outlines are quantized and may split at seams. Match most of the
+      // smaller outline, keep broad adjacent podiums, and retain known heights.
+      const area = rings => {
+        const ringArea = ring => { const [x,y] = ring[0]; return Math.abs(ring.slice(1).reduce((s,p,i)=>s+(ring[i][0]-x)*(p[1]-y)-(p[0]-x)*(ring[i][1]-y),0))/2 }
+        return ringArea(rings[0])-rings.slice(1).reduce((s,r)=>s+ringArea(r),0)
+      }
+      const box = item => [Math.min(...item.rings[0].map(p=>p[0])),Math.min(...item.rings[0].map(p=>p[1])),Math.max(...item.rings[0].map(p=>p[0])),Math.max(...item.rings[0].map(p=>p[1]))]
+      const indexed = specialised.map(item=>({item,box:box(item),area:area(item.rings)}))
+      scene.buildings = scene.buildings.filter(item => {
+        const b = box(item), a = area(item.rings)
+        return !indexed.some(detail => {
+          const d = detail.box
+          if (!a || a > detail.area*1.8 || b[0]>d[2] || b[2]<d[0] || b[1]>d[3] || b[3]<d[1]) return false
+          try {
+            const shared = polygonClipping.intersection(item.rings,detail.item.rings).reduce((sum,rings)=>sum+area(rings),0)
+            if (shared/a < .75) return false
+            if (!detail.item.height && !detail.item.levels && item.height) detail.item.height = item.height
+            return true
+          } catch { return false }
+        })
+      }).concat(specialised)
       const grounds = clip(details.grounds)
       scene.grounds = scene.grounds.filter((item) => !grounds.some((detail) => overlapping(item, detail))).concat(grounds)
       scene.water.push(...clip(details.water))
+      scene.green.push(...clip(details.green || []))
       scene.treeRows = details.treeRows.flatMap((item) => clipLines({ type: 'LineString', coordinates: item.path }, scene.bbox).map((path) => ({ ...item, path })))
       scene.detailStatus = 'ready'
     } catch { scene.detailStatus = 'unavailable' }
@@ -203,6 +225,10 @@ async function buildScene(lng, lat, radius) {
   if (scene.water.length) {
     try { scene.water = polygonClipping.union(...scene.water.map((p) => [p.rings])).map((rings, index) => ({ id: `water:${index}`, rings })) }
     catch { /* Keep valid source polygons if topology is imperfect. */ }
+  }
+  if (scene.green.length) {
+    try { scene.green = polygonClipping.union(...scene.green.map(p=>[p.rings])).map((rings,index)=>({id:`green:${index}`,rings})) }
+    catch { /* Preserve valid individual source surfaces. */ }
   }
   delete scene.venueCandidates
   return addRegisteredLandmarks(scene, [lng, lat])

@@ -21,6 +21,7 @@ import { ImportDialog } from './components/ImportDialog'
 import { LifeMapView } from './components/LifeMapView'
 import { TimelineBar } from './components/TimelineBar'
 import { MemoryFilms } from './components/MemoryFilms'
+import { useSceneCoverage } from './lib/useSceneCoverage'
 
 type Tab = 'map' | 'butler'
 const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
@@ -154,6 +155,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     const placeLandmark = /东方明珠|oriental\s*pearl/i.test(nearbyLandmark || '') ? nearbyLandmark : undefined
     return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision: a.location?.precision || 'point', venueName: a.location?.aoi || a.location?.poi?.name, landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined, sceneCard: a.card ? { title: a.card.title, caption: a.card.caption, scene: a.card.scene, tags: a.card.tags, eventGuess: a.card.eventGuess, createdAt: a.card.createdAt } : undefined }]
   }), [memory.assets])
+  const sceneCoverage = useSceneCoverage(memory.assets, mapPhotos, ready && !locating)
 
   function openPhoto(assetId: string) {
     const event = memory.events.find((e) => e.assetIds.includes(assetId))
@@ -560,7 +562,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                 onClick={() => setSceneEnabled((enabled) => !enabled)}
               >
                 3D 记忆场景 {sceneEnabled ? '开' : '关'}
-                <small>真实照片地点</small>
+                <small>{sceneCoverage.total ? sceneCoverage.done < sceneCoverage.total ? `检查街区 ${sceneCoverage.done}/${sceneCoverage.total}` : `${sceneCoverage.total} 处街区资料${sceneCoverage.partial + sceneCoverage.failed ? ` · ${sceneCoverage.partial + sceneCoverage.failed} 处待补` : ''}` : '真实照片地点'}</small>
               </button>
               {!mapPhotos.length && <button className="scene-preview" type="button" onClick={() => { setTab('map'); selectCity(null, false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>}
             </>)}

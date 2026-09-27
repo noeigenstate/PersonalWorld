@@ -4,14 +4,16 @@ import { heicAsJpeg, isHeic } from './import'
 
 export interface FilmSource { id: string; date: string; observed: string; confirmed: string; place: string; tags: string[] }
 export interface FilmPlan {
+  treatment?: 'snow-journal' | 'sweet-moments' | 'little-makers' | 'warm-album'
   kind: 'outing' | 'revisit' | 'season'; title: string; closing: string; reason: string
-  shots: { assetId: string; caption: string; seconds: number; evidence: string; date: string }[]
+  shots: { assetId: string; caption: string; seconds: number; evidence: string; date: string; beat?: string; motion?: string }[]
 }
 export interface FilmJob {
   id: string; batch: string; createdAt: number; expiresAt: number; version?: string
   status: 'planning' | 'awaiting-images' | 'queued' | 'rendering' | 'complete' | 'failed' | 'cancelled'
   progress: number; uploaded: string[]; plan?: FilmPlan; planner?: 'stepfun' | 'local'; warning?: string; error?: string
   duration?: number; bytes?: number; url?: string
+  exportedAt?: string; exportError?: string
   storyContext?: { text: string; notes: { text: string; count: number }[]; revision: string; changed: boolean }
 }
 export const filmActive = (job?: FilmJob) => Boolean(job && ['planning', 'awaiting-images', 'queued', 'rendering'].includes(job.status))
@@ -28,10 +30,13 @@ export function filmSources(assets: MemoryAsset[], events: MemoryEvent[]): FilmS
     const date = asset.dateSource === 'file' ? '' : new Date(asset.capturedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })
     return [{ id: asset.id, date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '', observed: asset.card.scene, confirmed: event?.status === 'confirmed' ? `${event.title}。${event.summary}` : '', place: asset.location?.aoi || asset.location?.poi?.name || event?.city || '', tags: asset.card.tags }]
   })
-  // Bounded model context, evenly covering the collection rather than only the
-  // first/latest burst. The model does semantic selection from these candidates.
-  return all.length <= 80 ? all : Array.from({ length: 80 }, (_, i) => all[Math.round(i * (all.length - 1) / 79)])
+  // Discover stories across the entire library first. Global sampling before
+  // grouping can erase a small outing when the library grows.
+  return all
 }
+
+export const boundedFilmSources = (sources: FilmSource[]) => sources.length <= 80 ? sources
+  : Array.from({ length: 80 }, (_, i) => sources[Math.round(i * (sources.length - 1) / 79)])
 
 export async function filmBatch(assets: MemoryAsset[]) {
   const source = assets.filter((a) => a.kind === 'image' && a.preview).map((a) => `${a.id}:${a.hash}`).sort().join('|')

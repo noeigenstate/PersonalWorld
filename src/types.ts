@@ -163,6 +163,7 @@ export interface GeocodeResult {
 }
 
 export interface AiConfig {
+  localReview?: boolean
   available: boolean
   mode: 'model' | 'unconfigured' | 'agent-needs-adapter'
   message: string

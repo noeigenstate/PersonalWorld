@@ -3,7 +3,13 @@ import { access, copyFile, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 const binary = () => process.env.FFMPEG_PATH || 'ffmpeg'
-export const FILM_RENDER_VERSION = 'warm-album-2'
+export const FILM_RENDER_VERSION = 'story-directions-3'
+export const filmTreatments = {
+  'warm-album': {paper:'fbf4e8', ink:'655548', accent:'d5ae82', width:624, height:664, top:134, stride:.8, transpose:0, harmonic:.22, label:'日子的片段'},
+  'snow-journal': {paper:'edf5f6', ink:'385766', accent:'a6c9d5', width:648, height:682, top:124, stride:1.08, transpose:5, harmonic:.09, label:'雪地手记'},
+  'sweet-moments': {paper:'fff0e8', ink:'81524a', accent:'dfaa91', width:616, height:646, top:146, stride:.59, transpose:2, harmonic:.30, label:'甜甜的小片刻'},
+  'little-makers': {paper:'f7f4df', ink:'536657', accent:'9cbb9a', width:636, height:662, top:138, stride:.72, transpose:-2, harmonic:.17, label:'小小创作簿'},
+}
 export function runMedia(command, args, { cwd, signal, progress } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], signal })
@@ -32,7 +38,8 @@ async function prepareFont(directory) {
 
 // An original, deterministic soft bell/piano arpeggio. No downloaded music,
 // voice cloning or external music service. PCM is rendered locally.
-export function makeFilmMusic(seconds) {
+export function makeFilmMusic(seconds, treatment = 'warm-album') {
+  const art = filmTreatments[treatment] || filmTreatments['warm-album']
   const rate = 32000, samples = Math.ceil(seconds * rate)
   const buffer = Buffer.alloc(44 + samples * 2)
   buffer.write('RIFF'); buffer.writeUInt32LE(buffer.length - 8, 4); buffer.write('WAVEfmt ', 8)
@@ -40,15 +47,15 @@ export function makeFilmMusic(seconds) {
   buffer.writeUInt32LE(rate, 24); buffer.writeUInt32LE(rate * 2, 28); buffer.writeUInt16LE(2, 32); buffer.writeUInt16LE(16, 34)
   buffer.write('data', 36); buffer.writeUInt32LE(samples * 2, 40)
   const chords = [[62, 66, 69, 74], [59, 62, 66, 71], [55, 62, 67, 71], [57, 64, 69, 73]]
-  const stride = .8
+  const stride = art.stride
   for (let i = 0; i < samples; i++) {
     const time = i / rate, beat = Math.floor(time / stride)
     let value = 0
     for (let b = Math.max(0, beat - 4); b <= beat; b++) {
       const age = time - b * stride, note = chords[Math.floor(b / 8) % chords.length][[0, 1, 2, 3, 2, 1, 3, 1][b % 8]]
-      const phase = 2 * Math.PI * 440 * 2 ** ((note - 69) / 12) * age
+      const phase = 2 * Math.PI * 440 * 2 ** ((note + art.transpose - 69) / 12) * age
       const envelope = (1 - Math.exp(-age * 35)) * Math.exp(-age * 1.4)
-      value += (Math.sin(phase) + .22 * Math.sin(phase * 2) + .06 * Math.sin(phase * 3)) * envelope * .095
+      value += (Math.sin(phase) + art.harmonic * Math.sin(phase * 2) + .04 * Math.sin(phase * 3)) * envelope * .095
     }
     value *= Math.min(1, time / 2, (seconds - time) / 3)
     buffer.writeInt16LE(Math.round(Math.max(-.8, Math.min(.8, value)) * 32767), 44 + i * 2)
@@ -61,25 +68,36 @@ const lines = (text) => { const chars = [...text]; return chars.length > 17 ? ch
 
 export async function renderFilm(directory, plan, { signal, onProgress = () => {} } = {}) {
   await prepareFont(directory)
-  const fps = 24, transition = .5
+  const art = filmTreatments[plan.treatment] || filmTreatments['warm-album']
+  const fps = 24, transition = plan.treatment === 'sweet-moments' ? .35 : .6
   const durations = plan.shots.map((s) => Math.round(s.seconds * fps) / fps)
   const duration = durations.reduce((a, b) => a + b, 0) - transition * (plan.shots.length - 1)
   await writeFile(path.join(directory, 'title.txt'), plan.title)
+  await writeFile(path.join(directory, 'closing.txt'), plan.closing)
+  await writeFile(path.join(directory, 'series.txt'), art.label)
   for (let index = 0; index < plan.shots.length; index++) {
     signal?.throwIfAborted()
     const shot = plan.shots[index], frames = durations[index] * fps
-    await writeFile(path.join(directory, `caption-${index}.txt`), lines(index === plan.shots.length - 1 ? plan.closing : shot.caption))
+    await writeFile(path.join(directory, `caption-${index}.txt`), lines(shot.caption))
     await writeFile(path.join(directory, `date-${index}.txt`), `${shot.date || '值得珍藏的片段'}    /    ${String(index + 1).padStart(2, '0')}`)
+    const zoom = shot.motion === 'still' ? '1' : shot.motion === 'pull' ? `1.018-0.018*on/${frames}` : `1+0.018*on/${frames}`
+    const x = shot.motion === 'drift' ? `(iw-iw/zoom)*on/${frames}` : 'iw/2-iw/zoom/2'
     const filter = [
-      'scale=624:664:force_original_aspect_ratio=decrease',
-      'pad=720:960:(ow-iw)/2:134+(664-ih)/2:color=0xfbf4e8', 'setsar=1',
-      `zoompan=z='1+0.012*on/${frames}':x='iw/2-iw/zoom/2':y='ih/2-ih/zoom/2':d=${frames}:s=720x960:fps=${fps}`,
-      drawText('title.txt', 27, 65), drawText(`caption-${index}.txt`, 26, 830), drawText(`date-${index}.txt`, 17, 919, '0x9a8675'), 'format=yuv420p',
+      `scale=${art.width}:${art.height}:force_original_aspect_ratio=decrease`,
+      `pad=720:960:(ow-iw)/2:${art.top}+(${art.height}-ih)/2:color=0x${art.paper}`, 'setsar=1',
+      `zoompan=z='${zoom}':x='${x}':y='ih/2-ih/zoom/2':d=${frames}:s=720x960:fps=${fps}`,
+      `drawbox=x=44:y=114:w=632:h=2:color=0x${art.accent}:t=fill`,
+      `drawbox=x=44:y=916:w=${Math.round(632*(index+1)/plan.shots.length)}:h=3:color=0x${art.accent}:t=fill`,
+      drawText('series.txt', 16, 27, `0x${art.ink}`),
+      drawText('title.txt', index === 0 ? 31 : 27, 63, `0x${art.ink}`),
+      drawText(`caption-${index}.txt`, 25, 815, `0x${art.ink}`),
+      ...(index === plan.shots.length - 1 ? [drawText('closing.txt', 21, 879, `0x${art.ink}`)] : []),
+      drawText(`date-${index}.txt`, 17, 935, `0x${art.ink}`), 'format=yuv420p',
     ].join(',')
     await runMedia(binary(), ['-hide_banner', '-loglevel', 'error', '-y', '-i', `image-${index}.jpg`, '-vf', filter, '-frames:v', String(frames), '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-threads', '2', `clip-${index}.mp4`], { cwd: directory, signal })
     onProgress(Math.round(15 + (index + 1) / plan.shots.length * 65))
   }
-  await writeFile(path.join(directory, 'music.wav'), makeFilmMusic(duration))
+  await writeFile(path.join(directory, 'music.wav'), makeFilmMusic(duration, plan.treatment))
   const filters = []
   let previous = '0:v', offset = 0
   for (let i = 1; i < plan.shots.length; i++) {

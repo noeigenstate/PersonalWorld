@@ -70,12 +70,12 @@ export function createStorybookWater(geometry: THREE.BufferGeometry, polygons: P
         foam: { value: new THREE.Color('#f4fff1') },
       },
       vertexShader: `uniform mat4 textureMatrix;
-        varying vec4 vMirror; varying vec2 vMap; varying vec3 vView;
+        varying vec4 vMirror; varying vec2 vMap; varying vec3 vView; varying vec3 vNormal;
         void main(){vMap=position.xy; vMirror=textureMatrix*vec4(position,1.);
-          vec4 p=modelViewMatrix*vec4(position,1.);vView=-p.xyz;gl_Position=projectionMatrix*p;}`,
+          vec4 p=modelViewMatrix*vec4(position,1.);vView=-p.xyz;vNormal=normalize(normalMatrix*normal);gl_Position=projectionMatrix*p;}`,
       fragmentShader: `uniform sampler2D tDiffuse, shore;
         uniform vec4 mapBounds;uniform float time,reach,coast;uniform vec3 shallow,deep,foam;
-        varying vec4 vMirror;varying vec2 vMap;varying vec3 vView;
+        varying vec4 vMirror;varying vec2 vMap;varying vec3 vView;varying vec3 vNormal;
         float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
         void main(){
           vec2 p=vMap-mapBounds.xy;
@@ -91,8 +91,13 @@ export function createStorybookWater(geometry: THREE.BufferGeometry, polygons: P
           vec4 uv=vMirror;float ripple=sin(p.x*.078+sin(p.y*.055)*1.3+time*.65)*.0018;
           uv.xy+=vec2(ripple,ripple*.45)*uv.w;
           vec4 reflected=texture2DProj(tDiffuse,uv);
-          float reflectivity=mix(.20,.37,coast)*smoothstep(1.,14.,distance);
+          // Shallow viewing angles hold more reflection. Smooth analytic light
+          // patches add soft highlights without tiled normal-map assets.
+          float fresnel=pow(1.-clamp(abs(dot(normalize(vView),normalize(vNormal))),0.,1.),3.);
+          float reflectivity=(mix(.17,.29,coast)+.17*fresnel)*smoothstep(1.,14.,distance);
           water=mix(water,reflected.rgb,reflected.a*reflectivity);
+          float sunPatch=pow(max(0.,sin(p.x*.027+time*.23)*.5+sin(p.y*.042-time*.31)*.5),12.);
+          water=mix(water,foam,sunPatch*(.10+.10*coast)*smoothstep(5.,20.,distance));
           float edge=1.-smoothstep(1.,coast>0.5?5.5:2.3,distance);
           float tide=sin(distance*.50-time*.62+sin(p.x*.037+p.y*.024)*.65)*.5+.5;
           float shoreWave=smoothstep(.86,.99,tide)*(1.-smoothstep(9.,coast>0.5?27.:10.,distance));

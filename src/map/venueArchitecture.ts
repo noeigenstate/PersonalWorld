@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 type Point = [number, number]
 const cream = '#fff0ce'
@@ -32,6 +33,35 @@ function addSlab(group: THREE.Group, rings: Point[][], bottom: number, depth: nu
   mesh.castShadow = mesh.receiveShadow = true
   group.add(mesh)
   return mesh
+}
+
+// A reusable finish for source-tagged retail halls, not a claim to reconstruct a
+// particular mall. Concave outlines and courtyards stay exactly in their place.
+export function createCommercialBuilding(rings: Point[][], height: number) {
+  const group = new THREE.Group()
+  group.name = 'venue-commercial'
+  addSlab(group, rings, .45, 2.2, '#e5bd98', .65)
+  addSlab(group, rings, 2.6, Math.max(3, height-3), '#a9cbd1', .25)
+  const floors = Math.max(2, Math.min(6, Math.round(height/6)))
+  for(let level=1;level<=floors;level++) addSlab(group,rings,level*height/floors,1.15,level===floors?'#efd3ad':'#fff0d3',.6)
+  const ribs: THREE.BufferGeometry[] = []
+  const ring = rings[0]
+  for(let i=1;i<ring.length;i++) {
+    const a=ring[i-1],b=ring[i],length=Math.hypot(b[0]-a[0],b[1]-a[1])
+    const count=Math.floor(length/8)
+    for(let j=0;j<count;j++) {
+      const t=(j+.5)/count
+      const geometry=new THREE.CylinderGeometry(.55,.68,height-1,7)
+      geometry.rotateX(Math.PI/2); geometry.translate(a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,height/2+1)
+      ribs.push(geometry)
+    }
+  }
+  if(ribs.length) {
+    const geometry=mergeGeometries(ribs)
+    ribs.forEach(g=>g.dispose())
+    if(geometry) {const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:'#fff0d3',roughness:.84}));mesh.castShadow=mesh.receiveShadow=true;group.add(mesh)}
+  }
+  return group
 }
 
 // Two reusable architecture families, selected from OSM tags. The source footprint

@@ -28,8 +28,8 @@ test('剪辑表拒绝不存在的照片、重复不足六张及无证据的里�
   const plan = validateFilmPlan(original, sources)
   assert.equal(plan.title, '把这些小日子留住')
   assert.equal(plan.shots[0].caption, '')
-  assert.equal(plan.shots[1].seconds, 5)
-  assert.equal(plan.shots[2].seconds, 3.5)
+  assert.equal(plan.shots[1].seconds, 5.5)
+  assert.equal(plan.shots[2].seconds, 3.2)
   assert.equal(plan.shots.length, 10)
 })
 test('程序降级仍能形成真实来源的时间相册，允许已确认的生日', () => {
