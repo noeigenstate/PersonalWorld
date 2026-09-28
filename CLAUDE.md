@@ -21,6 +21,7 @@
 ```powershell
 npm run build
 npm run test:api
+npm run test:unit    # 时间刻度、重复照片分组等纯逻辑
 npm run test:skills  # 每个 skill 的专门测试；LIVE=1 连接真实服务
 npm run test:smoke   # 需先 npm run dev
 npm run test:vault   # 清除浏览器数据后照片恢复；需先 npm run dev

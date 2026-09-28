@@ -156,8 +156,8 @@ body{overflow:hidden}
 .dot.story{background:var(--story)}
 .dot.now{top:7px;width:16px;height:16px;margin-left:-8px;background:var(--story);border:3px solid #fff;box-shadow:0 0 0 2px var(--story)}
 .dot:hover{box-shadow:0 0 0 3px rgba(0,122,255,.3)}
-.years{position:relative;height:16px;font:500 10px 'JetBrains Mono',Consolas,monospace;color:#8b8f98}
-.years span{position:absolute;transform:translateX(-50%)}
+.years{position:relative;height:16px;font:500 11px -apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang SC',sans-serif;font-variant-numeric:tabular-nums;color:var(--label-2)}
+.years span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 
 .butler{position:absolute;top:var(--chrome-top);right:20px;bottom:20px;width:392px;z-index:8;border-radius:32px;display:flex;flex-direction:column;overflow:hidden}
 .butler-head{display:flex;align-items:center;gap:12px;padding:16px 16px 12px 18px;border-bottom:1px solid var(--line)}
@@ -313,6 +313,8 @@ body{overflow:hidden}
   .map-heading h1{font-size:22px}
   .legend{display:none}
   .timebar{padding:10px 14px 0}
+  /* Up to nine labels do not fit a phone: keep every other one */
+  .years span:nth-child(even){display:none}
 }
 
 /* 整理重复照片: similar photos stacked as a pile, then spread out to choose */

@@ -100,6 +100,8 @@ try {
   await page.locator('.map-label.place').nth(3).waitFor()
   assert.equal(await page.locator('.map-label.place').count(), 4, '湘潭、武汉、上海、杭州四个地点')
   assert.equal(await page.locator('.timebar .dot').count(), 16, '35 张照片应整理为 16 件事')
+  assert.ok((await page.locator('.timebar .years span').count()) >= 5, '时间线下方有时间刻度')
+  assert.match(await page.locator('.timebar-head span').innerText(), /^2012\.\d\d – 2026\.\d\d · 16 件事$/, '时间线标出起止时间')
   assert.match(await page.locator('.map-heading p').innerText(), /3 个人生据点 · 16 件事 · 1 个途经地点/)
   assert.match(await placeLabel('杭州').innerText(), /1 件事/, '两天的杭州旅行应合并为一件事')
   assert.deepEqual(await page.locator('.band-name').allInnerTexts(), ['湘潭 · 生活过', '武汉 · 生活过', '上海 · 生活过'], '空间线按迁徙顺序')

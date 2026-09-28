@@ -1,5 +1,6 @@
 import type { MemoryEvent, Place } from '../types'
 import { cityLabel, formatYearMonth, roleLabels } from '../lib/memory'
+import { timeTicks } from '../lib/timeTicks'
 
 const roleVar: Record<string, string> = { home: 'var(--role-home)', study: 'var(--role-study)', work: 'var(--role-work)', residence: 'var(--role-residence)' }
 const time = (value: string) => new Date(value).getTime()
@@ -21,15 +22,12 @@ export function TimelineBar({ events, bases, storyIds, selectedCity, highlighted
   const from = start - pad
   const span = end + pad - from
   const pct = (value: number) => ((value - from) / span) * 100
-  const firstYear = new Date(from).getFullYear()
-  const lastYear = new Date(end + pad).getFullYear()
-  const step = Math.max(1, Math.ceil((lastYear - firstYear + 1) / 9))
-  const years: number[] = []
-  for (let y = firstYear + 1; y <= lastYear; y += step) years.push(y)
+  const ticks = timeTicks(from, end + pad)
+  const range = formatYearMonth(new Date(start).toISOString()) === formatYearMonth(new Date(end).toISOString()) ? formatYearMonth(new Date(start).toISOString()) : `${formatYearMonth(new Date(start).toISOString())} – ${formatYearMonth(new Date(end).toISOString())}`
   const highlighted = events.find((e) => e.id === highlightedEventId)
   const focus = highlighted
     ? `${formatYearMonth(highlighted.occurredAt)} · ${highlighted.title}`
-    : selectedCity ? `${cityLabel(selectedCity)}的 ${storyIds.size} 件事` : `${events.length} 件事`
+    : selectedCity ? `${cityLabel(selectedCity)}的 ${storyIds.size} 件事` : `${range} · ${events.length} 件事`
 
   return (
     <section className="timebar" aria-label="时间线">
@@ -62,7 +60,7 @@ export function TimelineBar({ events, bases, storyIds, selectedCity, highlighted
           )
         })}
       </div>
-      <div className="years">{years.map((y) => <span key={y} style={{ left: `${pct(new Date(y, 0, 1).getTime())}%` }}>{y}</span>)}</div>
+      <div className="years">{ticks.map((tick) => <span key={tick.at} style={{ left: `${pct(tick.at)}%` }}>{tick.label}</span>)}</div>
     </section>
   )
 }
