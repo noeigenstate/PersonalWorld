@@ -12,6 +12,7 @@
 - 顶栏不放导航按钮：点击地图上的地点时人生管家对话框自动弹出，关闭即回到全图；四个能力融入人生管家的记忆，不做单独入口。
 - 界面保持静止：图标和标记不漂浮、不抖动，卡片悬停不位移。
 - 密钥只放 `.env`，由服务端读取；`.env`、`server/data/`、`data/`（用户照片）不入库。
+- 用户的照片和记忆按账户存在服务电脑硬盘 `server/data/accounts/<账户>/`（`server/accountVault.mjs`）；浏览器 IndexedDB 只是缓存，清除后登录自动恢复。改动存储时同步修改隐私声明并升级 `PRIVACY_VERSION`（`server/users.mjs` 与 `PrivacyStatement.tsx` 两处）。
 - 照片里的号码等敏感文字：用户同意隐私声明后原样显示，未同意时遮挡（服务端 `server/privacy.mjs` 兜底）。
 
 ## 验证
@@ -21,4 +22,5 @@ npm run build
 npm run test:api
 npm run test:skills  # 每个 skill 的专门测试；LIVE=1 连接真实服务
 npm run test:smoke   # 需先 npm run dev
+npm run test:vault   # 清除浏览器数据后照片恢复；需先 npm run dev
 ```

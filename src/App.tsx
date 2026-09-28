@@ -13,7 +13,7 @@ import { baseAt, cityLabel, derivePlaces, firstsOf, formatYearMonth, regroupDraf
 import { startRecording } from './lib/recorder'
 import { geocodeInBrowser } from './map/amap'
 import { visitRoutes } from './lib/storyRoutes'
-import { loadMemory, removeFile, saveMemory } from './lib/storage'
+import { loadMemory, removeFile, restoredFromVault, saveMemory } from './lib/storage'
 import type { AiConfig, MemoryAsset, MemoryEvent, MemoryState, PlaceRole } from './types'
 import { Butler, type ButlerMessage, type VoiceState } from './components/Butler'
 import { EventDetail, statusLabel } from './components/EventDetail'
@@ -69,7 +69,11 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const geocoded = useRef(new Set<string>())
 
   useEffect(() => {
-    loadMemory().then((data) => { setMemory(data); setReady(true) }).catch(() => setReady(true))
+    loadMemory().then((data) => {
+      setMemory(data)
+      setReady(true)
+      if (restoredFromVault()) setNotice(`已从本机照片库恢复 ${restoredFromVault()} 张照片`)
+    }).catch(() => setReady(true))
     fetchAiConfig().then(setAiConfig).catch(() => setAiConfig({ available: false, mode: 'unconfigured', message: 'AI 服务未启动；本地整理仍可使用', geocode: false }))
       .finally(() => setConfigChecked(true))
   }, [])
@@ -382,7 +386,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   }
 
   async function deleteAsset(id: string) {
-    if (!window.confirm('要从本地记忆中移除这个影像吗？此操作无法撤销。')) return
+    if (!window.confirm('要移除这个影像吗？浏览器缓存和服务电脑上的副本都会删除，无法撤销。')) return
     await removeFile(id)
     setMemory((current) => ({
       ...current,

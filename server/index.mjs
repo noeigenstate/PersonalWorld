@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { config as loadEnv } from 'dotenv'
 import { amapConfig, proxyAmapService, reverseGeocode } from './amap.mjs'
 import { chat, parseJsonAnswer, speak, stepfunConfig, transcribe } from './stepfun.mjs'
+import { createAccountVault } from './accountVault.mjs'
 import { PRIVACY_VERSION, SESSION_COOKIE, createUserStore, publicUser, readCookie, sessionCookie } from './users.mjs'
 import { loadSkill } from './skills.mjs'
 import { maskDeep } from './privacy.mjs'
@@ -24,6 +25,7 @@ const usersFile = process.env.USERS_FILE || fileURLToPath(new URL('./data/users.
 const users = createUserStore(usersFile)
 // Isolated account stores (including tests) must also have isolated media jobs.
 const graph = createMemoryGraph(join(dirname(usersFile),'memory-graph'))
+const vault = createAccountVault(join(dirname(usersFile), 'accounts'))
 const films = createFilmService(stepfun, { root: process.env.MEMORY_FILMS_DIR || join(dirname(usersFile), 'memory-films'), enrichSources:(user,sources)=>graph.enrich(user,sources), chapterFor:(user,id)=>graph.chapter(user,id) })
 const review = createMemoryReview(join(dirname(usersFile), 'memory-review'))
 
@@ -198,6 +200,42 @@ const server = http.createServer(async (req, res) => {
     // Personal data and the external map services below need a signed-in user.
     const currentUser = () => users.userForToken(readCookie(req, SESSION_COOKIE))
     const signedIn = () => Boolean(currentUser())
+    // The account's photos and memories on this computer's disk (see accountVault.mjs)
+    if (path.startsWith('/api/vault/')) {
+      const user = currentUser()
+      if (!user) return send(res, 401, { error: '请先登录' })
+      if (user.privacyVersion !== PRIVACY_VERSION) return send(res, 403, { error: '请先确认隐私声明' })
+      if (req.method !== 'GET' && req.headers['x-memory-agent'] !== 'web') return send(res, 403, { error: '请求来源未通过校验' })
+      if (path === '/api/vault/state') {
+        if (req.method === 'GET') return send(res, 200, await vault.readState(user))
+        if (req.method === 'PUT') return send(res, 200, await vault.writeState(user, JSON.parse((await readBody(req, 64 * 1024 * 1024)).toString('utf8'))))
+      }
+      if (path === '/api/vault/assets' && req.method === 'GET') return send(res, 200, await vault.listAssets(user))
+      const asset = /^\/api\/vault\/assets\/([A-Za-z0-9-]{8,64})(?:\/(preview|original))?$/.exec(path)
+      if (asset) {
+        const [, id, part] = asset
+        if (req.method === 'DELETE' && !part) { await vault.removeAsset(user, id); return send(res, 200, { ok: true }) }
+        if (req.method === 'PUT' && part === 'preview') { await vault.putPreview(user, id, await readBody(req, 8 * 1024 * 1024)); return send(res, 200, { ok: true }) }
+        if (req.method === 'PUT' && part === 'original') {
+          const meta = { name: decodeURIComponent(String(req.headers['x-file-name'] || '')), type: req.headers['content-type'], lastModified: req.headers['x-last-modified'] }
+          await vault.putOriginal(user, id, await readBody(req, 100 * 1024 * 1024), meta)
+          return send(res, 200, { ok: true })
+        }
+        if (req.method === 'GET' && part === 'preview') {
+          const bytes = await vault.getPreview(user, id)
+          if (!bytes) return send(res, 404, { error: '预览图不存在' })
+          res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, no-store' })
+          return res.end(bytes)
+        }
+        if (req.method === 'GET' && part === 'original') {
+          const file = await vault.getOriginal(user, id)
+          if (!file) return send(res, 404, { error: '原图不存在' })
+          res.writeHead(200, { 'Content-Type': file.meta.type || 'application/octet-stream', 'Cache-Control': 'private, no-store', 'X-File-Name': encodeURIComponent(file.meta.name || id), 'X-Last-Modified': String(file.meta.lastModified || '') })
+          return res.end(file.bytes)
+        }
+      }
+      return send(res, 404, { error: '接口不存在' })
+    }
     if(path==='/api/memory-graph'||path.startsWith('/api/memory-graph/')){
       const user=currentUser()
       if(!user)return send(res,401,{error:'请先登录'})

@@ -1,5 +1,5 @@
 // Keep in sync with PRIVACY_VERSION in server/users.mjs
-export const PRIVACY_VERSION = '2026-09-25'
+export const PRIVACY_VERSION = '2026-09-28'
 
 export function PrivacyStatement() {
   return (
@@ -8,7 +8,8 @@ export function PrivacyStatement() {
       <h3>保存什么、保存在哪</h3>
       <ul>
         <li><b>账户</b>：用户名、加盐哈希后的密码和登录状态，保存在运行 Personal World 服务的电脑上。</li>
-        <li><b>照片、视频、事件和信息卡</b>：按账户保存在这台设备的浏览器里。分析照片时，图片会临时经 Personal World 服务转发给 StepFun；服务不持久保存图片。</li>
+        <li><b>照片、视频、事件和信息卡</b>：按账户保存在运行 Personal World 服务的电脑硬盘上（<code>server/data/accounts/</code>），包括原图、预览图和记忆。浏览器里的只是一份缓存，用来加快打开速度。分析照片时，图片会经 Personal World 服务转发给 StepFun。</li>
+        <li><b>浏览器缓存</b>：清除浏览器的站点数据或缓存，只会删除这台设备上的缓存副本，不会删除你的照片和记忆；重新登录后会从服务电脑自动恢复，原图在需要时再取回。</li>
       </ul>
       <h3>使用功能时会发送给第三方的内容</h3>
       <ul>
@@ -19,7 +20,8 @@ export function PrivacyStatement() {
       <p>同意本声明后，信息卡和事件分析会原样显示照片中可读的电话、证件号、门牌号等文字。不同意时这些号码会被遮挡。无论是否同意，都不会识别照片中人物的身份，也不会推测收入、健康、宗教或政治倾向。</p>
       <h3>你可以做什么</h3>
       <ul>
-        <li>清除浏览器的站点数据，即可删除这台设备上的照片和记忆。</li>
+        <li>在照片详情里移除某张照片，会同时从浏览器缓存和服务电脑上删除它。</li>
+        <li>删除整个账户的照片和记忆，目前需要服务管理员删除 <code>server/data/accounts/</code> 下该账户的文件夹。</li>
         <li>删除账户目前需要联系服务的管理员。</li>
       </ul>
     </div>

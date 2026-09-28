@@ -14,6 +14,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test:smoke": "node tests/smoke.mjs",
     "test:api": "node tests/api.mjs",
+    "test:vault": "node tests/vault-restore.mjs",
     "test:amap": "node tests/amap.mjs",
     "test:card": "node tests/photo-card.mjs",
     "test:context": "node tests/photo-context.mjs",

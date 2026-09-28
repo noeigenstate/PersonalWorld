@@ -86,7 +86,8 @@ try {
   await page.screenshot({ path: join(shots, 'pw-0-register.png') })
   await register('小丁', 'secret12')
   await page.locator('.account').filter({ hasText: '小丁' }).waitFor()
-  assert.equal(await page.getByRole('heading', { name: '从照片开始，画出你的人生地图' }).count(), 1)
+  // The empty map appears once the account vault has been checked for photos to restore
+  await page.getByRole('heading', { name: '从照片开始，画出你的人生地图' }).waitFor()
   assert.equal(await page.locator('.app-bar nav').count(), 0, '顶栏不放导航：人生管家随地点自动弹出')
   const still = await page.screenshot()
   await page.waitForTimeout(900)

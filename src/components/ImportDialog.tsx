@@ -23,7 +23,7 @@ export function ImportDialog({ importing, onFiles, onClose }: { importing: boole
           <button className="button button-primary" onClick={() => input.current?.click()} disabled={importing}>选择文件<ArrowRight size={17} /></button>
         </div>
         <div className="import-notes">
-          <span><ShieldCheck size={16} />原始文件保存在本浏览器</span>
+          <span><ShieldCheck size={16} />原图保存在运行服务的电脑上</span>
           <span><CheckCircle2 size={16} />自动跳过完全重复文件</span>
           <span><Info size={16} />微信发送的图片会丢失拍摄时间、定位和设备；请用"原图"或从相册导出</span>
         </div>
