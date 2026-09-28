@@ -7,20 +7,22 @@
   --story:#e2703a;--space:#248a5a;--warn:#b86a1f;
   --role-home:#f5b98b;--role-study:#8fb8ea;--role-work:#8fd3a8;--role-residence:#c9b8ea;
   /* Liquid Glass (see .claude/skills/liquid-glass) */
-  --glass-fill:rgba(255,255,255,.56);--glass-fill-thick:rgba(252,252,253,.82);--glass-clear:rgba(255,255,255,.14);
-  --glass-blur:blur(26px) saturate(190%);
-  --glass-sheen:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.14) 36%,rgba(255,255,255,0) 62%,rgba(255,255,255,.16));
-  --glass-rim:inset 0 1px 1px rgba(255,255,255,.9),inset 0 -1px 1px rgba(255,255,255,.3),inset 0 0 0 .5px rgba(255,255,255,.6);
-  --glass-shadow:0 12px 36px rgba(16,24,40,.16),0 2px 6px rgba(16,24,40,.06);
-  --glass-edge:rgba(255,255,255,.62);
-  --bar:52px;--chrome-top:calc(var(--bar) + 24px);
+  --glass-fill:rgba(255,255,255,.26);--glass-fill-thick:rgba(250,250,252,.68);--glass-clear:rgba(255,255,255,.14);
+  --glass-blur:blur(12px) saturate(160%) brightness(1.04);--glass-blur-thick:blur(22px) saturate(180%);
+  --glass-sheen:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,.06) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,.1));
+  --glass-rim:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -1px 0 rgba(255,255,255,.28),inset 0 0 18px rgba(255,255,255,.22),inset 0 -12px 22px -16px rgba(20,30,60,.2);
+  --glass-shadow:0 12px 36px rgba(16,24,40,.14),0 2px 6px rgba(16,24,40,.06);
+  --glass-edge:rgba(255,255,255,.5);
+  /* Specular rim: bright where light enters (top left) and leaves (bottom right) */
+  --glass-specular:linear-gradient(135deg,rgba(255,255,255,.95),rgba(255,255,255,.22) 26%,rgba(255,255,255,0) 50%,rgba(255,255,255,.16) 74%,rgba(255,255,255,.7));
+  --bar:52px;--chrome-top:calc(var(--bar) + 16px);
 }
 html,body,#root{height:100%}
 body{overflow:hidden}
 .app-shell{height:100%;min-height:0;position:relative;overflow:hidden}
 
-/* The bar floats over the full-bleed map as a glass capsule */
-.app-bar{position:absolute;top:12px;left:16px;right:16px;z-index:20;height:var(--bar);display:grid;grid-template-columns:auto 1fr;align-items:center;gap:16px;padding:0 10px 0 20px;border-radius:999px}
+/* The bar spans the top of the page; the map runs on underneath it, seen through the glass */
+.app-bar{position:absolute;top:0;left:0;right:0;z-index:20;height:var(--bar);display:grid;grid-template-columns:auto 1fr;align-items:center;gap:16px;padding:0 16px 0 24px}
 .app-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:-.02em;white-space:nowrap}
 .app-actions{display:flex;align-items:center;justify-content:flex-end;gap:14px}
 
@@ -316,8 +318,8 @@ body{overflow:hidden}
   .tray{left:20px;top:auto;bottom:140px;width:calc(100% - 40px);max-height:50%}
 }
 @media(max-width:640px){
-  .app-bar{left:10px;right:10px;top:10px;padding:0 8px 0 16px;gap:10px}
-  :root{--chrome-top:calc(var(--bar) + 20px)}
+  .app-bar{padding:0 10px 0 14px;gap:10px}
+  :root{--chrome-top:calc(var(--bar) + 12px)}
   .app-brand span,.account span{display:none}
   .map-heading{left:12px;padding:10px 14px;border-radius:24px}
   .map-heading h1{font-size:22px}
@@ -370,7 +372,18 @@ body{overflow:hidden}
   box-shadow:var(--glass-rim),var(--glass-shadow);
 }
 /* Regular variant, thicker where there is a lot of text */
-.butler,.tray,.map-photo-menu,.import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{background:var(--glass-sheen),var(--glass-fill-thick)}
+.butler,.tray,.map-photo-menu,.import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{background:var(--glass-sheen),var(--glass-fill-thick);backdrop-filter:var(--glass-blur-thick);-webkit-backdrop-filter:var(--glass-blur-thick)}
+/* The top bar: a full-width glass strip with one bright lower edge */
+.app-bar{border-width:0 0 1px;border-radius:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.7),inset 0 -1px 0 rgba(255,255,255,.35),0 1px 0 rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.08)}
+/* Specular rim drawn as a 1 px gradient ring (masked), so the glass reads as a slab with thickness */
+.timebar,.auth-card,.import-modal,.privacy-modal,.cull-sheet{position:relative}
+.map-heading::before,.timebar::before,.butler::before,.tray::before,.map-empty::before,.auth-card::before,.map-photo-menu::before,
+.import-modal::before,.privacy-modal::before,.cull-sheet::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:var(--glass-specular);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+/* Refracting surfaces (src/lib/liquidGlass.ts, Chromium) bend the map at their rim and need less blur */
+.refracts{--glass-refract-blur:5px;background:var(--glass-sheen),rgba(255,255,255,.34)}
+/* Panels with text need a denser slab to stay legible over a busy map */
+.map-heading.refracts,.timebar.refracts,.map-empty.refracts{--glass-refract-blur:9px;background:var(--glass-sheen),rgba(255,255,255,.58)}
+.auth-card.refracts{--glass-refract-blur:16px;background:var(--glass-sheen),var(--glass-fill-thick)}
 .modal-backdrop .memory-library,.film-backdrop .film-modal{background:var(--glass-sheen),var(--glass-fill-thick);color:var(--label)}
 .detail-panel{border-width:0 0 0 1px;border-radius:30px 0 0 30px}
 .import-modal{border-radius:30px}

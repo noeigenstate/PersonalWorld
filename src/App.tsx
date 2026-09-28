@@ -31,8 +31,8 @@ import type { StoryChapter } from './lib/memoryGraph'
 const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
 const BUTLER_WIDTH = 432
 const TIMEBAR_HEIGHT = 128
-// The glass top bar floats over the map: 12 px margin + 52 px bar
-const CHROME_TOP = 64
+// The glass top bar covers the top 52 px of the map
+const CHROME_TOP = 52
 const uid = () => crypto.randomUUID()
 const years = (from: string, to: string) => Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / (365.25 * 86400000)))
 

@@ -29,7 +29,7 @@ The HIG rules below are quoted or paraphrased; the CSS is our web translation.
 
 | Layer | Elements | Material |
 |---|---|---|
-| Navigation / controls (glass, regular) | `.app-bar` (floating capsule), `.map-heading`, `.timebar`, `.butler`, `.tray`, `.map-photo-menu`, `.map-empty`, sheets (`.import-modal`, `.detail-panel`, `.privacy-modal`, `.memory-library`, `.film-modal`, `.cull-sheet`), `.auth-card` | `.glass` tokens |
+| Navigation / controls (glass, regular) | `.app-bar` (full-width strip across the top of the page), `.map-heading`, `.timebar`, `.butler`, `.tray`, `.map-photo-menu`, `.map-empty`, sheets (`.import-modal`, `.detail-panel`, `.privacy-modal`, `.memory-library`, `.film-modal`, `.cull-sheet`), `.auth-card` | `.glass` tokens |
 | Controls over photos (glass, clear + dim) | `.lightbox-toolbar button` | `--glass-clear` + 35 % dim |
 | Primary action (tinted glass) | `.button-primary`, `.hold`, `.send` | accent fill + rim |
 | Content | `.map-label`, `.map-photo`, `.map-scene-caption`, photo grids | standard material or opaque; **no** glass rim |
@@ -38,25 +38,37 @@ The HIG rules below are quoted or paraphrased; the CSS is our web translation.
 ## Tokens (in `src/app.css` `:root`)
 
 ```css
---glass-fill: rgba(255,255,255,.56);            /* regular */
---glass-fill-thick: rgba(252,252,253,.8);       /* sheets with long text */
---glass-blur: blur(26px) saturate(190%);
---glass-sheen: linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.14) 36%,rgba(255,255,255,0) 62%,rgba(255,255,255,.16));
---glass-rim: inset 0 1px 1px rgba(255,255,255,.9), inset 0 -1px 1px rgba(255,255,255,.3), inset 0 0 0 .5px rgba(255,255,255,.6);
---glass-shadow: 0 12px 36px rgba(16,24,40,.16), 0 2px 6px rgba(16,24,40,.06);
+--glass-fill: rgba(255,255,255,.26);            /* regular */
+--glass-fill-thick: rgba(250,250,252,.68);      /* sheets and panels with long text */
+--glass-blur: blur(12px) saturate(160%) brightness(1.04);
+--glass-blur-thick: blur(22px) saturate(180%);
+--glass-sheen: linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,.06) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,.1));
+--glass-rim: inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 0 rgba(255,255,255,.28), inset 0 0 18px rgba(255,255,255,.22), inset 0 -12px 22px -16px rgba(20,30,60,.2);
+--glass-specular: linear-gradient(135deg,rgba(255,255,255,.95),rgba(255,255,255,.22) 26%,rgba(255,255,255,0) 50%,rgba(255,255,255,.16) 74%,rgba(255,255,255,.7));
 ```
 
 Apply as: `background: var(--glass-sheen), var(--glass-fill); backdrop-filter: var(--glass-blur);
 -webkit-backdrop-filter: var(--glass-blur); border: 1px solid var(--glass-edge); box-shadow: var(--glass-rim), var(--glass-shadow)`.
-The sheen lives in `background` (not a pseudo-element) because many elements already use `:before`/`:after`.
+The sheen lives in `background`; the specular rim is the one `::before` of each glass panel.
 
 ## Project constraints that still apply
 
 - The interface stays still: no floating, wobbling, refraction animation or hover movement (`CLAUDE.md`).
   Glass responds with colour and light only.
 - Every `backdrop-filter` has its `-webkit-` twin (Safari on iPhone is a target over LAN).
-- Floating chrome sits over a full-bleed map; the map is told about it through `insets.top` so fitted
-  views are not hidden under the bar.
+- The top bar spans the page width (not a floating capsule — the user asked for it to fill the top);
+  the map runs on underneath it and is told about it through `insets.top` so fitted views are not hidden.
+
+## What makes it read as real glass
+
+- **Clear, not milky**: low fill (0.26–0.34 on the bar) and light blur, so the map shows through; text-heavy
+  panels (heading, time bar, butler, sheets) use a denser slab (0.58–0.68) to stay legible.
+- **Refraction at the rim** (`src/lib/liquidGlass.ts`): an SVG displacement map per element size and corner
+  radius bends what is behind the rim inwards, like a lens. Chromium only (`backdrop-filter: url(#…)`);
+  other browsers keep the plain glass. Static — nothing wobbles.
+- **Specular rim**: `--glass-specular`, a 1 px masked gradient ring, bright at top-left and bottom-right,
+  plus an inner glow and a faint lower shade in `--glass-rim` for thickness.
+- **Moderate saturation** (150–160 %): higher turns the map's sky and seas neon.
 
 ## Check
 

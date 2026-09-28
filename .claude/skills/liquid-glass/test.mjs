@@ -12,7 +12,7 @@ const css = ['src/styles.css', 'src/app.css'].map((path) => readFileSync(join(ro
 
 test('SKILL.md 格式完整，记录了 HIG 的关键规则', () => {
   const { body } = checkSkillFile(dir)
-  for (const fact of ["Don't use Liquid Glass in the content layer", 'Regular variant', 'Clear variant', '35 %', 'concentric', '-webkit-', 'insets.top']) assert.ok(body.includes(fact), `缺少 ${fact}`)
+  for (const fact of ["Don't use Liquid Glass in the content layer", 'Regular variant', 'Clear variant', '35 %', 'concentric', '-webkit-', 'insets.top', 'liquidGlass.ts', '--glass-specular', 'full-width']) assert.ok(body.includes(fact), `缺少 ${fact}`)
 })
 
 test('审查器能识别违规样例', () => {
@@ -35,6 +35,14 @@ test('解析 @media 与多选择器', () => {
   const rules = parseCss('.a,.b{color:red}@media(max-width:600px){.a{color:blue}}')
   assert.deepEqual(rules.map((r) => [r.selectors, r.media]), [[['.a', '.b'], ''], [['.a'], '@media(max-width:600px)']])
   assert.ok(Math.abs(contrast('#6e6e73', '#ffffff') - 5.07) < 0.05)
+})
+
+test('真实玻璃：顶栏占满顶部，有高光描边，主要表面启用边缘折射', () => {
+  assert.match(css, /\.app-bar\{position:absolute;top:0;left:0;right:0;/, '顶栏占满页面顶部')
+  assert.match(css, /--glass-specular:linear-gradient/)
+  assert.match(css, /::before\{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:var\(--glass-specular\)/)
+  const main = readFileSync(join(root, 'src/main.tsx'), 'utf8')
+  assert.match(main, /startLiquidGlass\('\.app-bar, \.map-heading, \.timebar/)
 })
 
 test('项目样式表符合液态玻璃规则', () => {
