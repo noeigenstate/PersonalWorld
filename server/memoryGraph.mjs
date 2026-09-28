@@ -1,15 +1,31 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { openIdentityStore } from './identityStore.mjs'
 import { createFaceEngine } from './faceEngine.mjs'
+import { createStoryUnderstanding } from './storyUnderstanding.mjs'
 
-export function createMemoryGraph(root,{engine=createFaceEngine()}={}) {
-  const stores=new Map(),active=new Set()
+export function createMemoryGraph(root,{engine=createFaceEngine(),config,understandingOptions={}}={}) {
+  const stores=new Map(),active=new Set(),understandings=new Map()
   let capability,checkedAt=0
-  const store=user=>{
-    if(!stores.has(user.id))stores.set(user.id,openIdentityStore(join(root,createHash('sha256').update(user.id).digest('hex'))))
-    return stores.get(user.id)
+  const accountKey=user=>createHash('sha256').update(user.id).digest('hex')
+  const accountStore=key=>{
+    if(!stores.has(key))stores.set(key,openIdentityStore(join(root,key)))
+    return stores.get(key)
+  }
+  const store=user=>accountStore(accountKey(user))
+  const accountUnderstanding=key=>{
+    if(!understandings.has(key))understandings.set(key,createStoryUnderstanding(accountStore(key).root,{config,...understandingOptions}))
+    return understandings.get(key)
+  }
+  const understanding=user=>accountUnderstanding(accountKey(user))
+  const changed=(user,state,options)=>understanding(user).observe(state,options)
+  // Textual evidence is already server-local. Resume the persistent queue even
+  // while the browser is closed; original-image uploads still require its tab.
+  if(config?.apiKey&&understandingOptions.available!==false&&existsSync(root))for(const entry of readdirSync(root,{withFileTypes:true})){
+    if(entry.isDirectory()&&/^[a-f0-9]{64}$/.test(entry.name)&&existsSync(join(root,entry.name,'memory.sqlite')))
+      accountUnderstanding(entry.name).observe(accountStore(entry.name).snapshot())
   }
   async function status(){
     if(capability&&Date.now()-checkedAt<30000)return capability
@@ -19,11 +35,11 @@ export function createMemoryGraph(root,{engine=createFaceEngine()}={}) {
   }
   async function withCapability(user,state){const info=await status();return {...state,capability:info,pending:store(user).pendingFor(info)}}
   return {
-    async read(user){return withCapability(user,store(user).reconcile())},
+    async read(user){return withCapability(user,changed(user,store(user).reconcile()))},
     async sync(user,body){
       const s=store(user),{removed,...state}=s.sync(body)
       for(const id of removed)await rm(join(s.root,'faces',id+'.jpg'),{force:true}).catch(()=>{})
-      return withCapability(user,state)
+      return withCapability(user,changed(user,state,typeof body.automatic==='boolean'?{paused:!body.automatic}:undefined))
     },
     async analyze(user,body){
       const s=store(user),id=String(body.assetId||''),info=await status()
@@ -49,14 +65,15 @@ export function createMemoryGraph(root,{engine=createFaceEngine()}={}) {
       }catch(error){s.runFailed(id,key,error.message);throw error}
       finally{active.delete(activeKey);await rm(file,{force:true}).catch(()=>{})}
     },
-    correct:(user,body)=>store(user).correct(body),
-    settle:user=>store(user).reconcile(),
-    undo:(user,body)=>store(user).undo(String(body.id||'')),
-    fact:(user,body)=>store(user).fact(body),
+    correct:(user,body)=>changed(user,store(user).correct(body)),
+    settle:user=>changed(user,store(user).reconcile()),
+    undo:(user,body)=>changed(user,store(user).undo(String(body.id||''))),
+    fact:(user,body)=>changed(user,store(user).fact(body)),
+    understanding(user,body){const u=understanding(user);u.observe(store(user).snapshot());u.control(body);return u.decorate(store(user).snapshot())},
     enrich:(user,sources)=>store(user).enrich(sources),
-    chapter:(user,id)=>store(user).snapshot().graph.chapters.find(c=>c.id===id),
+    chapter:(user,id)=>understanding(user).decorate(store(user).snapshot()).graph.chapters.find(c=>c.id===id),
     context(user){
-      const state=store(user).snapshot()
+      const state=understanding(user).decorate(store(user).snapshot())
       return {people:state.people.filter(p=>p.confirmed).map(({id,name,relationship})=>({id,name,relationship})),
         relationships:state.graph.relationships,chapters:state.graph.chapters.slice(0,30),events:state.graph.events.slice(-100),facts:state.graph.facts.slice(-300)}
     },
@@ -64,6 +81,6 @@ export function createMemoryGraph(root,{engine=createFaceEngine()}={}) {
       if(!/^[a-f0-9]{32}$/.test(id)||!store(user).hasFace(id))return null
       return readFile(join(store(user).root,'faces',id+'.jpg')).catch(()=>null)
     },
-    close(){engine.close();for(const value of stores.values())value.close()},
+    close(){engine.close();for(const value of understandings.values())value.close();for(const value of stores.values())value.close()},
   }
 }

@@ -25,7 +25,7 @@ const amap = amapConfig()
 const usersFile = process.env.USERS_FILE || fileURLToPath(new URL('./data/users.json', import.meta.url))
 const users = createUserStore(usersFile)
 // Isolated account stores (including tests) must also have isolated media jobs.
-const graph = createMemoryGraph(join(dirname(usersFile),'memory-graph'))
+const graph = createMemoryGraph(join(dirname(usersFile),'memory-graph'),{config:stepfun,understandingOptions:{available:process.env.STORY_UNDERSTANDING_DISABLED!=='1'&&Boolean(stepfun.apiKey&&stepfun.model)}})
 const vault = createAccountVault(join(dirname(usersFile), 'accounts'))
 const films = createFilmService(stepfun, { root: process.env.MEMORY_FILMS_DIR || join(dirname(usersFile), 'memory-films'), enrichSources:(user,sources)=>graph.enrich(user,sources), chapterFor:(user,id)=>graph.chapter(user,id) })
 const review = createMemoryReview(join(dirname(usersFile), 'memory-review'))
@@ -259,7 +259,7 @@ const server = http.createServer(async (req, res) => {
       }
       if(req.method!=='POST'||req.headers['x-memory-agent']!=='web')return send(res,403,{error:'请求来源未通过校验'})
       const action=path.slice('/api/memory-graph/'.length)
-      if(!['sync','analyze','correct','undo','fact','settle'].includes(action))return send(res,404,{error:'接口不存在'})
+      if(!['sync','analyze','correct','undo','fact','settle','understanding'].includes(action))return send(res,404,{error:'接口不存在'})
       return send(res,200,await graph[action](user,await readJson(req)))
     }
     if (path === '/api/memory-review' && process.env.MEMORY_REVIEW_LOCAL === '1') {

@@ -78,3 +78,8 @@ test('EXIF 时刻决定同日顺序，裁切只用服务端人脸框，不添写
  const plan=validateFilmPlan({title:'雪地',shots:[{assetId:'late',caption:'玩累了，靠在肩上睡着了'},{assetId:'early',caption:'醒啦'}]},pair)
  assert.deepEqual(plan.shots.map(s=>s.assetId),['early','late']);assert.equal(plan.shots[0].caption,'');assert.equal(plan.shots[1].caption,'靠在肩上闭着眼睛');assert.equal(new Set(plan.shots.map(s=>s.layout)).size,2)
 })
+test('睡衣、闭眼和牙刷不能证明刚醒或准备刷牙',()=>{
+ const pair=readFilmSources([{id:'a',date:'2026-04-06',observed:'穿睡衣坐在床边微笑'},{id:'b',date:'2026-04-06',observed:'坐在凳子上，台面有牙刷'}])
+ const plan=validateFilmPlan({title:'今天早上，陪你慢慢醒',shots:[{assetId:'a',caption:'刚醒，醒过来笑一笑'},{assetId:'b',caption:'准备刷牙啦'}]},pair)
+ assert.equal(plan.title,'把这些小日子留住');assert.ok(plan.shots.every(s=>s.caption===''))
+})

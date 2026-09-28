@@ -51,7 +51,7 @@ export function fallbackFilm(sources) {
   }
 }
 
-export function validateFilmPlan(answer, sources) {
+export function validateFilmPlan(answer, sources, {brief}={}) {
   const known = new Map(sources.map((s) => [s.id, s]))
   const seen = new Set()
   const text = (value, max, source) => {
@@ -63,8 +63,8 @@ export function validateFilmPlan(answer, sources) {
     const evidence = source ? `${source.observed} ${facts}` : chosen.map(s => `${s.observed} ${s.confirmed} ${s.story || ''}`).join(' ')
     if(!/玩累|疲惫|疲倦/.test(evidence))result=result.replace(/玩累了[，,]?/g,'')
     if(!/睡着|熟睡|入睡/.test(evidence))result=result.replace(/睡着了/g,'闭着眼睛')
-    const timeClaims = result.match(/清晨|早晨|上午|中午|午后|下午|傍晚|黄昏|夜晚|深夜/g) || []
-    const causalClaims=result.match(/醒来|醒啦|睡醒|终于|不肯|舍不得|迫不及待/g)||[]
+    const timeClaims = result.match(/清晨|早晨|早上|上午|中午|午后|下午|傍晚|黄昏|夜晚|深夜/g) || []
+    const causalClaims=result.match(/醒来|醒啦|睡醒|刚醒|醒过来|慢慢醒|准备[^，。！!?？]{0,5}|终于|不肯|舍不得|迫不及待/g)||[]
     return claims.some((claim) => !facts.includes(claim)&&!aliases.has(claim)) || [...timeClaims,...causalClaims].some(claim => !evidence.includes(claim)) ? '' : result
   }
   const shots = (Array.isArray(answer?.shots) ? answer.shots : []).slice(0, 12).flatMap((shot) => {
@@ -93,22 +93,29 @@ export function validateFilmPlan(answer, sources) {
   const chosen = shots.map((shot) => known.get(shot.assetId))
   const count = re => chosen.filter(s => re.test(s.observed)).length / chosen.length
   // Render direction derives from actual selected subject matter, not random skins.
-  const treatment = count(/积雪|雪地|滑雪|雪场/) >= .6 ? 'snow-journal'
+  const together=brief?.format==='relationship'&&new Set(chosen.flatMap(s=>(s.people||[]).map(p=>p.id))).size>=2
+  const treatment = together ? 'together-pages' : brief?.format==='details' ? 'detail-poem'
+    : count(/积雪|雪地|滑雪|雪场/) >= .6 ? 'snow-journal'
     : count(/冰淇淋|冰激凌|甜筒|雪糕/) >= .6 ? 'sweet-moments'
       : count(/手工|画画|绘画|砂画|马克笔|涂鸦/) >= .6 ? 'little-makers' : 'warm-album'
   return { kind, treatment, title: text(answer.title, 22) || '把这些小日子留住', closing: text(answer.closing, 28) || '平常的小事，也值得记住', reason: text(answer.reason, 240) || '围绕选中照片里共同出现的活动，按可靠日期编排。', shots }
 }
 
-export async function planFilm(config, sources) {
+export async function planFilm(config, sources, {brief}={}) {
   try {
     const modelSources=sources.map(({faceBoxes:_boxes,identityRevision:_revision,photoStory:_localNote,...source})=>source)
     const messages = [
       { role: 'system', content: loadSkill('memory-film') },
-      { role: 'user', content: JSON.stringify({ sources:modelSources }) },
+      { role: 'user', content: JSON.stringify({ sources:modelSources,creativeBrief:brief }) },
     ]
     for (let attempt = 0; attempt < 2; attempt++) {
       const raw = await chat(config, messages, { json: true })
-      try { return { plan: validateFilmPlan(parseJsonAnswer(raw), sources), planner: 'stepfun' } }
+      try {
+        const answer=parseJsonAnswer(raw),plan=validateFilmPlan(answer,sources,{brief})
+        const removed=plan.shots.filter(shot=>!shot.caption&&answer.shots?.some(s=>s.assetId===shot.assetId&&s.caption)).length
+        if(attempt===0&&(removed>0||answer.title&&plan.title!==clean(answer.title,22)))throw new Error('标题或字幕存在未经证据支持的人物、时间或因果。只用原始照片观察与用户确认，不能把闭眼、睡衣、牙刷等写成醒来或准备做某事')
+        return {plan,planner:'stepfun'}
+      }
       catch (error) {
         if (attempt) throw error
         // One bounded structural repair, not repeated image calls. The validator
@@ -118,6 +125,6 @@ export async function planFilm(config, sources) {
     }
     throw new Error('剪辑方案未完成')
   } catch (error) {
-    return { plan: validateFilmPlan(fallbackFilm(sources), sources), planner: 'local', warning: `智能编排暂不可用，已按日期生成基础剪辑。${clean(error.message, 120)}` }
+    return { plan: validateFilmPlan(fallbackFilm(sources), sources, {brief}), planner: 'local', warning: `智能编排暂不可用，已按日期生成基础剪辑。${clean(error.message, 120)}` }
   }
 }

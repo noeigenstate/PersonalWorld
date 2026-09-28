@@ -21,8 +21,10 @@ class Film:
         self.snow = self.style == 'snow-journal'
         self.sweet = self.style == 'sweet-moments'
         self.making = self.style == 'little-makers'
-        self.paper = '#e7f0f1' if self.snow else '#fff0db' if self.sweet else '#f5efdd'
-        self.ink = '#1e454e' if self.snow else '#613534' if self.sweet else '#334f50'
+        self.together = self.style == 'together-pages'
+        self.poem = self.style == 'detail-poem'
+        self.paper = '#203c3b' if self.poem else '#f6f1e5' if self.together else '#e7f0f1' if self.snow else '#fff0db' if self.sweet else '#f5efdd'
+        self.ink = '#f3ead5' if self.poem else '#344f47' if self.together else '#1e454e' if self.snow else '#613534' if self.sweet else '#334f50'
         self.accent = '#f57445' if self.sweet else '#d07a4f'
         self.fonts = {}
         self.photo_cache = {}
@@ -58,7 +60,16 @@ class Film:
         if hasattr(self,'background_cache'):return self.background_cache.copy()
         image = Image.new('RGB', (W, H), self.paper)
         d = ImageDraw.Draw(image)
-        if self.sweet:
+        if self.together:
+            d.rounded_rectangle((22,22,W-22,H-22),radius=24,outline='#d8d9c9',width=2)
+            d.ellipse((460,-100,920,330),fill='#e0e4d3')
+            d.ellipse((-240,790,350,1350),fill='#e9d6bd')
+        elif self.poem:
+            for y in range(H):
+                mix=y/H
+                d.line((0,y,W,y),fill=tuple(round(a*(1-mix)+b*mix) for a,b in zip((23,45,45),(52,73,66))))
+            d.line((49,38,49,97),fill='#baa783',width=2)
+        elif self.sweet:
             d.ellipse((-190, -220, 610, 400), fill='#ffbcbd')
             d.ellipse((420, 720, 960, 1270), fill='#d5df7f')
             for i in range(22):
@@ -140,10 +151,76 @@ class Film:
             d.line((x+8*scale,y+2*scale,x+49*scale,y-47*scale),fill='#527f86',width=max(3,round(7*scale)))
             d.arc((x-58*scale,y+2*scale,x+70*scale,y+40*scale),0,200,fill='#ce7457',width=3)
 
+    def thread(self,image,y,progress=1):
+        points=[(58+i*604/80,y+17*math.sin(i/80*math.pi*2)) for i in range(round(80*progress)+1)]
+        if len(points)>1:ImageDraw.Draw(image).line(points,fill='#ba8d66',width=3)
+        for x in [75,645]:ImageDraw.Draw(image).ellipse((x-5,y-5,x+5,y+5),fill='#ba8d66')
+
+    def render_story(self,segment,p):
+        """Relationship spreads and quiet detail poems use distinct compositions.
+        Pairing is editorial juxtaposition, never a generated interaction or crop.
+        """
+        image=self.background();shots=self.plan['shots'];last=len(shots)-1;kind=segment['kind']
+        if self.together:
+            self.text(image,'一起的这些日子',(54,51),21)
+            if kind=='intro':
+                self.text(image,self.plan['title'],(52,112),48,width=610,bold=True)
+                self.paste_photo(image,0,(49,302,298,459),p,radius=20,cover=False)
+                self.paste_photo(image,last,(373,347,298,459),p,radius=20,cover=False)
+                self.thread(image,850,min(1,p*1.5))
+                self.text(image,shots[0].get('date','').replace('-',' / '),(55,902),17)
+            elif kind=='chapter':
+                self.text(image,'日历翻过一页',(57,339),25)
+                self.text(image,segment['label'],(53,405),61,bold=True)
+                self.thread(image,520)
+            elif kind=='outro':
+                self.paste_photo(image,last,(52,154,616,494),0,radius=20,cover=False)
+                self.thread(image,707)
+                self.text(image,self.plan['closing'],(57,758),38,width=605,bold=True)
+                self.text(image,'这一页，留给我们',(57,904),19)
+            else:
+                i=segment['index'];shot=shots[i];caption=shot.get('caption','')
+                if shot.get('layout')=='pair' and i:
+                    self.paste_photo(image,i-1,(49,198,298,419),0,radius=18,cover=False)
+                    self.paste_photo(image,i,(373,279,298,419),p,radius=18,cover=False)
+                    self.thread(image,752)
+                    self.text(image,caption,(56,799),33,width=595,bold=True)
+                else:
+                    self.paste_photo(image,i,(51,145,618,580),p,radius=20,cover=False)
+                    self.thread(image,772)
+                    self.text(image,caption,(56,809),32,width=592,bold=True)
+                self.text(image,shot.get('date','').replace('-',' / '),(57,910),17)
+                self.text(image,f'{i+1:02d} / {len(shots):02d}',(568,910),17)
+        else:
+            self.text(image,'日常里的小小诗句',(65,48),18,'#c0cbb7')
+            if kind=='intro':
+                self.text(image,self.plan['title'],(54,136),49,width=606,bold=True)
+                self.paste_photo(image,0,(54,322,612,491),p,radius=4,cover=False)
+                self.text(image,'把目光，停在一个小瞬间',(55,872),22,'#d6cfb9')
+            elif kind=='chapter':
+                self.text(image,segment['label'],(58,411),59,bold=True)
+                ImageDraw.Draw(image).line((62,513,178,513),fill='#baa783',width=2)
+            elif kind=='outro':
+                self.paste_photo(image,last,(54,144,612,529),0,cover=False)
+                self.text(image,self.plan['closing'],(57,748),37,width=596,bold=True)
+                ImageDraw.Draw(image).line((58,899,191,899),fill='#baa783',width=2)
+            else:
+                i=segment['index'];shot=shots[i]
+                top=158 if shot.get('beat') in ['rest','closing'] else 124
+                self.paste_photo(image,i,(52,top,616,574),p,cover=False)
+                # Captions settle in after the image, leaving a quiet opening beat.
+                caption_layer=image.copy()
+                self.text(caption_layer,shot.get('caption',''),(58,771),34,width=595,spacing=13)
+                image=Image.blend(image,caption_layer,min(1,max(0,(p-.08)/.18)))
+                self.text(image,shot.get('date',''),(59,906),16,'#b7c1ae')
+                self.text(image,f'{i+1:02d}',(619,900),23,'#baa783')
+        return image
+
     def render(self, segment, seconds):
         duration=segment['duration'];p=min(1,max(0,seconds/duration))
         image=self.background();d=ImageDraw.Draw(image)
         kind=segment['kind'];shots=self.plan['shots'];last=len(shots)-1
+        if self.together or self.poem:return self.render_story(segment,p)
         if kind=='intro':
             if self.snow:
                 self.paste_photo(image,0,(0,0,W,660),p,cover=False)
@@ -246,7 +323,7 @@ def main():
     try:
         for number,segment in enumerate(film.segments):
             count=round(segment['duration']*FPS)
-            transition=round((.24 if film.sweet else .42)*FPS)
+            transition=round((.24 if film.sweet else .7 if film.poem else .5 if film.together else .42)*FPS)
             previous=last
             for n in range(count):
                 frame=film.render(segment,n/FPS)

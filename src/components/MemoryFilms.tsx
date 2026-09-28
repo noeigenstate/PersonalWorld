@@ -47,6 +47,16 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
   const assetKey = assets.map((a) => `${a.id}:${a.hash}`).sort().join('|')
   const current = jobs.find((j) => filmActive(j))
   const pendingUpdate=nextFilmUpdate(jobs,settings?.attempted||[])
+  const changedChapter=(graph?.graph.chapters||[]).find(chapter=>{
+    const latest=jobs.find(j=>j.chapterId===chapter.id&&j.status==='complete'&&j.version==='memory-film-6')
+    return latest&&latest.chapterRevision!==chapter.revision&&!settings?.attempted.includes(`identity:${chapter.id}:${chapter.revision}`)
+  })
+  const creativeRound=graph?.understanding?.revision?`creative-v1:${graph.understanding.revision}:`:''
+  const creativeNext=(graph?.graph.chapters||[]).find(c=>c.kind==='creative'&&
+    sources.filter(s=>c.assetIds.includes(s.id)).length>=2&&
+    !settings?.attempted.includes(creativeRound+c.id+':'+c.revision)&&
+    !jobs.some(j=>j.status==='complete'&&j.chapterId===c.id&&j.chapterRevision===c.revision))
+  const creativeReady=Boolean(creativeRound&&creativeNext&&(settings?.attempted.filter(k=>k.startsWith(creativeRound)).length||0)<2)
   const displayed = jobs.find((j) => j.id === selected) || current || jobs.find((j) => j.status === 'complete') || jobs[0]
   const upsert = (job: FilmJob) => setJobs((all) => [job, ...all.filter((j) => j.id !== job.id)].sort((a, b) => b.createdAt - a.createdAt))
   useEffect(() => { setContextDraft(displayed?.storyContext?.text || '') }, [displayed?.id, displayed?.storyContext?.revision])
@@ -93,26 +103,30 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
   },[requestedChapter,batch,loaded,capable,current,starting,graph])
 
   useEffect(() => {
-    if (!loaded || !capable || !settings?.enabled || !batch || current || starting || analyzing || sources.length < 2 || pendingUpdate) return
+    if (!loaded || !capable || !settings?.enabled || !batch || current || starting || analyzing || sources.length < 2 || pendingUpdate || changedChapter || creativeReady) return
     if (roundUsed >= 3) return
     const next = stories.find(story => story.automatic && !attempted(story.key) && !made(story))
     if (stories.length && !next) return
     if (!stories.length && (settings.attempted.includes(round+'album') || jobs.some(j => j.batch === batch&&j.version==='memory-film-6'))) return
     const timer = window.setTimeout(() => { void start(false, undefined, next ? round + next.key : round+'album', next?.sources || sources,next?.chapterId) }, 10_000)
     return () => window.clearTimeout(timer)
-  }, [loaded, capable, settings, batch, jobs, current, starting, analyzing, sources, stories,pendingUpdate?.key])
+  }, [loaded, capable, settings, batch, jobs, current, starting, analyzing, sources, stories,pendingUpdate?.key,changedChapter?.revision,creativeReady])
 
   // Confirmed identities and factual corrections invalidate their own chapter.
   // Track the revision durably so a correction never becomes an endless render.
-  const changedChapter=(graph?.graph.chapters||[]).find(chapter=>{
-    const latest=jobs.find(j=>j.chapterId===chapter.id&&j.status==='complete'&&j.version==='memory-film-6')
-    return latest&&latest.chapterRevision!==chapter.revision&&!settings?.attempted.includes(`identity:${chapter.id}:${chapter.revision}`)
-  })
   useEffect(()=>{
     if(!changedChapter||!settings?.enabled||!capable||current||starting||analyzing||!batch||pendingUpdate)return
     const timer=window.setTimeout(()=>{void start(false,undefined,`identity:${changedChapter.id}:${changedChapter.revision}`,sources.filter(s=>changedChapter.assetIds.includes(s.id)),changedChapter.id)},20_000)
     return()=>window.clearTimeout(timer)
   },[changedChapter?.revision,settings,capable,current,starting,analyzing,batch,pendingUpdate?.key])
+
+  // A fresh semantic pass can propose genuinely different cuts of the same
+  // album. Produce at most two per understanding revision, with no user brief.
+  useEffect(()=>{
+    if(!creativeReady||!creativeNext||!settings?.enabled||!capable||current||starting||analyzing||!batch||pendingUpdate||changedChapter)return
+    const timer=window.setTimeout(()=>void start(false,undefined,creativeRound+creativeNext.id+':'+creativeNext.revision,sources.filter(s=>creativeNext.assetIds.includes(s.id)),creativeNext.id),10_000)
+    return()=>window.clearTimeout(timer)
+  },[creativeRound,creativeNext?.revision,creativeReady,settings,capable,current,starting,analyzing,batch,pendingUpdate?.key,changedChapter?.revision])
 
   // A confirmed correction may arrive from this UI or an authorized assistant.
   // Re-edit only that film's photos, once per revision, respecting Pause.

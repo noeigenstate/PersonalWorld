@@ -93,7 +93,7 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
 
   function plan(job) {
     const revision=job.knowledgeRevision
-    void planner(config,job.sources).then(result=>{
+    void planner(config,job.sources,{brief:job.creativeBrief}).then(result=>{
       if(job.status!=='planning'||!jobs.has(job.id)||job.knowledgeRevision!==revision)return
       Object.assign(job,result,{status:'awaiting-images',progress:10});persist(job)
     }).catch(error=>{
@@ -139,13 +139,14 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       const sources = freshSources(user,chapter?initial.filter(s=>chapter.assetIds.includes(s.id)):initial).filter(s=>s.sourceAvailable!==false)
       if (sources.length < 2) return [400, { error: '至少需要 2 张已有信息卡的照片' }]
       const batch = original?.batch || (/^[a-f0-9]{16,64}$/.test(body.batch) ? body.batch : filmFingerprint(sources))
-      const fingerprint = filmFingerprint(sources)
+      const creativeBrief=chapter?.brief||original?.creativeBrief
+      const fingerprint = filmFingerprint({sources,creativeBrief})
       const ongoing = [...jobs.values()].find((j) => j.userId === user.id && active.has(j.status))
       if (ongoing) return [200, publicJob(ongoing)]
       const cached = [...jobs.values()].find((j) => j.userId === user.id && j.fingerprint === fingerprint && j.status === 'complete')
       if (cached && body.regenerate !== true) return [200, publicJob(cached)]
       const previous = [...jobs.values()].filter((j) => j.userId === user.id).sort((a, b) => b.createdAt - a.createdAt)
-      const job = { id: randomUUID(), userId: user.id, batch, fingerprint, knowledgeRevision:filmKnowledgeRevision(sources), version: FILM_VERSION, renderVersion: FILM_RENDER_VERSION, createdAt: Date.now(), expiresAt: Date.now() + lifetime, status: 'planning', progress: 2, sources, uploaded: [],factIds:[...new Set(sources.flatMap(s=>s.factIds||[]))] }
+      const job = { id: randomUUID(), userId: user.id, batch, fingerprint,creativeBrief, knowledgeRevision:filmKnowledgeRevision(sources), version: FILM_VERSION, renderVersion: FILM_RENDER_VERSION, createdAt: Date.now(), expiresAt: Date.now() + lifetime, status: 'planning', progress: 2, sources, uploaded: [],factIds:[...new Set(sources.flatMap(s=>s.factIds||[]))] }
       job.lineageId=original?.lineageId||original?.id||job.id
       if(original)job.supersedesId=original.id
       if(chapter){job.chapterId=chapter.id;job.chapterRevision=chapter.revision}
@@ -188,7 +189,8 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       if (['queued', 'rendering', 'complete'].includes(job.status)) return [200, publicJob(job)]
       if (job.status !== 'awaiting-images' || job.uploaded.length !== job.plan.shots.length) return [409, { error: '选中的照片尚未全部上传' }]
       const refreshed=freshSources(user,job.sources)
-      if(filmKnowledgeRevision(refreshed)!==(job.knowledgeRevision||filmKnowledgeRevision(job.sources))){
+      const freshChapter=job.chapterId?chapterFor(user,job.chapterId):undefined
+      if(filmKnowledgeRevision(refreshed)!==(job.knowledgeRevision||filmKnowledgeRevision(job.sources))||freshChapter&&freshChapter.revision!==job.chapterRevision){
         // A correction during planning/upload must not silently publish an edit
         // made from old knowledge. Reuse the task and let the browser supply the
         // newly selected images; no extra face extraction is needed.
@@ -196,12 +198,12 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
         if(job.status!=='awaiting-images')return [409,{error:'任务已经停止'}]
         const sources=refreshed.filter(s=>s.sourceAvailable!==false)
         if(sources.length<2){job.status='failed';job.error='照片已更新，可用照片不足两张';persist(job);return [409,{error:job.error}]}
-        Object.assign(job,{sources,knowledgeRevision:filmKnowledgeRevision(sources),fingerprint:filmFingerprint(sources),status:'planning',uploaded:[],progress:2,factIds:[...new Set(sources.flatMap(s=>s.factIds||[]))]})
-        const chapter=job.chapterId?chapterFor(user,job.chapterId):undefined
-        if(chapter)job.chapterRevision=chapter.revision
+        const creativeBrief=freshChapter?.brief||job.creativeBrief
+        Object.assign(job,{sources,creativeBrief,knowledgeRevision:filmKnowledgeRevision(sources),fingerprint:filmFingerprint({sources,creativeBrief}),status:'planning',uploaded:[],progress:2,factIds:[...new Set(sources.flatMap(s=>s.factIds||[]))]})
+        if(freshChapter)job.chapterRevision=freshChapter.revision
         delete job.plan;delete job.warning;persist(job);plan(job);return [202,publicJob(job)]
       }
-      job.plan=validateFilmPlan(job.plan,job.sources)
+      job.plan=validateFilmPlan(job.plan,job.sources,{brief:job.creativeBrief})
       job.status = 'queued'; job.progress = 15; persist(job); void pump()
       return [202, publicJob(job)]
     },

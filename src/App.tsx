@@ -516,7 +516,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         <div className="app-actions">
           <PhotoCull assets={memory.assets} ready={ready} aiAvailable={aiConfig.available} onLooks={saveLooks} onDelete={async (ids) => { await deleteAssets(ids); setNotice(`已删除 ${ids.length} 张照片`) }} />
           <MemoryLibrary library={library} assets={memory.assets} onPhoto={openPhoto} onFilm={chapter=>setFilmChapter({chapter,at:Date.now()})} />
-          <MemoryFilms assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId) || library.busy} graph={library.state} requestedChapter={filmChapter} />
+          <MemoryFilms assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId) || library.busy || Boolean(library.state?.understanding?.busy)} graph={library.state} requestedChapter={filmChapter} />
           <span className={`connection-status ${aiConfig.available ? 'online' : ''}`} title={aiConfig.message}><span />{aiConfig.available ? 'StepFun 已连接' : '本地模式'}</span>
           <button className="button button-primary top-import" onClick={() => setImportOpen(true)}><Plus size={16} />导入影像</button>
           <span className="account" title={`已登录：${account.username}`}><UserRound size={15} /><span>{account.username}</span></span>

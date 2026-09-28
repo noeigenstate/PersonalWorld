@@ -32,7 +32,7 @@ const mock = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ ...plan, title: personal ? '我画的四季公园' : '公园里的四季片段', reason: '不同月份的公园插画组成一份时间相册。' }) } }] }))
 })
 await new Promise((resolve) => mock.listen(0, '127.0.0.1', resolve))
-const api = spawn(process.execPath, ['server/index.mjs'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PORT: '0', USERS_FILE: join(dir, 'users.json'), MEMORY_FILMS_DIR: join(dir, 'jobs'), ...(process.env.MEMORY_FILM_LIVE === '1' ? {} : { STEPFUN_BASE_URL: `http://127.0.0.1:${mock.address().port}`, STEPFUN_API_KEY: 'fixture', STEPFUN_MODEL: 'fixture' }) } })
+const api = spawn(process.execPath, ['server/index.mjs'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PORT: '0', STORY_UNDERSTANDING_DISABLED:'1', USERS_FILE: join(dir, 'users.json'), MEMORY_FILMS_DIR: join(dir, 'jobs'), ...(process.env.MEMORY_FILM_LIVE === '1' ? {} : { STEPFUN_BASE_URL: `http://127.0.0.1:${mock.address().port}`, STEPFUN_API_KEY: 'fixture', STEPFUN_MODEL: 'fixture' }) } })
 let browser
 try {
   const port = await new Promise((resolve, reject) => { const timer = setTimeout(() => reject(new Error('API startup timeout')), 10000); api.stdout.on('data', (chunk) => { const hit = String(chunk).match(/127\.0\.0\.1:(\d+)/); if (hit) { clearTimeout(timer); resolve(hit[1]) } }); api.on('exit', () => { clearTimeout(timer); reject(new Error('API exited')) }) })

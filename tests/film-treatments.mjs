@@ -22,7 +22,7 @@ try {
     return c.toDataURL('image/jpeg',.9).split(',')[1]
   }))
 } finally {await browser.close()}
-const directions=['snow-journal','sweet-moments','little-makers'], music=new Set()
+const directions=process.env.FILM_TEST_DIRECTIONS?.split(',')||['snow-journal','sweet-moments','little-makers','together-pages','detail-poem'], music=new Set()
 for(const treatment of directions){
   const directory=join(root,treatment);await mkdir(directory)
   for(let i=0;i<3;i++)await writeFile(join(directory,`image-${i}.jpg`),Buffer.from(fixtures[i],'base64'))
@@ -34,5 +34,5 @@ for(const treatment of directions){
   assert.ok((await readFile(join(directory,'film.mp4'))).length>4096)
   music.add(createHash('sha256').update(makeCreativeMusic(5,treatment)).digest('hex'))
 }
-assert.equal(music.size,3)
+assert.equal(music.size,directions.length)
 console.log(JSON.stringify({directory:root,directions,fullDecode:true,musicVariants:music.size}))

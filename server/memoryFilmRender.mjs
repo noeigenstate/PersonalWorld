@@ -4,12 +4,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const binary = () => process.env.FFMPEG_PATH || 'ffmpeg'
-export const FILM_RENDER_VERSION = 'creative-scenes-4'
+export const FILM_RENDER_VERSION = 'creative-scenes-5'
 export const filmTreatments = {
   'warm-album': {paper:'fbf4e8', ink:'655548', accent:'d5ae82', width:624, height:664, top:134, stride:.8, transpose:0, harmonic:.22, label:'日子的片段'},
   'snow-journal': {paper:'edf5f6', ink:'385766', accent:'a6c9d5', width:648, height:682, top:124, stride:1.08, transpose:5, harmonic:.09, label:'雪地手记'},
   'sweet-moments': {paper:'fff0e8', ink:'81524a', accent:'dfaa91', width:616, height:646, top:146, stride:.59, transpose:2, harmonic:.30, label:'甜甜的小片刻'},
   'little-makers': {paper:'f7f4df', ink:'536657', accent:'9cbb9a', width:636, height:662, top:138, stride:.72, transpose:-2, harmonic:.17, label:'小小创作簿'},
+  'together-pages': {paper:'f6f1e5', ink:'344f47', accent:'ba8d66', label:'一起的这些日子'},
+  'detail-poem': {paper:'203c3b', ink:'f3ead5', accent:'baa783', label:'日常里的小小诗句'},
 }
 export function runMedia(command, args, { cwd, signal, progress } = {}) {
   return new Promise((resolve, reject) => {
@@ -72,18 +74,24 @@ export function makeFilmMusic(seconds, treatment = 'warm-album') {
 const drawText = (file, size, y, color = '0x655548') => `drawtext=fontfile=font.ttf:textfile=${file}:expansion=none:fontsize=${size}:fontcolor=${color}:x=(w-tw)/2:y=${y}`
 const lines = (text) => { const chars = [...text]; return chars.length > 17 ? chars.slice(0, 16).join('') + '\n' + chars.slice(16).join('') : text }
 
-// Three original arrangements: spacious felt-piano/pad, playful mallet/bass,
-// and a lightly swung plucked notebook motif. No licensed recordings required.
+// Content-directed original arrangements; relationship call-and-response and
+// quiet detail pieces have their own rhythm and harmonic space.
 export function makeCreativeMusic(seconds,treatment='warm-album'){
-  const snow=treatment==='snow-journal',sweet=treatment==='sweet-moments'
+  const snow=treatment==='snow-journal',sweet=treatment==='sweet-moments',together=treatment==='together-pages',poem=treatment==='detail-poem'
   const rate=32000,samples=Math.ceil(seconds*rate),buffer=Buffer.alloc(44+samples*2)
   buffer.write('RIFF');buffer.writeUInt32LE(buffer.length-8,4);buffer.write('WAVEfmt ',8);buffer.writeUInt32LE(16,16);buffer.writeUInt16LE(1,20);buffer.writeUInt16LE(1,22);buffer.writeUInt32LE(rate,24);buffer.writeUInt32LE(rate*2,28);buffer.writeUInt16LE(2,32);buffer.writeUInt16LE(16,34);buffer.write('data',36);buffer.writeUInt32LE(samples*2,40)
-  const beat=60/(snow?67:sweet?114:86)
-  const chords=snow?[[60,64,67,71],[57,60,64,67],[53,57,60,64],[55,59,62,69]]:sweet?[[65,69,72,77],[62,65,69,74],[67,71,74,79],[60,64,67,72]]:[[62,65,69,72],[58,62,65,69],[53,57,60,64],[60,64,67,70]]
+  const beat=60/(poem?52:together?76:snow?67:sweet?114:86)
+  const chords=poem?[[57,64,69,71],[53,60,65,69],[60,67,72,76],[55,62,67,69]]:together?[[60,64,67,72],[57,60,64,69],[53,57,60,65],[55,59,62,67]]:snow?[[60,64,67,71],[57,60,64,67],[53,57,60,64],[55,59,62,69]]:sweet?[[65,69,72,77],[62,65,69,74],[67,71,74,79],[60,64,67,72]]:[[62,65,69,72],[58,62,65,69],[53,57,60,64],[60,64,67,70]]
   const notes=[]
   for(let b=0;b*beat<seconds;b++){
     const chord=chords[Math.floor(b/8)%4],start=b*beat
-    if(snow){
+    if(poem){
+      if(b%8===0)for(const note of chord.slice(0,3))notes.push({start,note:note-12,gain:.031,decay:4.8,type:'pad'})
+      if(b%4===1)notes.push({start,note:chord[3],gain:.075,decay:2.2,type:'piano'})
+    }else if(together){
+      if(b%4<3)notes.push({start,note:chord[[0,1,2,3][b%4]]+(b%8>=4?12:0),gain:b%8>=4?.052:.09,decay:1.15,type:'piano'})
+      if(b%4===0)notes.push({start,note:chord[0]-12,gain:.07,decay:1.8,type:'pad'})
+    }else if(snow){
       if(b%4!==3)notes.push({start,note:chord[[0,2,1,3][b%4]],gain:.11,decay:1.5,type:'piano'})
       if(b%8===0)for(const note of chord.slice(0,3))notes.push({start,note:note-12,gain:.036,decay:4.2,type:'pad'})
     }else{

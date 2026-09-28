@@ -6,15 +6,22 @@ import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {chromium} from 'playwright'
 import {openIdentityStore} from '../server/identityStore.mjs'
+import {createStoryUnderstanding} from '../server/storyUnderstanding.mjs'
+import {validateCreativeStories} from '../server/storyUnderstandingPlan.mjs'
 
 const root=mkdtempSync(join(tmpdir(),'pw-memory-library-')),store=openIdentityStore(root)
+const understanding=createStoryUnderstanding(root,{available:true,delayMs:0,planner:async(_config,kind,input)=>{
+ assert.equal(kind,'library','fixture dates have one photo per event')
+ const ids=input.photos.map(p=>p.id)
+ return validateCreativeStories({stories:[{key:'drawing-details',title:'手上的小小创作',format:'details',angle:'跨月份看手中的画笔',assetIds:ids,direction:'用并置和留白组织动作',sequence:[{text:'在纸上画画',assetIds:ids}],evidence:[{text:'画画是这些片刻里的共同活动',assetIds:ids}]}]},input)
+}})
 const assets=Array.from({length:3},(_,i)=>({id:`library-fixture-${i}`,hash:`content-${i}`,kind:'image',name:'测试插画.jpg',capturedAt:`2026-0${i+1}-01T06:00:00Z`,dateSource:'exif',width:720,height:960,location:{aoi:'测试公园',source:'gps'},card:{title:'创作测试素材',scene:'在纸上画画',tags:['绘画'],clues:[],questions:[],createdAt:'v1'}}))
 store.sync({assets,events:[]})
 for(const asset of assets)store.saveDetection(asset.id,store.needsAnalysis(asset.id,'fixture').key,{fingerprint:'fixture',faces:[{embedding:Array.from({length:128},(_,i)=>i===0?1:0),quality:'good',box:[.2,.2,.5,.5],confidence:.99}]})
 const browser=await chromium.launch({channel:'chrome'}),page=await browser.newPage({viewport:{width:1440,height:1000}}),errors=[],filmCalls=[]
 try{
  page.on('pageerror',e=>errors.push(e.message))
- const state=()=>({...store.snapshot(),capability:{available:true}})
+ const state=()=>({...understanding.observe(store.snapshot()),capability:{available:true}})
  await page.route('**/api/**',async route=>{
    const path=new URL(route.request().url()).pathname,body=route.request().method()==='POST'?route.request().postDataJSON():{}
    try{
@@ -23,7 +30,7 @@ try{
      if(path.startsWith('/api/memory-graph/faces/'))return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="#ddd3b3"/><circle cx="64" cy="50" r="25" fill="#8a9f85"/><path d="M24 120Q64 40 104 120" fill="#8a9f85"/></svg>'})
      if(path==='/api/memory-graph')return route.fulfill({json:state()})
      if(path==='/api/memory-graph/sync'){store.sync(body);return route.fulfill({json:state()})}
-     if(path.startsWith('/api/memory-graph/')){const op=path.split('/').at(-1);store[op](op==='undo'?body.id:body);return route.fulfill({json:state()})}
+     if(path.startsWith('/api/memory-graph/')){const op=path.split('/').at(-1);if(op==='understanding')understanding.control(body);else store[op](op==='undo'?body.id:body);return route.fulfill({json:state()})}
      if(path==='/api/memory-films'){
        if(route.request().method()==='GET')return route.fulfill({json:{jobs:[],capability:{available:true}}})
        filmCalls.push(body);return route.fulfill({json:{id:'00000000-0000-4000-8000-000000000001',status:'planning',createdAt:Date.now(),uploaded:[],progress:2}})
@@ -50,6 +57,12 @@ try{
  await page.setViewportSize({width:430,height:900});await page.screenshot({path:join(root,'identity-mobile.png')})
  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)
  await page.setViewportSize({width:1440,height:1000});await page.getByRole('button',{name:'故事章节',exact:true}).click()
+ await page.getByRole('heading',{name:'手上的小小创作',exact:true}).waitFor({timeout:12000})
+ assert.match(await page.locator('.understanding-status').innerText(),/找到 1 个故事角度/)
+ await page.screenshot({path:join(root,'continuous-stories-desktop.png')})
+ await page.setViewportSize({width:430,height:900});await page.screenshot({path:join(root,'continuous-stories-mobile.png')})
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)
+ await page.setViewportSize({width:1440,height:1000})
  const card=page.locator('.story-chapters article').filter({has:page.getByRole('heading',{name:'团团的时光',exact:true})})
  await card.getByRole('button',{name:'自动剪成短片'}).click()
  await page.waitForFunction(()=>document.querySelector('.film-modal'))
@@ -58,4 +71,4 @@ try{
  const enriched=store.enrich(filmCalls[0].sources);assert.equal(enriched.length,3);assert.ok(enriched.every(s=>s.people[0].id===person.id&&s.story.includes('女儿')));assert.ok(enriched.every(s=>!s.embedding))
  assert.deepEqual(errors,[])
  console.log(JSON.stringify({directory:root,confirmedPeople:1,chapterToFilm:true,photos:enriched.length,errors}))
-}finally{await browser.close();store.close()}
+}finally{await browser.close();understanding.close();store.close()}

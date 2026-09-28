@@ -64,3 +64,25 @@ test('an older film can be updated even when a different film is newest',()=>{
  const jobs=[{id:'other',createdAt:20,status:'complete'},{id:'beach',createdAt:10,status:'complete',knowledgeChanged:true,currentKnowledgeRevision:'new-fact'}]
  assert.equal(nextFilmUpdate(jobs,[]).job.id,'beach')
 })
+
+test('creative briefs select real treatments and separate identical-photo edits',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'pw-film-brief-')),user={id:'isolated-brief-test'},seen=[]
+ let chapter={id:'creative:test',revision:'one',assetIds:['a','b'],brief:{format:'details',angle:'手上的动作'}}
+ const service=createFilmService({}, {root,capability:async()=>({available:true}),exportRoot:undefined,
+   chapterFor:()=>chapter,
+   planner:async(_config,input,options)=>{seen.push(options.brief);return {plan:validateFilmPlan(fallbackFilm(input),input,options),planner:'local'}},
+   renderer:async(dir,plan)=>{assert.equal(plan.treatment,'detail-poem');writeFileSync(join(dir,'film.mp4'),'test placeholder');return {duration:8,bytes:16}},
+ })
+ try{
+   const first=(await service.start({sources,chapterId:chapter.id},user))[1]
+   let job=await waitFor(service,first.id,user,'awaiting-images');await images(service,job,user);await service.render(job.id,user);await waitFor(service,job.id,user,'complete')
+   assert.equal(seen[0].angle,'手上的动作')
+   chapter={...chapter,revision:'two',brief:{format:'details',angle:'环境中的小线索'}}
+   const next=(await service.start({sources,chapterId:chapter.id},user))[1];assert.notEqual(next.id,first.id)
+   await waitFor(service,next.id,user,'awaiting-images');assert.equal(seen.at(-1).angle,'环境中的小线索')
+   await service.cancel(next.id,user)
+   const together=sources.map(s=>({...s,people:[{id:'parent'},{id:'child'}]}))
+   assert.equal(validateFilmPlan(fallbackFilm(together),together,{brief:{format:'relationship'}}).treatment,'together-pages')
+   assert.equal(validateFilmPlan(fallbackFilm(sources),sources,{brief:{format:'relationship'}}).treatment,'warm-album')
+ }finally{service.close();assert.equal(dirname(resolve(root)),resolve(tmpdir()));rmSync(root,{recursive:true,force:true})}
+})

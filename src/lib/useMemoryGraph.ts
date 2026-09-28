@@ -17,18 +17,20 @@ export function useMemoryGraph(assets:MemoryAsset[],events:MemoryEvent[],ready:b
   useEffect(()=>{
     if(!ready)return
     let cancelled=false
-    const refresh=()=>{if(document.visibilityState==='visible')void graphRequest().then(value=>{if(!cancelled)setState(value)}).catch(()=>{})}
+    // An open background tab must still notice that understanding finished so
+    // it can supply local originals to the next film task.
+    const refresh=()=>{if(document.visibilityState==='visible'||state?.understanding?.busy)void graphRequest().then(value=>{if(!cancelled)setState(value)}).catch(()=>{})}
     refresh();window.addEventListener('focus',refresh)
-    const timer=window.setInterval(refresh,60000)
+    const timer=window.setInterval(refresh,state?.understanding?.busy?2500:60000)
     return()=>{cancelled=true;window.removeEventListener('focus',refresh);window.clearInterval(timer)}
-  },[ready])
+  },[ready,state?.understanding?.busy])
   useEffect(()=>{
     if(!ready||wait||paused===null)return
     let cancelled=false
     const timer=window.setTimeout(()=>{
       queue.current=queue.current.catch(()=>{}).then(async()=>{
         if(cancelled)return
-        const synced=await graphRequest('/sync',metadata)
+        const synced=await graphRequest('/sync',{...metadata,automatic:paused===false})
         if(cancelled)return
         setState(synced);setError('')
         if(paused||!synced.capability?.available)return
@@ -53,6 +55,6 @@ export function useMemoryGraph(assets:MemoryAsset[],events:MemoryEvent[],ready:b
   const mutate=async(path:string,body:unknown)=>{
     const value=await graphRequest(path,body);setState(prior=>({...value,capability:prior?.capability}));return value
   }
-  const setPaused=(value:boolean)=>{setPause(value);void savePreference('identity-paused',value).catch(()=>setError('暂停设置保存失败'))}
+  const setPaused=(value:boolean)=>{setPause(value);void savePreference('identity-paused',value).catch(()=>setError('暂停设置保存失败'));void mutate('/understanding',{paused:value}).catch(e=>setError(e.message))}
   return {state,busy,error,progress,paused:paused!==false,setPaused,mutate,retry:()=>retry(v=>v+1)}
 }
