@@ -28,6 +28,8 @@ body{overflow:hidden}
 .life-map{position:absolute;inset:0}
 .life-map-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .life-map-amap{position:absolute;inset:0}
+/* The AMap logo and copyright line are hidden at the user's request (see note in the commit) */
+.life-map-amap .amap-logo,.life-map-amap .amap-copyright{display:none!important}
 .map-neighbourhood .life-map-amap{filter:sepia(.3) saturate(.78)}
 .map-color-wash{position:absolute;inset:0;background:linear-gradient(145deg,#f6e8d2,#d8ebd1 68%,#dfecd8);opacity:.42;mix-blend-mode:multiply;pointer-events:none}
 .map-color-wash[hidden]{display:none}
