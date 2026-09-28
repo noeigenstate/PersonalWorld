@@ -15,7 +15,7 @@
 - 分析是自动的：照片信息卡和事件分析在导入后自行进行，用户只核对与确认，不放"用 StepFun 分析"之类的手动按钮。
 - 界面风格是 Apple 液态玻璃，按 `skills/liquid-glass` 执行：顶栏、面板、弹层等控件层用玻璃，地图标签和照片属于内容层，不用玻璃。
 - 界面保持静止：图标和标记不漂浮、不抖动，卡片悬停不位移。唯一例外是地球背后的星空（`.globe-sky`）：流星、飞碟、空间站是用户要的，属于内容层，`prefers-reduced-motion` 时不动。
-- 地球永远是球体（不再展开成平面地图），交接给街区地图发生在更近处（`HANDOFF_ALTITUDE`），地球外没有光晕。
+- 地球永远是球体（不再展开成平面地图），交接给街区地图发生在更近处（`HANDOFF_ALTITUDE`），地球外没有光晕。街区地图本身也按球面弯曲（`src/map/planetCurve.ts`：离视野中心越远越下沉，低缩放时夸大曲率，13 级以上恢复真实值）；新增的 3D 材质自动带上曲率，手写着色器要引入 `PLANET_CURVE_GLSL`，DOM 标注用 `planetDrop` 贴地。
 - StepFun 走 Step Plan 套餐：`STEPFUN_BASE_URL=https://api.stepfun.com/step_plan/v1`（`/v1` 扣账户余额）；套餐下语音识别是 `/audio/asr/sse`，见 `skills/stepfun-api`。
 - 密钥只放 `.env`，由服务端读取；`.env`、`server/data/`、`data/`（用户照片）不入库。
 - 用户的照片和记忆按账户存在服务电脑硬盘 `server/data/accounts/<账户>/`（`server/accountVault.mjs`）；浏览器 IndexedDB 只是缓存，清除后登录自动恢复。改动存储时同步修改隐私声明并升级 `PRIVACY_VERSION`（`server/users.mjs` 与 `PrivacyStatement.tsx` 两处）。

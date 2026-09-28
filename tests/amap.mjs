@@ -203,12 +203,13 @@ try {
   if (await page.getByRole('button', { name: '关闭事件详情' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭事件详情' }).click()
 
   // Level 2, automatic: a photo without GPS is read on import; its landmark places it on the map
-  await page.getByRole('button', { name: '关闭人生管家' }).click()
+  // (the butler has no window to close any more; its subtitle can simply be dismissed)
+  if (await page.getByRole('button', { name: '收起字幕' }).count()) await page.getByRole('button', { name: '收起字幕' }).click()
   await page.getByRole('button', { name: '导入影像' }).click()
   await page.locator('input[type="file"]').setInputFiles(fileURLToPath(new URL('../skills/photo-context/evals/2026-09-24/images/pearl-a.jpg', import.meta.url)))
   await page.getByRole('status').getByText(/已导入 1 个影像/).waitFor({ timeout: 30000 })
   await page.waitForFunction(() => document.querySelector('.locating-chip'), null, { timeout: 15000 }).catch(() => undefined)
-  await page.locator('.locating-chip').getByText(`已生成 ${files.length + 1} 张照片信息卡`).waitFor({ timeout: 60000 })
+  await page.locator('.locating-chip').getByText(`${files.length + 1} 张照片信息卡`).waitFor({ timeout: 60000 })
   assert.ok(cardRequests.includes('pearl-a.jpg'), '新导入的无 GPS 照片自动生成信息卡')
   // The file has no EXIF, so it is the newest event: the last dot on the time bar
   await page.locator('.timebar .dot').last().click()
@@ -265,9 +266,13 @@ try {
   await page.getByRole('button', { name: '返回地球' }).click()
   await page.locator('.life-globe').waitFor()
   // Zoom in until the street map takes over (the hand-over altitude is the globe's business)
-  for (let i = 0; i < 30 && !(await page.locator('.life-map-globe.away').count()); i++) { await page.getByRole('button', { name: '放大地球' }).click(); await page.waitForTimeout(250) }
+  // (the last click can race the hand-over, which hides the globe and its buttons)
+  for (let i = 0; i < 30 && !(await page.locator('.life-map-globe.away').count()); i++) { await page.getByRole('button', { name: '放大地球' }).click({ timeout: 2000 }).catch(() => {}); await page.waitForTimeout(250) }
   await page.locator('.life-map-globe.away').waitFor({ state: 'attached', timeout: 10000 })
-  await page.locator('.life-map[data-scene-state="ready"]').waitFor({ timeout: 30000 })
+  // The hand-over is at city scale (~500 km of view), where street scenes are not drawn yet
+  await page.waitForTimeout(800)
+  const backZoom = Number(await page.locator('.life-map.life-map-layer').getAttribute('data-zoom'))
+  assert.ok(backZoom > 7 && backZoom < 9.5, `往返后再放大，街区地图仍在城市尺度接手（${backZoom} 级）`)
   assert.equal(errors.length, 0, `浏览器运行时不应报错：${errors.join('; ')}`)
   console.log('AMap test passed: security proxy, geocoding, real-photo map, story line, photo cluster chooser, GPS → street number, automatic cards and landmark locating, regional scenes, map dragging.')
   assert.equal(consoleLog.filter((item) => /error: THREE\.WebGLProgram: Shader Error/i.test(item)).length, 0, '地图场景着色器应在真实浏览器中编译成功')

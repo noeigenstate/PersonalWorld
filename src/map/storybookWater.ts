@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
+import { PLANET_CURVE_GLSL, planetCurve } from './planetCurve'
 
 type Point = [number, number]
 
@@ -68,11 +69,13 @@ export function createStorybookWater(geometry: THREE.BufferGeometry, polygons: P
         shallow: { value: new THREE.Color(coast ? '#b8ecdb' : '#ade0ca') },
         deep: { value: new THREE.Color(coast ? '#4db9d1' : '#75c6c8') },
         foam: { value: new THREE.Color('#f4fff1') },
+        ...planetCurve,
       },
       vertexShader: `uniform mat4 textureMatrix;
         varying vec4 vMirror; varying vec2 vMap; varying vec3 vView; varying vec3 vNormal;
+        ${PLANET_CURVE_GLSL}
         void main(){vMap=position.xy; vMirror=textureMatrix*vec4(position,1.);
-          vec4 p=modelViewMatrix*vec4(position,1.);vView=-p.xyz;vNormal=normalize(normalMatrix*normal);gl_Position=projectionMatrix*p;}`,
+          vec4 p=viewMatrix*planetCurved(modelMatrix*vec4(position,1.));vView=-p.xyz;vNormal=normalize(normalMatrix*normal);gl_Position=projectionMatrix*p;}`,
       fragmentShader: `uniform sampler2D tDiffuse, shore;
         uniform vec4 mapBounds;uniform float time,reach,coast;uniform vec3 shallow,deep,foam;
         varying vec4 vMirror;varying vec2 vMap;varying vec3 vView;varying vec3 vNormal;

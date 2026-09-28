@@ -204,7 +204,7 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
     meteors: [] as { x: number; y: number; vx: number; vy: number; born: number; life: number }[],
     nextMeteor: 2500,
     saucer: null as { start: number; y: number; dir: number; span: number } | null,
-    nextSaucer: 9000,
+    nextSaucer: 4000,
     stationStart: 0,
     last: 0,
   }
@@ -217,13 +217,20 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
     if (!g) return
     g.setTransform(ratio, 0, 0, ratio, 0, 0)
     g.clearRect(0, 0, width, height)
-    // Space station: a slow arc across the upper sky, 150 s per crossing
+    // Everything here is drawn behind the globe, so it keeps to the sky around it: the globe's
+    // disc on screen, from the camera distance
+    const tan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+    const globeR = RADIUS / (camera.position.z * tan) * height / 2
+    const globeX = width / 2, globeY = height / 2 - (insets.bottom - insets.top) / 2
+    const clearOfGlobe = (x: number, y: number, margin: number) => Math.hypot(x - globeX, y - globeY) > globeR + margin
+    // Space station: orbits the globe once every 150 s, passing behind it at the top and bottom
     if (!skyState.stationStart) skyState.stationStart = now - 30000
     const stationT = ((now - skyState.stationStart) % 150000) / 150000
-    const sx = -60 + (width + 120) * stationT, sy = height * 0.14 - Math.sin(stationT * Math.PI) * height * 0.05
+    const orbit = stationT * Math.PI * 2
+    const sx = globeX + Math.cos(orbit) * (globeR * 1.18 + 30), sy = globeY + Math.sin(orbit) * (globeR * 0.5 + 24)
     g.save()
     g.translate(sx, sy)
-    g.rotate(Math.sin(stationT * Math.PI * 2) * 0.12 - 0.15)
+    g.rotate(Math.atan2(Math.cos(orbit) * (globeR * 0.5 + 24), -Math.sin(orbit) * (globeR * 1.18 + 30)) + (Math.cos(orbit) < 0 ? Math.PI : 0))
     g.fillStyle = '#3f6fd8'
     for (const side of [-1, 1]) {
       g.fillRect(side > 0 ? 16 : -16 - 26, -5, 26, 10)
@@ -243,15 +250,19 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
     g.fillStyle = `rgba(255,90,90,${0.5 + 0.5 * Math.sin(now / 400)})`
     g.beginPath(); g.arc(0, -15, 1.6, 0, Math.PI * 2); g.fill()
     g.restore()
-    // Saucer with its pilot, crossing in about 8 s along a gentle wave
-    if (!skyState.saucer && now > skyState.nextSaucer) skyState.saucer = { start: now, y: height * (0.18 + skyRandom() * 0.5), dir: skyRandom() > 0.5 ? 1 : -1, span: 8000 + skyRandom() * 3000 }
+    // Saucer with its pilot, crossing in about 8 s along a gentle wave between the top bar and the
+    // time line; in the middle of its run it passes behind the Earth
+    if (!skyState.saucer && now > skyState.nextSaucer) {
+      const top = insets.top + 40, bottom = height - insets.bottom - 40
+      skyState.saucer = { start: now, y: top + skyRandom() * Math.max(0, bottom - top), dir: skyRandom() > 0.5 ? 1 : -1, span: 8000 + skyRandom() * 3000 }
+    }
     if (skyState.saucer) {
       const s = skyState.saucer
       const t = (now - s.start) / s.span
-      if (t > 1) { skyState.saucer = null; skyState.nextSaucer = now + 18000 + skyRandom() * 22000 }
+      if (t > 1) { skyState.saucer = null; skyState.nextSaucer = now + 7000 + skyRandom() * 9000 }
       else {
         const x = s.dir > 0 ? -50 + (width + 100) * t : width + 50 - (width + 100) * t
-        const y = s.y + Math.sin(t * Math.PI * 3) * 14
+        const y = s.y + Math.sin(t * Math.PI * 3) * 9
         g.save()
         g.translate(x, y)
         g.scale(s.dir, 1)
@@ -282,12 +293,51 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
         g.restore()
       }
     }
-    // Shooting stars: short bright streaks, gone in under a second
+    // A little alien in a bubble helmet, drifting slowly in the open sky beside the globe, waving
+    const alienSide = width - globeX - globeR > globeX - globeR ? 1 : -1
+    const ax = globeX + alienSide * (globeR + Math.max(70, (width / 2 - globeR) * 0.55)) + Math.sin(now / 9000) * 18
+    const ay = globeY - globeR * 0.35 + Math.cos(now / 7000) * 22
+    if (clearOfGlobe(ax, ay, 34) && ax > 30 && ax < width - 30 && ay > 60) {
+      g.save()
+      g.translate(ax, ay)
+      g.rotate(Math.sin(now / 5000) * 0.25)
+      // helmet bubble
+      g.fillStyle = 'rgba(200,236,255,.22)'
+      g.strokeStyle = 'rgba(220,245,255,.7)'; g.lineWidth = 1.2
+      g.beginPath(); g.arc(0, -6, 17, 0, Math.PI * 2); g.fill(); g.stroke()
+      // body and suit
+      g.fillStyle = '#e9eef8'
+      g.beginPath(); g.ellipse(0, 12, 9, 11, 0, 0, Math.PI * 2); g.fill()
+      g.fillStyle = '#ff9f43'
+      g.fillRect(-9, 9, 18, 3)
+      // waving arm
+      const wave = Math.sin(now / 260) * 0.5
+      g.strokeStyle = '#e9eef8'; g.lineWidth = 3.2; g.lineCap = 'round'
+      g.beginPath(); g.moveTo(7, 8); g.lineTo(7 + Math.cos(-1.1 + wave) * 10, 8 + Math.sin(-1.1 + wave) * 10); g.stroke()
+      g.beginPath(); g.moveTo(-7, 8); g.lineTo(-13, 17); g.stroke()
+      // head, eyes, antennae
+      g.fillStyle = '#8fe388'
+      g.beginPath(); g.ellipse(0, -7, 10, 9, 0, 0, Math.PI * 2); g.fill()
+      g.fillStyle = '#1d1d1f'
+      g.beginPath(); g.ellipse(-3.8, -7.5, 2.4, 3.2, -0.3, 0, Math.PI * 2); g.ellipse(3.8, -7.5, 2.4, 3.2, 0.3, 0, Math.PI * 2); g.fill()
+      g.fillStyle = '#ffffff'
+      g.beginPath(); g.arc(-3.2, -8.6, 0.8, 0, Math.PI * 2); g.arc(4.4, -8.6, 0.8, 0, Math.PI * 2); g.fill()
+      g.strokeStyle = '#8fe388'; g.lineWidth = 1.3
+      g.beginPath(); g.moveTo(-4, -15); g.lineTo(-7, -21); g.moveTo(4, -15); g.lineTo(7, -21); g.stroke()
+      g.fillStyle = '#ffd166'
+      g.beginPath(); g.arc(-7, -21.5, 1.6, 0, Math.PI * 2); g.arc(7, -21.5, 1.6, 0, Math.PI * 2); g.fill()
+      g.restore()
+    }
+    // Shooting stars: short bright streaks, gone in under a second, starting clear of the globe
     if (now > skyState.nextMeteor) {
-      const fromLeft = skyRandom() > 0.5
-      const angle = (fromLeft ? 1 : -1) * (0.45 + skyRandom() * 0.3)
-      const speed = 620 + skyRandom() * 380
-      skyState.meteors.push({ x: skyRandom() * width, y: skyRandom() * height * 0.55, vx: Math.cos(angle) * speed * (fromLeft ? 1 : 1), vy: Math.abs(Math.sin(angle)) * speed, born: now, life: 550 + skyRandom() * 350 })
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const x = skyRandom() * width, y = skyRandom() * height * 0.6
+        if (!clearOfGlobe(x, y, 70)) continue
+        const angle = (skyRandom() > 0.5 ? 1 : -1) * (0.45 + skyRandom() * 0.3)
+        const speed = 620 + skyRandom() * 380
+        skyState.meteors.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.abs(Math.sin(angle)) * speed, born: now, life: 550 + skyRandom() * 350 })
+        break
+      }
       skyState.nextMeteor = now + 3500 + skyRandom() * 6500
     }
     skyState.meteors = skyState.meteors.filter((m) => now - m.born < m.life)
@@ -312,8 +362,11 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
     skyFrame = requestAnimationFrame(animateSky)
     if (now - skyState.last < 33) return
     if (document.visibilityState !== 'visible' || host.closest('.away')) return
+    // The first saucer comes soon after the globe is first on screen, not after page load
+    if (!skyState.last) skyState.nextSaucer = now + 2500
     skyState.last = now
     drawSky(now)
+    host.dataset.skySaucer = skyState.saucer ? 'flying' : 'none'
   }
   if (!reduceMotion) skyFrame = requestAnimationFrame(animateSky)
 
@@ -739,9 +792,13 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
     host.dataset.center = `${center.lng.toFixed(2)},${center.lat.toFixed(2)}`
     host.dataset.orientation = globe.quaternion.toArray().map((value) => value.toFixed(3)).join(',')
     const approach = approachAt(altitude())
+    // Place dots keep their size on screen; close in they would swell into white discs, and the
+    // place cards say it all by then
+    const dotScale = THREE.MathUtils.clamp(altitude() / 4.1, 0.08, 1)
     for (const dot of dots.children) {
       const at = surface(dot.userData.lng, dot.userData.lat, RADIUS * 1.012)
-      dot.visible = Boolean(at)
+      dot.visible = Boolean(at) && altitude() > 0.6
+      dot.scale.setScalar(dotScale)
       if (at) dot.position.copy(at)
     }
     host.dataset.approach = approach.toFixed(3)

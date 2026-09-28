@@ -271,26 +271,35 @@ function buildingsGeometry(buildings: NonNullable<CartoonTile['buildings']>, met
       positions.push(p.x, p.y, bottom, q.x, q.y, bottom, q.x, q.y, top, p.x, p.y, bottom, q.x, q.y, top, p.x, p.y, top)
       for (let k = 0; k < 6; k++) colors.push(wall.r, wall.g, wall.b)
     }
-    // Houses (small footprints) get a pitched roof over their oriented box; larger buildings a flat one
+    // Houses (small footprints) get a pitched roof over their oriented box; larger buildings a flat one.
+    // The box must fit the footprint: an L-shaped or slanted outline would otherwise become an
+    // oversized block leaning into its neighbours, which read as a crammed village.
     let area = 0
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) area += pts[j].x * pts[i].y - pts[i].x * pts[j].y
     const squareMetres = Math.abs(area / 2) * tileMetres * tileMetres
+    let boxFits = false
+    let cx = 0, cy = 0, ax = 1, ay = 0, minA = 0, maxA = 0, minB = 0, maxB = 0
     if (squareMetres < 700 && pts.length >= 4) {
-      const cx = pts.reduce((sum, p) => sum + p.x, 0) / pts.length, cy = pts.reduce((sum, p) => sum + p.y, 0) / pts.length
+      cx = pts.reduce((sum, p) => sum + p.x, 0) / pts.length; cy = pts.reduce((sum, p) => sum + p.y, 0) / pts.length
       let xx = 0, xy = 0, yy = 0
       for (const p of pts) { xx += (p.x - cx) ** 2; xy += (p.x - cx) * (p.y - cy); yy += (p.y - cy) ** 2 }
       const angle = 0.5 * Math.atan2(2 * xy, xx - yy)
-      const ax = Math.cos(angle), ay = Math.sin(angle)
-      let minA = Infinity, maxA = -Infinity, minB = Infinity, maxB = -Infinity
+      ax = Math.cos(angle); ay = Math.sin(angle)
+      minA = Infinity; maxA = -Infinity; minB = Infinity; maxB = -Infinity
       for (const p of pts) {
         const a = (p.x - cx) * ax + (p.y - cy) * ay, b = -(p.x - cx) * ay + (p.y - cy) * ax
         minA = Math.min(minA, a); maxA = Math.max(maxA, a); minB = Math.min(minB, b); maxB = Math.max(maxB, b)
       }
+      const boxArea = (maxA - minA) * (maxB - minB)
+      boxFits = boxArea > 0 && Math.abs(area / 2) / boxArea >= 0.78
+    }
+    if (boxFits) {
       const long = maxA - minA >= maxB - minB
       const [e1x, e1y, e2x, e2y] = long ? [ax, ay, -ay, ax] : [-ay, ax, -ax, -ay]
-      const hl = ((long ? maxA - minA : maxB - minB) / 2) * 1.06, hw = ((long ? maxB - minB : maxA - minA) / 2) * 1.12
+      // No inflation: the roof ends where the walls end, plus a hand's width of eave
+      const hl = (long ? maxA - minA : maxB - minB) / 2, hw = ((long ? maxB - minB : maxA - minA) / 2) * 1.03
       const mx = cx + ax * (maxA + minA) / 2 - ay * (maxB + minB) / 2, my = cy + ay * (maxA + minA) / 2 + ax * (maxB + minB) / 2
-      const rise = hw * across * 0.95
+      const rise = hw * across * 0.7
       const corner = (s1: number, s2: number) => [mx + e1x * hl * s1 + e2x * hw * s2, my + e1y * hl * s1 + e2y * hw * s2, top]
       const ridge = (s1: number) => [mx + e1x * hl * s1, my + e1y * hl * s1, top + rise]
       const A = corner(1, 1), B = corner(-1, 1), C = corner(-1, -1), D = corner(1, -1), R1 = ridge(1), R2 = ridge(-1)
@@ -390,6 +399,9 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
   const pole = new THREE.CylinderGeometry(0.08, 0.08, 1, 5).rotateX(Math.PI / 2).translate(0, 0, 0.5)
   const lamp = new THREE.SphereGeometry(0.12, 8, 6)
   const hill = new THREE.ConeGeometry(1, 1, 7).rotateX(Math.PI / 2).translate(0, 0, 0.5)
+  // A smooth half-sphere, z up, for the hills; lit softly (no flat facets)
+  const dome = new THREE.SphereGeometry(1, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2).rotateX(Math.PI / 2)
+  const hillMaterial = new THREE.MeshLambertMaterial({ color: '#ffffff' })
   const cap = new THREE.ConeGeometry(0.36, 0.36, 7).rotateX(Math.PI / 2).translate(0, 0, 0.82)
   const skirt = new THREE.ConeGeometry(1, 1, 9).rotateX(Math.PI / 2).translate(0, 0, 0.5)
 
@@ -564,26 +576,32 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
         }
       }
     }
-    // Hills at mountain peaks: cartoon cones, snow on the high ones
+    // Hills at mountain peaks: a few soft, rounded mounds in the landscape's own greens. Peaks come
+    // in dense clusters in the data; drawn one by one (dark cones with a ring at the foot) they
+    // made a speckled pattern that was unpleasant to look at. So the highest peak of each
+    // neighbourhood stands for it, well apart from the next, and nothing is darker than the forest.
     if (data.peaks?.length) {
-      const hills = new THREE.InstancedMesh(hill, m.mountain, data.peaks.length)
-      const caps = new THREE.InstancedMesh(cap, m.snow, data.peaks.length)
-      const feet = new THREE.InstancedMesh(skirt, m.hill, data.peaks.length)
+      const kept: { x: number; y: number; e: number }[] = []
+      const minGap = 0.16 * GRID
+      for (const peak of [...data.peaks].sort((a, b) => b.e - a.e)) {
+        if (kept.length >= 7) break
+        if (kept.every((other) => Math.hypot(other.x - peak.x, other.y - peak.y) >= minGap)) kept.push(peak)
+      }
+      const hills = new THREE.InstancedMesh(dome, hillMaterial, kept.length)
       const matrix = new THREE.Matrix4()
       const holder = new THREE.Group()
       holder.scale.set(1 / group.scale.x, 1 / group.scale.y, 1)
       group.add(holder)
-      data.peaks.forEach((peak, i) => {
-        // Seen from far away a real peak would be invisible: hills are drawn at a readable size
-        const radius = Math.max(across * 0.018, Math.min(across * 0.05, (peak.e * 2.2) / metresPerUnit))
-        const height = radius * (peak.e > 1500 ? 1.25 : 0.9)
+      kept.forEach((peak, i) => {
+        // Seen from far away a real peak would be invisible: hills are drawn at a readable size, broad and low
+        const radius = Math.max(across * 0.035, Math.min(across * 0.075, (peak.e * 3) / metresPerUnit))
+        const height = radius * (peak.e > 1500 ? 0.55 : 0.4)
         matrix.makeScale(radius, radius, height).setPosition(new THREE.Vector3((peak.x / GRID) * group.scale.x, (peak.y / GRID) * group.scale.y, 0))
         hills.setMatrixAt(i, matrix)
-        caps.setMatrixAt(i, peak.e > 1200 ? matrix : new THREE.Matrix4().makeScale(0, 0, 0))
-        feet.setMatrixAt(i, new THREE.Matrix4().makeScale(radius * 1.7, radius * 1.7, height * 0.32).setPosition(new THREE.Vector3((peak.x / GRID) * group.scale.x, (peak.y / GRID) * group.scale.y, 0)))
+        hills.setColorAt(i, new THREE.Color(peak.e > 1500 ? '#6fb95a' : ['#5fb146', '#67b84c'][i % 2]))
       })
-      hills.frustumCulled = caps.frustumCulled = feet.frustumCulled = false
-      holder.add(feet, hills, caps)
+      hills.frustumCulled = false
+      holder.add(hills)
     }
     return group
   }
@@ -708,7 +726,8 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
       for (const tile of tiles.values()) tile.group.traverse((item) => (item as THREE.Mesh).geometry?.dispose())
       tiles.clear()
       for (const value of Object.values(m)) { const material = value as THREE.Material & { map?: THREE.Texture }; material.map?.dispose(); material.dispose() }
-      for (const geometry of [treeTrunk, treeCrown, pineLow, pineHigh, zebraBar, pole, lamp, hill, cap, skirt]) geometry.dispose()
+      for (const geometry of [treeTrunk, treeCrown, pineLow, pineHigh, zebraBar, pole, lamp, hill, cap, skirt, dome]) geometry.dispose()
+      hillMaterial.dispose()
       parent.remove(root)
     },
   }

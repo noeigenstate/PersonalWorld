@@ -11,6 +11,7 @@ import { createStyledDistrict, shanghaiScene, type SceneData } from './styledDis
 import { fetchRegionScene, hasStreetLocation, metresApart, photoRegions, photoSceneKey, regionForPhoto } from './regionScene'
 import { clusterProjectedPhotos } from './photoClusters'
 import { createCartoonWorld } from './cartoonWorld'
+import { installPlanetCurve, markPlanetCurved, planetDrop, setPlanetCurve } from './planetCurve'
 import { sceneCoverage } from './sceneCoverage'
 import type { AMapNS } from './amap'
 import type { LifeMapCallbacks, LifeMapData, MapPhoto } from './scene'
@@ -137,6 +138,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let appliedBuildingStyle = '[]'
   let disposed = false
   let hasStyledDistrict = false
+  // Materials already compiled with the planet curvature (planetCurve.ts)
+  const curvedMaterials = new WeakSet<THREE.Material>()
+  installPlanetCurve()
   // The styled scene's WGS-84 box; the cartoon world leaves its own tile buildings out of it
   let districtBounds: { west: number; south: number; east: number; north: number } | null = null
   let hideTileBuildings: (bounds: typeof districtBounds) => void = () => {}
@@ -406,6 +410,10 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     camera.updateProjectionMatrix()
     camera.updateMatrixWorld()
     unit = unitMetres(map.getZoom())
+    // The plane bends away from the view centre like the globe it came from (planetCurve.ts)
+    const [curveX, curveY] = cc.lngLatsToCoords([[mapCenter.lng, mapCenter.lat]])[0]
+    setPlanetCurve(curveX, curveY, mapCenter.lat, map.getZoom())
+    markPlanetCurved(scene, curvedMaterials)
     container.classList.toggle('map-overview', map.getZoom() < 10)
     container.classList.toggle('map-neighbourhood', map.getZoom() >= 15 && mapStyle === 'amap://styles/macaron')
     colorWash.style.opacity = map.getZoom() < 10 ? '.55' : '.10'
@@ -421,7 +429,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     hideTileBuildings(sceneryShown ? districtBounds : null)
     for (const { object } of scaled) object.scale.setScalar(unit)
     for (const material of lines) material.resolution.set(size.w, size.h)
-    const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit + ground(groundOf.get(anchor)))
+    const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit + ground(groundOf.get(anchor)) + planetDrop(anchor.x, anchor.y))
     // City memories have one cover/date/title card per event. An explicit photo focus
     // moves that same card to the photo's exact position, without a second thumbnail.
     const focused = photos.find(({ photo }) => photo.id === focusedId)
@@ -495,7 +503,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       .map((el) => { const r = el.getBoundingClientRect(); return new DOMRect(r.left - host.left, r.top - host.top, r.width, r.height) })
     const taken = placePhotos([...controls, ...labelRects, ...landmarkRects])
     if (memoryWorld.visible && memoryAnchor) {
-      const marker = memoryAnchor.clone().project(camera)
+      const marker = memoryAnchor.clone()
+      marker.z += planetDrop(marker.x, marker.y)
+      marker.project(camera)
       const x = ((marker.x + 1) / 2) * size.w
       const y = ((1 - marker.y) / 2) * size.h
       sceneCaption.hidden = marker.z > 1 || x < 0 || x > size.w || y < 0 || y > size.h
@@ -908,7 +918,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     for (const { photo, at } of photos) {
       if (eventPhotoIds.has(photo.id)) continue
       if (current?.selectedCity && photo.id !== focusedId) continue
-      v.copy(at).project(camera)
+      v.copy(at)
+      v.z += planetDrop(at.x, at.y)
+      v.project(camera)
       if (v.z > 1) continue
       const x = ((v.x + 1) / 2) * size.w
       const y = ((1 - v.y) / 2) * size.h

@@ -239,7 +239,10 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     const cardLandmark = a.card?.landmark && a.card.landmark.confidence >= 0.7 ? a.card.landmark.name : undefined
     const nearbyLandmark = a.location?.poi?.name || (a.location?.precision === 'poi' ? a.location.label : undefined)
     const placeLandmark = /东方明珠|oriental\s*pearl/i.test(nearbyLandmark || '') ? nearbyLandmark : undefined
-    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision: a.location?.precision || 'point', venueName: a.location?.aoi || a.location?.poi?.name, landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined, sceneCard: a.card ? { title: a.card.title, caption: a.card.caption, scene: a.card.scene, tags: a.card.tags, eventGuess: a.card.eventGuess, createdAt: a.card.createdAt } : undefined }]
+    // A photo with its own GPS is an exact point on the map even where AMap cannot name a street
+    // or place for it; the location's own precision describes the address, not the position
+    const precision = a.latitude !== undefined && a.longitude !== undefined ? 'point' : a.location?.precision || 'point'
+    return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision, venueName: a.location?.aoi || a.location?.poi?.name, landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined, sceneCard: a.card ? { title: a.card.title, caption: a.card.caption, scene: a.card.scene, tags: a.card.tags, eventGuess: a.card.eventGuess, createdAt: a.card.createdAt } : undefined }]
   }), [memory.assets])
   const visibleMapPhotos = useMemo(() => {
     if (timelineAt === null) return mapPhotos

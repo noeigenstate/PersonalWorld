@@ -6,6 +6,7 @@ import snapshot from './data/shanghai-pearl.json'
 import { ORIENTAL_PEARL_GCJ } from './memoryScene'
 import polygonClipping from 'polygon-clipping'
 import { createVenueBuilding, createSportsGround, createCommercialBuilding } from './venueArchitecture'
+import { PLANET_CURVE_GLSL, planetCurve } from './planetCurve'
 import { createLandmarkVenue, venueLandmark } from './landmarkVenues'
 
 // A deliberately art-directed district, anchored to independently sourced OSM geometry.
@@ -272,8 +273,8 @@ function roadDashes(paths: Point[][], dash = 8, gap = 12) {
 function parcelMaterial(color: string, kind: string) {
   return new THREE.ShaderMaterial({
     side: THREE.DoubleSide,
-    uniforms: { base: { value: new THREE.Color(color) }, planted: { value: kind === 'residential' ? 1 : 0 } },
-    vertexShader: 'varying vec2 vMap; void main(){ vMap=position.xy; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+    uniforms: { base: { value: new THREE.Color(color) }, planted: { value: kind === 'residential' ? 1 : 0 }, ...planetCurve },
+    vertexShader: `varying vec2 vMap; ${PLANET_CURVE_GLSL} void main(){ vMap=position.xy; gl_Position=projectionMatrix*viewMatrix*planetCurved(modelMatrix*vec4(position,1.)); }`,
     fragmentShader: `uniform vec3 base;
       uniform float planted;
       varying vec2 vMap;
@@ -611,7 +612,8 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   if (waterGeometry) group.add(createStorybookWater(waterGeometry, water, corners, Boolean(data.coast)))
   const grassMaterial = new THREE.ShaderMaterial({
     side: THREE.DoubleSide,
-    vertexShader: 'varying vec2 vMap; void main(){ vMap=position.xy; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }',
+    uniforms: { ...planetCurve },
+    vertexShader: `varying vec2 vMap; ${PLANET_CURVE_GLSL} void main(){ vMap=position.xy; gl_Position=projectionMatrix*viewMatrix*planetCurved(modelMatrix*vec4(position,1.)); }`,
     fragmentShader: `varying vec2 vMap;
       float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
       float noise(vec2 p){
