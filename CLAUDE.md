@@ -28,4 +28,6 @@ npm run test:skills  # 每个 skill 的专门测试；LIVE=1 连接真实服务
 npm run test:smoke   # 需先 npm run dev
 npm run test:vault   # 清除浏览器数据后照片恢复；需先 npm run dev
 npm run test:cull    # 整理重复照片：分组、排序、确认后删除；需先 npm run dev
+npm run test:world   # 卡通世界：地球→全国→城市→街道的真实地图链路；需先 npm run dev
+npm run test:spacetime  # 4D 时空场景：分段、证据、本机三维重建（有 ComfyUI + DA3 模型时）；需先 npm run dev
 ```

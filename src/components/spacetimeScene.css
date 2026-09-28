@@ -1,0 +1,40 @@
+.spacetime-modal{width:min(1240px,94vw);height:min(860px,88vh);display:flex;flex-direction:column;border-radius:28px;padding:20px 22px 22px;color:var(--label);background:var(--glass-sheen),var(--glass-fill-thick);backdrop-filter:var(--glass-blur-thick);-webkit-backdrop-filter:var(--glass-blur-thick);box-shadow:var(--glass-rim),var(--glass-shadow);border:1px solid rgba(255,255,255,.6)}
+.spacetime-modal .modal-header{margin:0 0 12px}
+.spacetime-status{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:14px;color:var(--label-2)}
+.spacetime-layout{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px}
+/* The sky is cut out of a relief: a soft sky stands behind it */
+.spacetime-stage{position:relative;min-height:0;border-radius:20px;overflow:hidden;background:linear-gradient(180deg,#bcdcf7 0%,#dcebfa 55%,#eef3f8 100%)}
+.spacetime-stage[data-model=none]{background:#0f1424}
+.spacetime-viewer{position:absolute;inset:0}
+.spacetime-viewer canvas{display:block;width:100%;height:100%;cursor:grab}
+.spacetime-viewer canvas:active{cursor:grabbing}
+.spacetime-viewer .spacetime-status{position:absolute;left:16px;bottom:12px;margin:0;color:#e8eefc}
+.spacetime-photo{position:absolute;inset:0}
+.spacetime-photo img{width:100%;height:100%;object-fit:contain;display:block}
+.spacetime-build{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;padding:16px;background:linear-gradient(180deg,transparent,rgba(10,14,30,.7))}
+.spacetime-build small{color:#e8eefc;font-size:13px}
+.spacetime-empty{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:#c9d3ee;font-size:14px}
+.spacetime-side{min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.spacetime-epochs{display:flex;flex-direction:column;gap:6px}
+.spacetime-epochs button{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 8px;text-align:left;padding:10px 12px;border:1px solid transparent;border-radius:14px;background:var(--fill);color:var(--label);cursor:pointer}
+.spacetime-epochs button b{grid-column:1;grid-row:1;font-size:13px;font-variant-numeric:tabular-nums}
+.spacetime-epochs button span{grid-column:1;grid-row:2;font-size:13px;color:var(--label-2)}
+.spacetime-epochs button i{grid-column:2;grid-row:1/3;width:8px;height:8px;border-radius:50%;background:#2f9e5c}
+.spacetime-epochs button.active{background:var(--fill-2);border-color:rgba(0,0,0,.08)}
+.spacetime-caption{margin:0;font-size:14px;line-height:1.6}
+.spacetime-layers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.spacetime-layers li{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:8px;font-size:13px;padding:6px 8px;border-radius:10px;background:var(--fill)}
+.spacetime-layers span{color:var(--label-2)}
+.spacetime-layers em{font-style:normal;font-size:11px;padding:2px 7px;border-radius:999px;background:#e5e7ee;color:#555}
+.spacetime-layers em[data-evidence=observed]{background:#dff3e4;color:#1f7a41}
+.spacetime-layers em[data-evidence=inferred]{background:#fff0d6;color:#9a5b00}
+.spacetime-changes{margin:0;font-size:13px;line-height:1.6;color:var(--label-2)}
+.spacetime-photos{display:flex;flex-wrap:wrap;gap:6px}
+.spacetime-photos button{width:56px;height:56px;padding:0;border:2px solid transparent;border-radius:10px;overflow:hidden;background:none;cursor:pointer}
+.spacetime-photos button.key{border-color:var(--accent)}
+.spacetime-photos img{width:100%;height:100%;object-fit:cover;display:block}
+.spacetime-note,.spacetime-summary{margin:0;font-size:12px;line-height:1.6;color:var(--label-2)}
+@media(max-width:900px){
+  .spacetime-modal{width:100vw;height:100vh;border-radius:0;padding:14px 16px}
+  .spacetime-layout{grid-template-columns:1fr;grid-template-rows:minmax(220px,45%) 1fr}
+}

@@ -1,6 +1,6 @@
 # 项目 Skills
 
-所有项目自建 skill 都放在根目录 `skills/`，包含 7 个运行时 skill 和 6 个开发 skill。每项的正文、测试、参考资料与可分发评估结果均随 Git 上传。
+所有项目自建 skill 都放在根目录 `skills/`，包含 8 个运行时 skill 和 6 个开发 skill。每项的正文、测试、参考资料与可分发评估结果均随 Git 上传。
 
 运行时 skill 由服务端明确读取后交给模型；开发 skill 供开发 agent 按需阅读执行。地图精修的流程可以复用，新地标仍需资料、模型制作与视觉验收，不能据此宣称已经实现任意地点同品质自动生成。
 
@@ -15,7 +15,7 @@ npm run test:skills             # 离线部分
 LIVE=1 npm run test:skills      # 含真实 StepFun / 高德调用
 ```
 
-## 运行时技能（7）
+## 运行时技能（8）
 
 | Skill | 用途 | 使用它的接口 | 测试 | 对比测试 |
 |---|---|---|---|---|
@@ -25,6 +25,7 @@ LIVE=1 npm run test:skills      # 含真实 StepFun / 高德调用
 | [photo-cull](photo-cull/SKILL.md) | 挑照片：相似照片逐张检查闭眼、模糊、表情，推荐保留几张 | `POST /api/photo-cull` | [test.mjs](photo-cull/test.mjs) | [36/36 vs 34/36](photo-cull/evals/2026-09-28/README.md) |
 | [photo-context](photo-context/SKILL.md) | 多张照片协同判断：与有定位的参考照片比对，补全地点、时间、事件 | `POST /api/photo-context` | [test.mjs](photo-context/test.mjs) | [48/48 vs 40/48](photo-context/evals/2026-09-24/README.md) |
 | [story-understanding](story-understanding/SKILL.md) | 资料变化后增量重理解经历、跨地点发现故事，再独立复核证据 | `memory-graph` 持久队列；`POST /api/memory-graph/understanding` 暂停/重试 | [test.mjs](story-understanding/test.mjs)、[队列测试](../tests/story-understanding.mjs) | — |
+| [spacetime-scene](spacetime-scene/SKILL.md) | 4D 时空场景：同一地点的照片按有依据的时间片分段，选关键照片做本机三维重建，逐层标注证据 | `POST /api/spacetime-scene`、`POST /api/spacetime-scene/relief` | [test.mjs](spacetime-scene/test.mjs) | — |
 | [memory-film](memory-film/SKILL.md) | 接收照片事实与故事角度，自动选片、字幕、镜头编排，交给本机合成 MP4 | `POST /api/memory-films` | [test.mjs](memory-film/test.mjs)、[真实渲染](../tests/film-treatments.mjs) | — |
 
 ## 开发技能（6）

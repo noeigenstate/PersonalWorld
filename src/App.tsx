@@ -21,6 +21,7 @@ import { ImportDialog } from './components/ImportDialog'
 import { LifeMapView } from './components/LifeMapView'
 import { TimelineBar } from './components/TimelineBar'
 import { MemoryFilms } from './components/MemoryFilms'
+import { SpacetimeScene } from './components/SpacetimeScene'
 import { useSceneCoverage } from './lib/useSceneCoverage'
 import { useMemoryGraph } from './lib/useMemoryGraph'
 import { understoodEvents } from './lib/eventUnderstanding'
@@ -586,6 +587,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                 {/* People and films belong to a story line, not to the top bar */}
                 <div className="story-apps">
                   <MemoryLibrary library={library} assets={memory.assets} onPhoto={openPhoto} onFilm={chapter=>setFilmChapter({chapter,at:Date.now()})} />
+                  <SpacetimeScene assets={memory.assets} events={memory.events} city={selectedCity} onPhoto={openPhoto} />
                 </div>
               </>
             ) : (

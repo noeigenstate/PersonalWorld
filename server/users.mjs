@@ -11,7 +11,7 @@ const MAX_FAILURES = 5
 const LOCK_MS = 60_000
 export const SESSION_COOKIE = 'pw_session'
 // Bump when the privacy statement changes; users then accept it again
-export const PRIVACY_VERSION = '2026-09-28.2'
+export const PRIVACY_VERSION = '2026-09-28.3'
 
 const sha256 = (value) => createHash('sha256').update(value).digest('hex')
 

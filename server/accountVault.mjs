@@ -98,7 +98,32 @@ export function createAccountVault(root) {
         rm(join(dir, 'previews', `${id}.jpg`), { force: true }),
         rm(join(dir, 'originals', id), { force: true }),
         rm(join(dir, 'originals', `${id}.json`), { force: true }),
+        rm(join(dir, 'spacetime', `${id}.glb`), { force: true }),
+        rm(join(dir, 'spacetime', `${id}.json`), { force: true }),
       ])
+    },
+
+    // Spacetime scenes: the relief mesh reconstructed from a photo, kept next to it (spacetime/<id>.glb)
+    async putScene(user, id, bytes, meta) {
+      checkId(id)
+      if (!bytes.length) throw new Error('模型为空')
+      const dir = join(dirOf(user), 'spacetime')
+      await mkdir(dir, { recursive: true })
+      await writeAtomic(join(dir, `${id}.glb`), bytes)
+      await writeAtomic(join(dir, `${id}.json`), JSON.stringify({ ...meta, bytes: bytes.length, createdAt: new Date().toISOString() }))
+    },
+
+    async getScene(user, id) {
+      checkId(id)
+      const path = join(dirOf(user), 'spacetime', `${id}.glb`)
+      if (!(await exists(path))) return null
+      const meta = JSON.parse(await readFile(`${path.slice(0, -4)}.json`, 'utf8').catch(() => '{}'))
+      return { bytes: await readFile(path), meta }
+    },
+
+    async listScenes(user) {
+      const names = await readdir(join(dirOf(user), 'spacetime')).catch(() => [])
+      return names.filter((n) => n.endsWith('.glb')).map((n) => n.slice(0, -4))
     },
   }
 }

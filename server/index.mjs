@@ -11,6 +11,7 @@ import { maskDeep } from './privacy.mjs'
 import { contextMessages, readContext } from './photoContext.mjs'
 import { cardMessages, readCard } from './photoCard.mjs'
 import { MAX_PHOTOS as CULL_MAX, cullMessages, readCull } from './photoCull.mjs'
+import { MAX_PHOTOS as SCENE_MAX, readScenePlan, reconstructRelief, reliefCapability, sceneMessages } from './spacetimeScene.mjs'
 import { mapSceneForPoint } from './mapScene.mjs'
 import { cartoonTile, reloadArchives } from './cartoonTiles.mjs'
 import { syncWorldData } from './worldData.mjs'
@@ -129,6 +130,32 @@ const routes = {
     const answer = parseJsonAnswer(await chat(stepfun, contextMessages({ system: loadSkill('photo-context'), target, refs, consented }), { json: true }))
     const reveal = consented ? (value) => value : maskDeep
     return [200, reveal(readContext(answer, refs))]
+  },
+
+  // One place at different times: the time slices and their evidence (skills/spacetime-scene)
+  async 'POST /api/spacetime-scene'(body, user) {
+    const photos = (Array.isArray(body.photos) ? body.photos : []).filter((p) => typeof p?.id === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(p.id)).slice(0, SCENE_MAX)
+      .map((p) => ({ id: p.id, date: /^\d{4}-\d{2}-\d{2}$/.test(p.date || '') ? p.date : '', scene: String(p.scene || '').slice(0, 200), tags: strings(p.tags, 6), event: String(p.event || '').slice(0, 60), confirmed: p.confirmed === true }))
+    if (!photos.length) return [400, { error: '这处地点还没有可用的照片' }]
+    const place = String(body.place || '').slice(0, 80)
+    const answer = parseJsonAnswer(await chat(stepfun, sceneMessages({ system: loadSkill('spacetime-scene'), place, photos }), { json: true }))
+    return [200, { plan: readScenePlan(answer, photos), capability: await reliefCapability(), scenes: await vault.listScenes(user) }]
+  },
+  // The relief mesh of one photo, reconstructed on this computer and kept with the account
+  async 'POST /api/spacetime-scene/relief'(body, user) {
+    const id = String(body.id || '')
+    if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) return [400, { error: '照片编号无效' }]
+    const existing = body.force ? null : await vault.getScene(user, id)
+    if (existing) return [200, { id, url: `/api/spacetime-scene/models/${id}`, bytes: existing.bytes.length, cached: true }]
+    const match = /^data:image\/(jpeg|png|webp);base64,(.+)$/i.exec(String(body.dataUrl || ''))
+    if (!match) return [400, { error: '需要一张 JPEG/PNG 照片' }]
+    try {
+      const glb = await reconstructRelief(Buffer.from(match[2], 'base64'), { name: `${id}.${match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase()}` })
+      await vault.putScene(user, id, glb, { photoId: id })
+      return [200, { id, url: `/api/spacetime-scene/models/${id}`, bytes: glb.length, cached: false }]
+    } catch (error) {
+      return [503, { error: error.message }]
+    }
   },
 
   // Near-duplicate photos: which to keep (skills/photo-cull)
@@ -264,6 +291,16 @@ const server = http.createServer(async (req, res) => {
         }
       }
       return send(res, 404, { error: '接口不存在' })
+    }
+    // A spacetime scene's model, kept in the account vault
+    const sceneModel = /^\/api\/spacetime-scene\/models\/([A-Za-z0-9-]{8,64})$/.exec(path)
+    if (sceneModel && req.method === 'GET') {
+      const user = currentUser()
+      if (!user) return send(res, 401, { error: '请先登录' })
+      const scene = await vault.getScene(user, sceneModel[1])
+      if (!scene) return send(res, 404, { error: '这张照片还没有重建' })
+      res.writeHead(200, { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'private, no-store' })
+      return res.end(scene.bytes)
     }
     if(path==='/api/memory-graph'||path.startsWith('/api/memory-graph/')){
       const user=currentUser()

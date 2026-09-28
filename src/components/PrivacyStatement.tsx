@@ -1,5 +1,5 @@
 // Keep in sync with PRIVACY_VERSION in server/users.mjs
-export const PRIVACY_VERSION = '2026-09-28.2'
+export const PRIVACY_VERSION = '2026-09-28.3'
 
 export function PrivacyStatement() {
   return (
@@ -9,6 +9,7 @@ export function PrivacyStatement() {
       <ul>
         <li><b>账户</b>：用户名、加盐哈希后的密码和登录状态，保存在运行 Personal World 服务的电脑上。</li>
         <li><b>照片、视频、事件和信息卡</b>：按账户保存在运行 Personal World 服务的电脑硬盘上（<code>server/data/accounts/</code>），包括原图、预览图和记忆。浏览器里的只是一份缓存，用来加快打开速度。分析照片时，图片会经 Personal World 服务转发给 StepFun。</li>
+        <li><b>时空场景</b>：在故事线里为某张照片重建三维场景时，重建在运行 Personal World 服务的电脑上完成（本机模型，不发送给第三方），生成的模型文件与照片一起按账户保存在同一硬盘目录，删除照片时一并删除。</li>
         <li><b>浏览器缓存</b>：清除浏览器的站点数据或缓存，只会删除这台设备上的缓存副本，不会删除你的照片和记忆；重新登录后会从服务电脑自动恢复，原图在需要时再取回。</li>
       </ul>
       <h3>使用功能时会发送给第三方的内容</h3>
