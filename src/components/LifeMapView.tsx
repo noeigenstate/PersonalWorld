@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { loadAmap } from '../map/amap'
 import { createAmapLifeMap } from '../map/amapScene'
-import { createGlobeLifeMap, GLOBE_KM_PER_UNIT } from '../map/globeScene'
+import { createGlobeLifeMap, GLOBE_KM_PER_UNIT, HANDOFF_ALTITUDE } from '../map/globeScene'
 import { createLifeMap, type LifeMapData, type MapPhoto } from '../map/scene'
 import { gcj02ToWgs84, wgs84ToGcj02 } from '../lib/geo'
 
@@ -35,6 +35,7 @@ interface MapApi {
   focusLandmark?: () => void
   setSceneEnabled?: (visible: boolean) => void
   showAt?: (gcj: [number, number], zoom: number) => void
+  setHandbackZoom?: (zoomAt: (lat: number) => number) => void
 }
 interface GlobeApi extends MapApi {
   showAround: (lng: number, lat: number, altitude: number) => void
@@ -60,6 +61,13 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, inset
   const globe = useRef<GlobeApi | null>(null)
   // Set by a hand-over, so the globe/map is not re-framed by the prop change that follows it
   const handedOver = useRef(false)
+  // The globe is the layer in use (ahead of the globeOverview prop during a hand-over)
+  const globeShown = useRef(globeOverview)
+  // The layers' own look again: globe opaque, street map hidden under it (the classes decide)
+  const clearBlend = () => {
+    if (globeHost.current) { globeHost.current.style.opacity = ''; globeHost.current.style.transition = '' }
+    if (baseHost.current) baseHost.current.style.visibility = ''
+  }
   const latest = useRef({ data, insets: { right: insetRight, bottom: insetBottom, top: insetTop }, sceneEnabled, landmarkPreviewAt, focus })
   latest.current = { data, insets: { right: insetRight, bottom: insetBottom, top: insetTop }, sceneEnabled, landmarkPreviewAt, focus }
   const callbacks = useRef({ onSelectCity, onOpenEvent, onOpenPhoto, onFocusPhoto, onGlobeChange, onMapError })
@@ -70,18 +78,32 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, inset
     onOpenEvent: (id: string) => callbacks.current.onOpenEvent(id),
     onOpenPhoto: (id: string) => callbacks.current.onOpenPhoto(id),
     onFocusPhoto: withAmap ? (photo: MapPhoto) => callbacks.current.onFocusPhoto(photo) : undefined,
-    // Globe → street map at the same point and scale
+    // Near the hand-over the unrolled globe fades out over the street map, kept on the same view
+    onApproachMap: withAmap ? ({ lng, lat, altitude, fade }: { lng: number; lat: number; altitude: number; fade: number }) => {
+      if (!globeShown.current || !globeHost.current || !baseHost.current) return
+      if (fade <= 0 || !map.current?.showAt) { clearBlend(); return }
+      const p = wgs84ToGcj02({ lng, lat })
+      map.current.showAt([p.lng, p.lat], zoomForAltitude(altitude, lat, host.current?.clientHeight || 800))
+      baseHost.current.style.visibility = 'visible'
+      globeHost.current.style.transition = 'none'
+      globeHost.current.style.opacity = String(1 - fade)
+    } : undefined,
+    // Globe → street map at the same point and scale (the globe has faded out by now)
     onZoomIntoMap: withAmap ? ({ lng, lat, altitude }: { lng: number; lat: number; altitude: number }) => {
       if (!map.current?.showAt) return
       const heightPx = host.current?.clientHeight || 800
       const p = wgs84ToGcj02({ lng, lat })
       map.current.showAt([p.lng, p.lat], zoomForAltitude(altitude, lat, heightPx))
+      globeShown.current = false
+      if (globeHost.current) globeHost.current.style.opacity = '0'
       handedOver.current = true
       callbacks.current.onGlobeChange?.(false)
     } : undefined,
-    // Street map → globe
+    // Street map → globe: it comes back unrolled and faded, looking like the map, and rounds as
+    // the zoom goes on
     onZoomOutToGlobe: ({ gcj, zoom }: { gcj: [number, number]; zoom: number }) => {
       const w = gcj02ToWgs84({ lng: gcj[0], lat: gcj[1] })
+      globeShown.current = true
       globe.current?.showAround(w.lng, w.lat, altitudeForZoom(zoom, w.lat, host.current?.clientHeight || 800))
       handedOver.current = true
       callbacks.current.onGlobeChange?.(true)
@@ -90,6 +112,8 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, inset
 
   const mount = (target: typeof map, api: MapApi) => {
     target.current = api
+    // Back to the globe just past the hand-over, whatever the latitude
+    api.setHandbackZoom?.((lat) => zoomForAltitude(HANDOFF_ALTITUDE * 1.1, lat, host.current?.clientHeight || 800))
     api.setInsets(measuredInsets())
     api.setSceneEnabled?.(latest.current.sceneEnabled)
     api.update(latest.current.data)
@@ -138,7 +162,11 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, inset
 
   // Shown again without a hand-over (e.g. "返回地球"): the globe keeps its own framing
   useEffect(() => {
-    if (globeOverview && !handedOver.current) globe.current?.resume()
+    globeShown.current = globeOverview
+    if (!handedOver.current) {
+      clearBlend()
+      if (globeOverview) globe.current?.resume()
+    }
     handedOver.current = false
   }, [globeOverview])
 

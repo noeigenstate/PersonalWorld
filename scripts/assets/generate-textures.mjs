@@ -1,14 +1,28 @@
 // Paints the cartoon world's textures with a local image model (Qwen-Image 2.1 in ComfyUI, on this
-// computer's GPU) and makes them tile seamlessly. Output: public/world-assets/textures/<name>.png
+// computer's GPU) and makes them tile seamlessly. The map only uses their light and shade, so what
+// ships is small: public/world-assets/textures/<name>.webp, 512 px grey. The full-colour 1024 px
+// paintings stay in world-data/sources/textures/ (not in git).
 // Needs ComfyUI running: D:\ComfyUI\run_comfyui.bat (or python main.py --listen 127.0.0.1 --port 8188)
-// node scripts/assets/generate-textures.mjs [name…]
-import { mkdir, writeFile } from 'node:fs/promises'
+// node scripts/assets/generate-textures.mjs [name…]   paint (all, or the named ones)
+// node scripts/assets/generate-textures.mjs --ship     only redo the shipped files from the paintings
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
 const COMFY = process.env.COMFY_URL || 'http://127.0.0.1:8188'
 const out = fileURLToPath(new URL('../../public/world-assets/textures/', import.meta.url))
+const paintings = fileURLToPath(new URL('../../world-data/sources/textures/', import.meta.url))
 const style = 'painterly hand-painted texture for a stylized mobile game map, visible soft brush strokes, rich variation of light and dark tones, gentle ambient occlusion between shapes, no text, no border, seamless tileable texture, fills the whole frame'
+
+// Plain "tileable texture" prompts came back as flat colour; these describe what to paint instead
+const scene = 'seen straight from above, stylized hand-painted game map art like a cozy fantasy island diorama, many small clearly painted details spread evenly across the whole image, strong light and dark variation, no text'
+export const DETAILED = {
+  grass: `a meadow with many clumps of grass blades, small round bushes, tiny white and yellow flowers and a few pebbles, several shades of green, ${scene}`,
+  water: `clear turquoise sea with dozens of small white stylized wave crests and curved ripple lines, lighter and darker blue patches, ${scene}`,
+  dirt: `a packed earth path with footprints, cracks, small stones and pebbles and a few grass tufts at the edges, warm beige and light brown, ${scene}`,
+  sand: `golden beach sand with wind ripples, small shells, starfish and pebbles, ${scene}`,
+  fields: `farmland with neat parallel rows of golden wheat and green vegetable crops separated by thin dirt lines, ${scene}`,
+}
 
 export const TEXTURES = {
   grass: `top-down view of a lush bright green cartoon grass meadow with tiny grass tufts and a few little flowers, ${style}`,
@@ -56,42 +70,76 @@ async function generate(name, prompt) {
 
 // Seamless: blend with a copy shifted by half across x, then the same across y. Each shifted copy
 // has its own seam through the middle, where its weight is zero; at the edges it takes over.
-async function makeSeamless(png, size = 1024) {
-  const { chromium } = createRequire(import.meta.url)('playwright')
-  const browser = await chromium.launch({ channel: 'chrome' })
-  const page = await browser.newPage()
-  const data = await page.evaluate(async ({ b64, size }) => {
-    const img = new Image(); img.src = `data:image/png;base64,${b64}`; await img.decode()
-    const c = document.createElement('canvas'); c.width = c.height = size
-    const g = c.getContext('2d', { willReadFrequently: true })
-    g.drawImage(img, 0, 0, size, size)
-    const smooth = (t) => { const x = Math.min(1, Math.max(0, (t - 0.45) / 0.5)); return x * x * (3 - 2 * x) }
-    for (const axis of ['x', 'y']) {
-      const base = g.getImageData(0, 0, size, size)
-      const shifted = new Uint8ClampedArray(base.data.length)
-      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-        const sx = axis === 'x' ? (x + size / 2) % size : x, sy = axis === 'y' ? (y + size / 2) % size : y
-        const from = (sy * size + sx) * 4, to = (y * size + x) * 4
-        for (let k = 0; k < 4; k++) shifted[to + k] = base.data[from + k]
-      }
-      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-        const w = smooth(Math.abs((axis === 'x' ? x : y) / size - 0.5) * 2)
-        const i = (y * size + x) * 4
-        for (let k = 0; k < 3; k++) base.data[i + k] = base.data[i + k] * (1 - w) + shifted[i + k] * w
-      }
-      g.putImageData(base, 0, 0)
+async function seamless({ b64, size }) {
+  const img = new Image(); img.src = `data:image/png;base64,${b64}`; await img.decode()
+  const c = document.createElement('canvas'); c.width = c.height = size
+  const g = c.getContext('2d', { willReadFrequently: true })
+  g.drawImage(img, 0, 0, size, size)
+  const smooth = (t) => { const x = Math.min(1, Math.max(0, (t - 0.45) / 0.5)); return x * x * (3 - 2 * x) }
+  for (const axis of ['x', 'y']) {
+    const base = g.getImageData(0, 0, size, size)
+    const shifted = new Uint8ClampedArray(base.data.length)
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const sx = axis === 'x' ? (x + size / 2) % size : x, sy = axis === 'y' ? (y + size / 2) % size : y
+      const from = (sy * size + sx) * 4, to = (y * size + x) * 4
+      for (let k = 0; k < 4; k++) shifted[to + k] = base.data[from + k]
     }
-    return c.toDataURL('image/png').split(',')[1]
-  }, { b64: png.toString('base64'), size })
-  await browser.close()
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const w = smooth(Math.abs((axis === 'x' ? x : y) / size - 0.5) * 2)
+      const i = (y * size + x) * 4
+      for (let k = 0; k < 3; k++) base.data[i + k] = base.data[i + k] * (1 - w) + shifted[i + k] * w
+    }
+    g.putImageData(base, 0, 0)
+  }
+  return c.toDataURL('image/png').split(',')[1]
+}
+
+// What the map loads: the painting's brightness at 512 px (src/map/cartoonWorld.ts paintedDetail)
+async function shipped({ b64 }) {
+  const img = new Image(); img.src = `data:image/png;base64,${b64}`; await img.decode()
+  const size = 512
+  const c = document.createElement('canvas'); c.width = c.height = size
+  const g = c.getContext('2d', { willReadFrequently: true })
+  g.drawImage(img, 0, 0, size, size)
+  const pixels = g.getImageData(0, 0, size, size)
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const lum = 0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2]
+    pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = lum
+  }
+  g.putImageData(pixels, 0, 0)
+  return c.toDataURL('image/webp', 0.86).split(',')[1]
+}
+
+let browser
+async function inBrowser(fn, png, size = 1024) {
+  browser ??= await createRequire(import.meta.url)('playwright').chromium.launch({ channel: 'chrome' })
+  const page = await browser.newPage()
+  const data = await page.evaluate(fn, { b64: png.toString('base64'), size })
+  await page.close()
   return Buffer.from(data, 'base64')
 }
 
 await mkdir(out, { recursive: true })
-const wanted = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(TEXTURES)
-for (const name of wanted) {
-  const started = Date.now()
-  const raw = await generate(name, TEXTURES[name])
-  await writeFile(`${out}${name}.png`, await makeSeamless(raw))
-  console.log(`${name}.png（${Math.round((Date.now() - started) / 1000)} 秒）`)
+await mkdir(paintings, { recursive: true })
+const names = process.argv.slice(2).filter((arg) => !arg.startsWith('--'))
+try {
+  if (process.argv.includes('--ship')) {
+    for (const file of (await readdir(paintings)).filter((f) => f.endsWith('.png'))) {
+      const name = file.slice(0, -4)
+      await writeFile(`${out}${name}.webp`, await inBrowser(shipped, await readFile(paintings + file)))
+      console.log(`${name}.webp`)
+    }
+  } else {
+    const promptOf = (name) => DETAILED[name] || TEXTURES[name]
+    for (const name of names.length ? names : Object.keys(TEXTURES)) {
+      if (!promptOf(name)) throw new Error(`没有 ${name} 的描述，可选：${Object.keys(TEXTURES).join(' ')}`)
+      const started = Date.now()
+      const painting = await inBrowser(seamless, await generate(name, promptOf(name)))
+      await writeFile(`${paintings}${name}.png`, painting)
+      await writeFile(`${out}${name}.webp`, await inBrowser(shipped, painting))
+      console.log(`${name}（${Math.round((Date.now() - started) / 1000)} 秒）`)
+    }
+  }
+} finally {
+  await browser?.close()
 }

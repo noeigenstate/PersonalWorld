@@ -68,7 +68,7 @@ try {
     await wheel(cx, cy, -120, 1)
     altitudes.push(Number(await globe.getAttribute('data-altitude')))
   }
-  await page.locator('.life-map-globe.away').waitFor({ timeout: 5000 })
+  await page.locator('.life-map-globe.away').waitFor({ state: 'attached', timeout: 5000 })
   assert.ok(altitudes.length >= 4, `地球仪先连续放大几步再交给街区地图（${altitudes.length} 步）`)
   assert.ok(altitudes.every((a, i) => i === 0 || a <= altitudes[i - 1] + 1e-6) && altitudes.at(-1) < startAltitude, '高度一路下降')
   const amap = page.locator('.life-map.life-map-layer')

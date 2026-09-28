@@ -27,7 +27,8 @@ const unitMetres = (zoom: number) => (156543.034 / 2 ** zoom) * PX_PER_UNIT
 
 interface Scaled { object: THREE.Object3D }
 
-// Below this zoom (reached by the user zooming out) the globe takes over again
+// Below this zoom (reached by the user zooming out) the globe takes over again; LifeMapView sets
+// the exact zoom, just past the hand-over
 export const GLOBE_HANDBACK_ZOOM = 4.2
 
 export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCallbacks, AMap: AMapNS, mapStyle = 'amap://styles/macaron') {
@@ -101,7 +102,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   renderer.shadowMap.type = THREE.PCFShadowMap
   renderer.shadowMap.autoUpdate = false
   const scene = new THREE.Scene()
-  if (import.meta.env.DEV) (window as unknown as { __amapScene?: THREE.Scene }).__amapScene = scene
+  if (import.meta.env.DEV) Object.assign(window, { __amapScene: scene, __amap: map })
   const sky = new THREE.HemisphereLight(0xfff7e9, 0xc7d8d1, 1.25)
   sky.position.set(0, 0, 1) // Map geometry is Z-up; the default hemisphere is Y-up.
   scene.add(sky)
@@ -1032,13 +1033,18 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   const userZoom = () => { userZoomUntil = performance.now() + 1500 }
   mapEl.addEventListener('wheel', userZoom, { passive: true })
   mapEl.addEventListener('touchstart', userZoom, { passive: true })
-  map.on('zoomend', () => {
+  // Handed back while the zoom is still under way, just past where the globe handed over, so the
+  // globe comes back still unrolled and faded out, looking the same as the map
+  let handbackZoom = (_lat: number) => GLOBE_HANDBACK_ZOOM
+  const handBack = () => {
     if (disposed || !callbacks.onZoomOutToGlobe || performance.now() > userZoomUntil) return
-    if (map.getZoom() >= GLOBE_HANDBACK_ZOOM) return
-    userZoomUntil = 0
     const center = map.getCenter()
+    if (map.getZoom() >= handbackZoom(center.lat)) return
+    userZoomUntil = 0
     callbacks.onZoomOutToGlobe({ gcj: [center.lng, center.lat], zoom: map.getZoom() })
-  })
+  }
+  map.on('zoomchange', handBack)
+  map.on('zoomend', handBack)
 
   // The cartoon world: real geography as cartoon ground, trees, streets, buildings and hills
   const cartoon = createCartoonWorld(scene, {
@@ -1117,13 +1123,14 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       else clearMemoryScene()
       if (sceneState === 'ready') frameFocusedVenue = false
     },
+    setHandbackZoom(zoomAt: (lat: number) => number) { handbackZoom = zoomAt },
     // Taking over from the globe: straight down on the same point at the matching scale
     showAt(gcj: [number, number], zoom: number) {
       cancelVenueFit()
       focusAfterMove = null
       map.setRotation(0, true)
       map.setPitch(0, true)
-      map.setZoomAndCenter(Math.max(GLOBE_HANDBACK_ZOOM + 0.4, zoom), gcj, true)
+      map.setZoomAndCenter(Math.max(3, zoom), gcj, true)
       draw()
     },
     focusLandmark() {

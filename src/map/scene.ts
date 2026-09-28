@@ -29,6 +29,9 @@ export interface LifeMapCallbacks {
   // Continuous zoom between the globe and the street map (LifeMapView hands the view over)
   onZoomIntoMap?: (view: { lng: number; lat: number; altitude: number }) => void // globe, WGS-84, altitude in globe units
   onZoomOutToGlobe?: (view: { gcj: [number, number]; zoom: number }) => void // street map, GCJ-02
+  // Near the hand-over the globe unrolls into the flat map and fades (0…1) to reveal the street
+  // map, which is kept on the same view underneath
+  onApproachMap?: (view: { lng: number; lat: number; altitude: number; fade: number }) => void
 }
 
 // A photo shown on the map as a thumbnail (the real-map view clusters them like a phone album)

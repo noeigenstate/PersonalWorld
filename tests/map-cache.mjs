@@ -27,7 +27,8 @@ await context.route('**/_AMapService/**', async (route) => {
   } catch { await route.fulfill({ status: 502, body: '' }).catch(() => {}) }
 })
 
-const tile = (url) => /appmaptile|\/nebula\/|\/rest\/lbs\/dem\//.test(url)
+// The cartoon ground's tiles (the map's own tiles are only the camera's; no satellite or terrain tiles now)
+const tile = (url) => /\/api\/cartoon-tiles\//.test(url)
 async function visit(page) {
   const seen = { network: 0, cache: 0 }
   page.on('response', (response) => {
@@ -43,7 +44,7 @@ async function visit(page) {
   // Off-centre: with no photos yet the empty-state card covers the middle
   await page.mouse.move(box.x + box.width * 0.82, box.y + box.height * 0.3)
   for (let i = 0; i < 40 && !(await page.locator('.life-map-globe.away').count()); i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(120) }
-  await page.locator('.life-map-globe.away').waitFor({ timeout: 5000 })
+  await page.locator('.life-map-globe.away').waitFor({ state: 'attached', timeout: 5000 })
   await page.waitForTimeout(6000)
   return seen
 }
@@ -56,8 +57,7 @@ try {
   await first.evaluate(() => navigator.serviceWorker.ready)
   const one = await visit(first)
   const saved = await first.evaluate(async () => (await (await caches.open('pw-map-v1')).keys()).map((request) => new URL(request.url).hostname + new URL(request.url).pathname))
-  assert.ok(saved.some((k) => /appmaptile/.test(k)), `卫星瓦片存进了浏览器缓存（${saved.length} 条）`)
-  assert.ok(saved.some((k) => /dem/.test(k)), '地形数据存进了浏览器缓存')
+  assert.ok(saved.filter((k) => /cartoon-tiles/.test(k)).length >= 10, `卡通地面瓦片存进了浏览器缓存（${saved.length} 条）`)
   assert.ok(!saved.some((k) => /log/.test(k)), '日志请求不缓存')
   assert.ok(saved.every((k) => !/webst0\d|vdata0\d/.test(k)), '不同编号的服务器共用一条缓存')
   await first.close()

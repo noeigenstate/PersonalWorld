@@ -82,7 +82,7 @@ const canopyTexture = (base: string, leaf: string, light: string) => paintedText
 // Without the files the materials stay flat.
 function paintedDetail(name: string, material: THREE.MeshBasicMaterial | THREE.MeshLambertMaterial, color: string, redraw: () => void) {
   const image = new Image()
-  image.src = `/world-assets/textures/${name}.png`
+  image.src = `/world-assets/textures/${name}.webp`
   image.decode().then(() => {
     const size = 512
     const canvas = document.createElement('canvas')
@@ -140,6 +140,7 @@ function materials() {
     zebra: flat(CARTOON.zebra, -48),
     // Double-sided: the tile frame mirrors y (north up on screen, rows down in the tile)
     building: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
+    roof: new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }),
     trunk: new THREE.MeshLambertMaterial({ color: CARTOON.trunk, side: THREE.DoubleSide }),
     leaves: lit(CARTOON.treeLeaf),
     leavesLight: lit(CARTOON.treeLeafLight),
@@ -253,6 +254,9 @@ function cliffGeometry(edges: ReturnType<typeof shoreEdges>, depth: number) {
 // Buildings: walls and a flat roof, pastel colours varied per building, lit so the sides read
 function buildingsGeometry(buildings: NonNullable<CartoonTile['buildings']>, metresPerUnit: number, across: number, tileMetres: number) {
   const positions: number[] = [], colors: number[] = []
+  // Roofs apart from the walls: they carry the painted tile texture (u, v in metres / 3)
+  const roofPositions: number[] = [], roofColors: number[] = [], roofUvs: number[] = []
+  const tileUv = tileMetres / 3
   const wall = new THREE.Color(), roof = new THREE.Color()
   const walls = CARTOON.buildingWalls.map((c) => new THREE.Color(c))
   const roofs = CARTOON.buildingRoofs.map((c) => new THREE.Color(c))
@@ -291,8 +295,15 @@ function buildingsGeometry(buildings: NonNullable<CartoonTile['buildings']>, met
       const ridge = (s1: number) => [mx + e1x * hl * s1, my + e1y * hl * s1, top + rise]
       const A = corner(1, 1), B = corner(-1, 1), C = corner(-1, -1), D = corner(1, -1), R1 = ridge(1), R2 = ridge(-1)
       const push = (tri: number[][], color: THREE.Color) => { for (const v of tri) { positions.push(v[0], v[1], v[2]); colors.push(color.r, color.g, color.b) } }
-      push([A, B, R2, A, R2, R1], roof)
-      push([C, D, R1, C, R1, R2], roof)
+      const roofPush = (tri: number[][]) => {
+        for (const v of tri) {
+          const along = ((v[0] - mx) * e1x + (v[1] - my) * e1y) * tileUv
+          const up = (hw - Math.abs((v[0] - mx) * e2x + (v[1] - my) * e2y)) * tileUv
+          roofPositions.push(v[0], v[1], v[2]); roofColors.push(roof.r, roof.g, roof.b); roofUvs.push(along, up)
+        }
+      }
+      roofPush([A, B, R2, A, R2, R1])
+      roofPush([C, D, R1, C, R1, R2])
       push([D, A, R1], wall)
       push([B, C, R2], wall)
       continue
@@ -300,14 +311,18 @@ function buildingsGeometry(buildings: NonNullable<CartoonTile['buildings']>, met
     const flatRoof = squareMetres > 2500 ? new THREE.Color(CARTOON.flatRoof) : roof
     let triangles: number[][]
     try { triangles = THREE.ShapeUtils.triangulateShape(pts, []) } catch { continue }
-    for (const tri of triangles) for (const i of tri) { positions.push(pts[i].x, pts[i].y, top); colors.push(flatRoof.r, flatRoof.g, flatRoof.b) }
+    for (const tri of triangles) for (const i of tri) { roofPositions.push(pts[i].x, pts[i].y, top); roofColors.push(flatRoof.r, flatRoof.g, flatRoof.b); roofUvs.push(pts[i].x * tileUv, pts[i].y * tileUv) }
   }
-  if (!positions.length) return null
-  const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-  geometry.computeVertexNormals()
-  return geometry
+  const make = (pos: number[], col: number[], uv?: number[]) => {
+    if (!pos.length) return null
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(col, 3))
+    if (uv) geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+    geometry.computeVertexNormals()
+    return geometry
+  }
+  return { walls: make(positions, colors), roofs: make(roofPositions, roofColors, roofUvs) }
 }
 
 // Random points inside polygons (for trees), deterministic per tile
@@ -357,7 +372,7 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
   parent.add(root)
   if (import.meta.env.DEV) (window as unknown as { __cartoonRoot?: THREE.Group }).__cartoonRoot = root
   const m: Materials = materials()
-  for (const [name, key, color] of [['grass', 'land', CARTOON.land], ['grass', 'grass', CARTOON.grass], ['forest', 'forest', CARTOON.forest], ['grass', 'park', CARTOON.park], ['forest', 'forestPlain', CARTOON.forest], ['grass', 'parkPlain', CARTOON.park], ['water', 'water', CARTOON.water], ['sand', 'sand', CARTOON.sand], ['stone', 'town', CARTOON.town], ['cliff', 'cliffTextured', '#ffffff']] as const) {
+  for (const [name, key, color] of [['grass', 'land', CARTOON.land], ['grass', 'grass', CARTOON.grass], ['forest', 'forest', CARTOON.forest], ['grass', 'park', CARTOON.park], ['forest', 'forestPlain', CARTOON.forest], ['grass', 'parkPlain', CARTOON.park], ['water', 'water', CARTOON.water], ['sand', 'sand', CARTOON.sand], ['stone', 'town', CARTOON.town], ['cliff', 'cliffTextured', '#ffffff'], ['roofRed', 'roof', '#ffffff']] as const) {
     paintedDetail(name, m[key] as THREE.MeshBasicMaterial, color, () => options.redraw())
   }
   const tiles = new Map<string, { group: THREE.Group; used: number; ready: boolean }>()
@@ -423,9 +438,11 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
     mesh(polygonsGeometry(land, 10 * magnify), m.land, ground, m.land.userData.order + order)
     if (data.land) {
       const edges = shoreEdges(data.land)
-      mesh(ribbonGeometry(edges.map((e) => ({ pts: [e.ax * GRID, e.ay * GRID, e.bx * GRID, e.by * GRID], width: px(5) })), false, -depth * 0.97), m.foam, ground, m.foam.userData.order + order)
+      mesh(ribbonGeometry(edges.map((e) => ({ pts: [e.ax * GRID, e.ay * GRID, e.bx * GRID, e.by * GRID], width: px(3) })), false, -depth * 0.97), m.foam, ground, m.foam.userData.order + order)
       const walls = cliffGeometry(edges, depth)
-      if (walls) { const item = new THREE.Mesh(walls, m.cliffTextured); item.frustumCulled = false; ground.add(item) }
+      // The walls hang below the ground, and the ground layers write no depth: drawn before them, so
+      // the land in front paints over a wall's hidden part instead of the wall standing up like a fence
+      mesh(walls, m.cliffTextured, ground, -100 + order)
     } else if (data.water?.length) {
       // Tiles built before land was separated: flat water on the land
       mesh(polygonsGeometry(data.water, 6 * magnify, 0.001), m.water, ground, m.river.userData.order + order)
@@ -452,10 +469,11 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
       solid.scale.set(1 / group.scale.x, 1 / group.scale.y, 1)
       const metre = 1 / metresPerUnit // scene units per metre
       if (data.buildings?.length && z >= 14) {
-        const geometry = buildingsGeometry(data.buildings, metresPerUnit, across, tileMetres)
-        if (geometry) {
+        const { walls, roofs } = buildingsGeometry(data.buildings, metresPerUnit, across, tileMetres)
+        for (const [geometry, material] of [[walls, m.building], [roofs, m.roof]] as const) {
+          if (!geometry) continue
           // footprints are in tile space: scale them back up inside the undo-scale group
-          const item = new THREE.Mesh(geometry, m.building)
+          const item = new THREE.Mesh(geometry, material)
           item.scale.set(group.scale.x, group.scale.y, 1)
           item.frustumCulled = false
           solid.add(item)

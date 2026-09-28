@@ -57,7 +57,7 @@ try {
   const box = await page.locator('.life-globe-canvas').boundingBox()
   await page.mouse.move(box.x + box.width * 0.82, box.y + box.height * 0.3)
   for (let i = 0; i < 40 && !(await page.locator('.life-map-globe.away').count()); i++) { await page.mouse.wheel(0, -120); await page.waitForTimeout(120) }
-  await page.locator('.life-map-globe.away').waitFor({ timeout: 5000 })
+  await page.locator('.life-map-globe.away').waitFor({ state: 'attached', timeout: 5000 })
   const country = await settle((s) => s.tiles >= 10)
   assert.ok(country.tiles >= 10, `全国尺度的卡通地面已铺开（${country.text}）`)
   await page.screenshot({ path: join(shots, 'pw-cartoon-1-country.png') })
@@ -81,6 +81,11 @@ try {
   await page.screenshot({ path: join(shots, 'pw-cartoon-3-street.png') })
   assert.ok(streetLevel.zoom >= 14 && streetLevel.buildings > 0, `街道尺度有按真实轮廓的建筑（${streetLevel.text}）`)
   assert.ok(streetLevel.trees > 0, `有树（${streetLevel.text}）`)
+  // Tilted over a wetland (Xixi, many shores): the cliffs hang below the shores, none stand on the land
+  await page.evaluate(() => { const map = window.__amap; map.setPitch(55, true); map.setZoomAndCenter(15.6, [120.075, 30.268], true) })
+  await settle((s) => s.zoom >= 15 && s.tiles >= 20, 60000)
+  await page.waitForTimeout(2500)
+  await page.screenshot({ path: join(shots, 'pw-cartoon-4-shores.png') })
   // A tile whose source is slow answers 503 and is asked for again a few seconds later
   const ok = tileAnswers.filter((s) => s === 200).length
   assert.ok(tileAnswers.length && ok / tileAnswers.length >= 0.9, `卡通瓦片大都构建成功（${ok}/${tileAnswers.length}）`)

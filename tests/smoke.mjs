@@ -144,6 +144,8 @@ try {
   await page.mouse.up()
   assert.notEqual(await overview.getAttribute('data-orientation'), beforeRotation, '拖动应旋转地球')
   await page.getByRole('button', { name: '放大地球' }).click()
+  // The zoom glides over a few frames
+  await page.waitForFunction(() => Number(document.querySelector('.life-globe')?.dataset.zoom) > 1, null, { timeout: 3000 }).catch(() => {})
   assert.ok(Number(await overview.getAttribute('data-zoom')) > 1, '放大按钮应改变地球缩放')
   await page.getByRole('button', { name: '回到照片区域' }).click()
   assert.equal(await overview.getAttribute('data-orientation'), beforeRotation, '归位后照片地点应回到正面')
