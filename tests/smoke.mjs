@@ -99,6 +99,8 @@ try {
   await page.locator('input[type="file"]').setInputFiles(files)
   await page.locator('.map-label.place').nth(3).waitFor()
   assert.equal(await page.locator('.map-label.place').count(), 4, '湘潭、武汉、上海、杭州四个地点')
+  assert.equal(await page.locator('.map-label.lifted').count(), 0, '标签不再抬高拉竖线')
+  assert.deepEqual([...new Set(await page.locator('.map-label.place').evaluateAll((els) => els.map((el) => Boolean(el.dataset.side))))], [true], '地点是带尖角的气泡')
   assert.equal(await page.locator('.timebar .dot').count(), 16, '35 张照片应整理为 16 件事')
   assert.ok((await page.locator('.timebar .years span').count()) >= 5, '时间线下方有时间刻度')
   assert.match(await page.locator('.timebar-head span').innerText(), /^2012\.\d\d – 2026\.\d\d · 16 件事$/, '时间线标出起止时间')

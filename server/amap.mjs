@@ -32,7 +32,9 @@ export async function reverseGeocode(config, points) {
       const regeo = data.regeocodes?.[index] || {}
       const part = regeo.addressComponent || {}
       // Municipalities (上海、北京…) return an empty city; the province is the city
-      const city = text(part.city) || text(part.province)
+      // Over the sea AMap names only the country; that is no place on a life map
+      const region = (value) => (/^(中华人民共和国|中国)$/.test(text(value)) ? '' : text(value))
+      const city = region(part.city) || region(part.province)
       const district = text(part.district)
       const detail = [text(part.township), text(part.neighborhood?.name) || text(part.building?.name)].filter(Boolean).join(' ')
       results.push({ id: point.id, city, district, address: [district, detail].filter(Boolean).join(' ') })

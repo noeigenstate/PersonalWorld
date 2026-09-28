@@ -148,6 +148,9 @@ export function eventCover(event: MemoryEvent, assets: MemoryAsset[]): MemoryAss
   return group.find((asset) => Boolean(asset.preview)) || group[0]
 }
 
+/** A country name is what AMap returns for points at sea; it is not a place */
+export const isCountryName = (name?: string) => /^(中华人民共和国|中国)$/.test(name || '')
+
 export function cityLabel(city: string) {
   return city.replace(/(市|特别行政区)$/, '')
 }

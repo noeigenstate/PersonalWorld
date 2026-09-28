@@ -1,3 +1,4 @@
+import { isCountryName } from '../lib/memory'
 // Loads the AMap JS API 2.0. The security code stays on our server: requests go through
 // /_AMapService, which appends it (see server/amap.mjs).
 import type { GeocodeResult, PhotoLocation } from '../types'
@@ -29,6 +30,8 @@ export function loadAmap(key: string): Promise<AMapNS> {
 }
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '')
+// Over the sea AMap names only the country; that is no place on a life map
+const region = (value: unknown) => (isCountryName(text(value)) ? '' : text(value))
 
 // Browser-side reverse geocoding with the JS API key, used when no web-service key is set
 export async function geocodeInBrowser(key: string, points: { id: string; lat: number; lng: number }[]): Promise<GeocodeResult[]> {
@@ -47,7 +50,7 @@ export async function geocodeInBrowser(key: string, points: { id: string; lat: n
     })
     batch.forEach((point, index) => {
       const part = regeocodes[index]?.addressComponent || {}
-      const city = text(part.city) || text(part.province)
+      const city = region(part.city) || region(part.province)
       const district = text(part.district)
       const detail = [text(part.township), text(part.neighborhood) || text(part.building)].filter(Boolean).join(' ')
       if (city) results.push({ id: point.id, city, district, address: [district, detail].filter(Boolean).join(' ') })
@@ -65,8 +68,8 @@ const call = <T>(run: (done: (status: string, result: any) => void) => void, pic
 
 function fromRegeocode(regeo: any, gcj: [number, number], source: PhotoLocation['source'], confidence: number): PhotoLocation | undefined {
   const part = regeo?.addressComponent || {}
-  const province = text(part.province)
-  const city = text(part.city) || province
+  const province = region(part.province)
+  const city = region(part.city) || province
   if (!city) return undefined
   const nearest = (regeo.pois || []).slice().sort((a: any, b: any) => Number(a.distance) - Number(b.distance))[0]
   const parts = {
@@ -118,7 +121,7 @@ export async function locateAddress(key: string, address: string): Promise<Photo
   const geocodes = await call((done) => new AMap.Geocoder({}).getLocation(address, done), (r) => r.geocodes || [], [])
   const g = geocodes[0]
   if (!g?.location) return undefined
-  const parts = { province: text(g.addressComponent?.province), city: text(g.addressComponent?.city) || text(g.addressComponent?.province), district: text(g.addressComponent?.district), street: text(g.addressComponent?.street), number: text(g.addressComponent?.streetNumber) }
+  const parts = { province: region(g.addressComponent?.province), city: region(g.addressComponent?.city) || region(g.addressComponent?.province), district: text(g.addressComponent?.district), street: text(g.addressComponent?.street), number: text(g.addressComponent?.streetNumber) }
   return { source: 'meta', precision: precisionOf(parts, false), gcj: [g.location.lng, g.location.lat], ...parts, label: locationLabel(parts) || address, evidence: address, confidence: 0.9 }
 }
 

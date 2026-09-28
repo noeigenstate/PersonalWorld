@@ -155,37 +155,82 @@ export function createLabels(layer: HTMLElement) {
       labels.push({ el, anchor, priority })
       return el
     },
-    // `obstacles` are screen areas already taken (e.g. photo thumbnails) that labels step around
-    place(camera: THREE.Camera, w: number, h: number, toScreen?: (anchor: THREE.Vector3) => THREE.Vector3, obstacles: DOMRect[] = []) {
+    // `obstacles` are screen areas already taken (e.g. photo thumbnails) that labels step around.
+    // Labels are speech bubbles whose tail points at their place: no leader lines. A crowded bubble
+    // moves to another side of its point, then shrinks (less text) before it is hidden.
+    // `detail` is the most a bubble may show at the current zoom: small map, small bubbles.
+    place(camera: THREE.Camera, w: number, h: number, toScreen?: (anchor: THREE.Vector3) => THREE.Vector3, obstacles: DOMRect[] = [], detail: LabelDetail = 'full') {
       const v = new THREE.Vector3()
       const placed: DOMRect[] = [...obstacles]
       const order = [...labels].sort((a, b) => b.priority - a.priority)
-      const clashes = (rect: DOMRect) => placed.some((r) => rect.left < r.right && rect.right > r.left && rect.top < r.bottom && rect.bottom > r.top)
+      const clashes = (rect: DOMRect) => rect.left < 4 || rect.top < 4 || rect.right > w - 4 || rect.bottom > h - 4 ||
+        placed.some((r) => rect.left < r.right && rect.right > r.left && rect.top < r.bottom && rect.bottom > r.top)
+      const levels = DETAILS.slice(DETAILS.indexOf(detail))
       for (const { el, anchor, priority } of order) {
         v.copy(toScreen ? toScreen(anchor) : anchor).project(camera)
         const x = ((v.x + 1) / 2) * w
         const y = ((1 - v.y) / 2) * h
-        const width = el.offsetWidth
-        const height = el.offsetHeight
-        // Crowded labels stack upwards with a leader line back to their point
-        const steps = priority >= 3 ? 6 : 4
-        let lift = -1
-        for (let step = 0; step < steps && lift < 0; step++) {
-          const up = step * (height + 6)
-          if (!clashes(new DOMRect(x - width / 2, y - height - 8 - up, width, height + 8))) lift = up
+        let choice: { level: LabelDetail; side: Side; rect: DOMRect } | null = null
+        for (const level of levels) {
+          const { width, height } = sizeOf(el, level)
+          for (const side of SIDES) {
+            const rect = bubbleRect(side, x, y, width, height)
+            if (!clashes(rect)) { choice = { level, side, rect }; break }
+          }
+          if (choice) break
         }
-        // Place labels always show, even when every level is taken
-        if (lift < 0 && priority >= 3) lift = (steps - 1) * (height + 6)
-        const visible = v.z <= 1 && lift >= 0
-        el.style.visibility = visible ? 'visible' : 'hidden'
-        el.classList.toggle('lifted', lift > 0)
-        el.style.setProperty('--lift', `${Math.max(0, lift)}px`)
-        el.style.transform = `translate(${x}px, ${y - Math.max(0, lift)}px) translate(-50%, -100%)`
-        if (visible) placed.push(new DOMRect(x - width / 2, y - height - 8 - lift, width, height + 8 + lift))
+        // Places and the current event always show: smallest bubble above the point
+        if (!choice && priority >= 3) {
+          const level = levels[levels.length - 1]
+          const { width, height } = sizeOf(el, level)
+          choice = { level, side: 'above', rect: bubbleRect('above', x, y, width, height) }
+        }
+        const visible = v.z <= 1 && Boolean(choice)
+        // Write only what changed: this runs every frame while the map moves
+        const visibility = visible ? 'visible' : 'hidden'
+        if (el.style.visibility !== visibility) el.style.visibility = visibility
+        if (!choice) continue
+        if (el.dataset.detail !== choice.level) el.dataset.detail = choice.level
+        if (el.dataset.side !== choice.side) el.dataset.side = choice.side
+        const transform = `translate(${Math.round(choice.rect.left)}px, ${Math.round(choice.rect.top)}px)`
+        if (el.style.transform !== transform) el.style.transform = transform
+        if (visible) placed.push(choice.rect)
       }
     },
   }
 }
+
+export type LabelDetail = 'full' | 'brief' | 'name'
+const DETAILS: LabelDetail[] = ['full', 'brief', 'name']
+type Side = 'above' | 'below' | 'right' | 'left'
+const SIDES: Side[] = ['above', 'below', 'right', 'left']
+const TAIL = 10
+
+// Where a bubble of this size sits when its tail points at (x, y) from the given side
+function bubbleRect(side: Side, x: number, y: number, width: number, height: number) {
+  if (side === 'above') return new DOMRect(x - width / 2, y - height - TAIL, width, height)
+  if (side === 'below') return new DOMRect(x - width / 2, y + TAIL, width, height)
+  if (side === 'right') return new DOMRect(x + TAIL, y - height / 2, width, height)
+  return new DOMRect(x - TAIL - width, y - height / 2, width, height)
+}
+
+// Bubble sizes per level, measured once per label (labels are rebuilt when their text changes)
+const sizes = new WeakMap<HTMLElement, Partial<Record<LabelDetail, { width: number; height: number }>>>()
+function sizeOf(el: HTMLElement, level: LabelDetail) {
+  const known = sizes.get(el) || {}
+  if (!known[level]) {
+    const shown = el.dataset.detail
+    el.dataset.detail = level
+    known[level] = { width: el.offsetWidth, height: el.offsetHeight }
+    sizes.set(el, known)
+    if (shown) el.dataset.detail = shown
+    else delete el.dataset.detail
+  }
+  return known[level]!
+}
+
+/** Most a bubble may show at a map zoom level: names only for a country, details for a city */
+export const labelDetailForZoom = (zoom: number): LabelDetail => (zoom < 6 ? 'name' : zoom < 9 ? 'brief' : 'full')
 
 type LabelSpec = { className: string; lines: [string, string][]; priority: number }
 

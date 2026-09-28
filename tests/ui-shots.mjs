@@ -1,4 +1,5 @@
-// Screenshots of the main surfaces for design review: node tests/ui-shots.mjs <outDir> (needs npm run dev; W/H set the viewport)
+// Screenshots of the main surfaces for design review: node tests/ui-shots.mjs <outDir>
+// (needs npm run dev; W/H set the viewport; REAL_MAP=1 uses the real AMap map)
 import { mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,7 +20,8 @@ async function setup(context) {
     return route.fulfill({ json: user })
   })
   await context.route('**/api/vault/**', (route) => route.request().method() === 'GET' && route.request().url().endsWith('/assets') ? route.fulfill({ json: { previews: [], originals: [] } }) : route.request().method() === 'GET' ? route.fulfill({ json: { memory: null, extras: {} } }) : route.fulfill({ json: { ok: true } }))
-  await context.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟', geocode: true } }))
+  // REAL_MAP=1 keeps the real /api/config so AMap loads with the key in .env
+  if (!process.env.REAL_MAP) await context.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟', geocode: true } }))
   await context.route('**/api/geocode', (route) => route.fulfill({ json: { results: route.request().postDataJSON().points.map(fakeGeocode) } }))
   await context.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '外滩的傍晚', caption: '江边的灯刚亮起来。', scene: '江边步道', visibleText: '', clues: [{ kind: '地标', evidence: '东方明珠', inference: '上海外滩', confidence: 0.8 }], landmark: null, placeQuery: null, eventGuess: { type: '旅行', reason: '' }, tags: ['夜景', '江边'], questions: ['那天和谁一起？'] } }))
   await context.route('**/api/butler', (route) => route.fulfill({ json: { answer: '那是你第一次来上海，你们去了〔外滩〕。', eventIds: [] } }))
@@ -43,9 +45,15 @@ await page.getByRole('button', { name: '导入第一批影像' }).click()
 await page.waitForTimeout(300)
 await page.screenshot({ path: join(out, '2-import.png') })
 await page.locator('input[type="file"]').setInputFiles(files)
-await page.locator('.map-label.place').nth(3).waitFor()
+await page.locator('.map-label.place').first().waitFor()
 await page.waitForTimeout(4000)
 await page.screenshot({ path: join(out, '3-overview.png') })
+// How bubbles look zoomed out (the AMap map picks the level from its zoom)
+for (const level of ['brief', 'name']) {
+  await page.evaluate((level) => document.querySelectorAll('.map-label.place').forEach((el) => { el.dataset.detail = level }), level)
+  await page.screenshot({ path: join(out, `3-overview-${level}.png`), clip: { x: 0, y: 60, width: width, height: 560 } })
+}
+await page.evaluate(() => document.querySelectorAll('.map-label.place').forEach((el) => { el.dataset.detail = 'full' }))
 await page.locator('.map-label.place').filter({ hasText: '上海' }).click()
 await page.locator('.butler').waitFor()
 await page.waitForTimeout(4000)

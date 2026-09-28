@@ -1,5 +1,6 @@
 import { openDB, type IDBPDatabase } from 'idb'
 import type { MemoryState } from '../types'
+import { isCountryName } from './memory'
 import { deleteVaultAsset, downloadOriginal, downloadPreview, listVaultAssets, readVaultState, uploadOriginal, uploadPreview, writeVaultState } from './vault'
 
 // Every account gets its own browser database as the working copy. Each change is also backed up to
@@ -163,7 +164,9 @@ export async function loadMemory(): Promise<MemoryState> {
   scheduleBackup(0)
   if (!state) return EMPTY
   // Older saves lack the fields added with places
-  const assets = state.assets.map(({ favorite: _favorite, ...asset }: MemoryState['assets'][number] & { favorite?: boolean }) => asset)
+  // Earlier versions took the country AMap names for points at sea as a city
+  const assets = state.assets.map(({ favorite: _favorite, ...asset }: MemoryState['assets'][number] & { favorite?: boolean }) =>
+    (isCountryName(asset.location?.city) || isCountryName(asset.location?.province) ? { ...asset, location: undefined, locateTried: false } : asset))
   return {
     assets,
     placeRoles: state.placeRoles || {},
@@ -172,6 +175,7 @@ export async function loadMemory(): Promise<MemoryState> {
       const photos = assets.filter((asset) => event.assetIds.includes(asset.id) && asset.latitude !== undefined && asset.longitude !== undefined)
       return {
         ...event,
+        ...(isCountryName(event.city) ? { city: undefined, citySource: undefined, district: undefined, address: undefined } : {}),
         visibleText: event.visibleText || '',
         timeSource: event.timeSource || assets.find((asset) => asset.id === event.assetIds[0])?.dateSource || 'file',
         lat: event.lat ?? (photos.length ? photos.reduce((sum, asset) => sum + asset.latitude!, 0) / photos.length : undefined),

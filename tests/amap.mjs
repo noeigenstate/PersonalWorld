@@ -142,7 +142,8 @@ try {
   await page.locator('.photo-open').first().click()
   await page.getByRole('button', { name: '在地图上看' }).click()
   await page.locator('.life-map[data-scene-state="ready"]').waitFor({ timeout: 30000 })
-  assert.equal(await page.locator('.map-scene-caption').isVisible(), true, '无主题照片也有完整街区')
+  // The caption is drawn on the frame after the scene becomes ready
+  assert.equal(await page.locator('.map-scene-caption').waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false), true, '无主题照片也有完整街区')
   assert.ok(Number(await page.locator('.life-map').getAttribute('data-scene-buildings')) > 100, '杭州应恢复完整的窗格楼群，不是少量装饰楼')
   assert.ok(regionRequests.some(([lng, lat]) => Math.abs(lng - 120.13) < .1 && Math.abs(lat - 30.26) < .1), '无主题照片也应读取地理场景')
   assert.equal(await page.locator('.map-scene-source').isVisible(), true, '有地图地景素材时显示 OSM 署名')

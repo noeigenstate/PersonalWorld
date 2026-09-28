@@ -5,7 +5,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import type { MemoryEvent } from '../types'
 import { gcj02ToWgs84, wgs84ToGcj02 } from '../lib/geo'
-import { LAND, adder, box, building, createLabels, dim, eventLabel, placeLabel, seeded } from './objects'
+import { LAND, adder, box, building, createLabels, dim, eventLabel, labelDetailForZoom, placeLabel, seeded } from './objects'
 import { createOrientalPearlScene, isOrientalPearl, ORIENTAL_PEARL_GCJ } from './memoryScene'
 import { createStyledDistrict, shanghaiScene, type SceneData } from './styledDistrict'
 import { fetchRegionScene, hasStreetLocation, metresApart, photoRegions, photoSceneKey, regionForPhoto } from './regionScene'
@@ -144,6 +144,10 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let framingVenue = false
   let venueFitFrame = 0
   let venueFitVersion = 0
+  // A photo focused while the map is still flying (e.g. into a city) waits for that flight to end:
+  // AMap lets the running animation win over a new setZoomAndCenter
+  let moving = false
+  let focusAfterMove: MapPhoto | null = null
   let landmarkBounds: THREE.Box3[] = []
   let hasAnimatedWater = false
   let waterFrame = 0
@@ -320,7 +324,13 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit)
     // In a city's story the event labels carry the chronology. Lay them out first and
     // move photo buttons a short distance when they would cover a label.
-    if (current?.selectedCity) labels.place(camera, size.w, size.h, projectLabel)
+    // Bubbles stay clear of the floating top bar and show as much as the zoom allows
+    const bar = new DOMRect(0, 0, size.w, insets.top)
+    // The heading card floats over the map too (same stage, so container coordinates)
+    const headingEl = container.closest('.stage')?.querySelector<HTMLElement>('.map-heading')
+    const heading = headingEl ? (() => { const r = headingEl.getBoundingClientRect(), c = container.getBoundingClientRect(); return new DOMRect(r.left - c.left, r.top - c.top, r.width, r.height) })() : bar
+    const detail = labelDetailForZoom(map.getZoom())
+    if (current?.selectedCity) labels.place(camera, size.w, size.h, projectLabel, [bar, heading], detail)
     const host = container.getBoundingClientRect()
     const labelRects = current?.selectedCity ? [...labelLayer.querySelectorAll<HTMLElement>('.map-label')]
       .filter((el) => el.style.visibility !== 'hidden')
@@ -354,7 +364,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       }
     } else sceneCaption.hidden = true
     // Keep both photo buttons and story labels reachable at every zoom.
-    if (!current?.selectedCity) labels.place(camera, size.w, size.h, projectLabel, taken)
+    if (!current?.selectedCity) labels.place(camera, size.w, size.h, projectLabel, [...taken, bar, heading], detail)
   }
 
   const layer = new AMap.GLCustomLayer({ zIndex: 120, init() {}, render: draw })
@@ -823,6 +833,11 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     else if (hit?.object.userData.city) callbacks.onSelectCity(hit.object.userData.city)
   })
   map.on('movestart', closePhotoMenu)
+  map.on('movestart', () => { moving = true })
+  map.on('moveend', () => {
+    moving = false
+    if (focusAfterMove) { const photo = focusAfterMove; focusAfterMove = null; api.focusPhoto(photo) }
+  })
   map.on('moveend', syncSceneForView)
   map.on('zoomend', syncSceneForView)
   // AMap updates its internal viewport after the browser's ResizeObserver. Fit a
@@ -884,6 +899,12 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     // Close enough to see the building it was taken at
     focusPhoto(photo: MapPhoto) {
       if (!ready) { pendingFocus = photo; pendingLandmark = false; return }
+      if (moving) {
+        focusAfterMove = photo
+        // Never wait forever if AMap misses a moveend
+        setTimeout(() => { if (focusAfterMove === photo) { moving = false; focusAfterMove = null; api.focusPhoto(photo) } }, 1500)
+        return
+      }
       cancelVenueFit()
       focusedId = photo.id
       frameFocusedVenue = true
