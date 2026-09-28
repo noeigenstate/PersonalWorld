@@ -12,6 +12,8 @@ import { contextMessages, readContext } from './photoContext.mjs'
 import { cardMessages, readCard } from './photoCard.mjs'
 import { MAX_PHOTOS as CULL_MAX, cullMessages, readCull } from './photoCull.mjs'
 import { mapSceneForPoint } from './mapScene.mjs'
+import { cartoonTile, reloadArchives } from './cartoonTiles.mjs'
+import { syncWorldData } from './worldData.mjs'
 import { createFilmService } from './memoryFilms.mjs'
 import { filmCapability } from './memoryFilmRender.mjs'
 import { createMemoryReview } from './memoryReview.mjs'
@@ -211,6 +213,18 @@ const server = http.createServer(async (req, res) => {
     // Personal data and the external map services below need a signed-in user.
     const currentUser = () => users.userForToken(readCookie(req, SESSION_COOKIE))
     const signedIn = () => Boolean(currentUser())
+    // The cartoon world: public map data built into cartoon tiles on this computer (cartoonTiles.mjs)
+    const cartoon = /^\/api\/cartoon-tiles\/(\d+)\/(\d+)\/(\d+)\.json$/.exec(path)
+    if (cartoon && req.method === 'GET') {
+      const [z, x, y] = cartoon.slice(1).map(Number)
+      try {
+        const json = await cartoonTile(z, x, y)
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=86400' })
+        return res.end(json)
+      } catch (error) {
+        return send(res, /无效/.test(error.message) ? 400 : 503, { error: error.message })
+      }
+    }
     // The account's photos and memories on this computer's disk (see accountVault.mjs)
     if (path.startsWith('/api/vault/')) {
       const user = currentUser()
@@ -331,3 +345,6 @@ const server = http.createServer(async (req, res) => {
 })
 
 server.listen(port, '127.0.0.1', () => console.log(`Personal World API running on http://127.0.0.1:${server.address().port}`))
+
+// Map data from the project's Seafile, in the background (world-data/manifest.json, WORLD_DATA_URL)
+if (!process.env.SKIP_WORLD_DATA) syncWorldData({ log: (line) => console.log(`[地图数据] ${line}`) }).then((done) => { if (done.length) reloadArchives() }).catch((error) => console.warn('[地图数据]', error.message))

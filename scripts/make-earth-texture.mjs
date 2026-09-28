@@ -1,3 +1,4 @@
+// Colours follow src/map/cartoonPalette.ts (land, water) so the globe hands over to the cartoon ground seamlessly.
 // Regenerate the code-native cartoon globe texture from public-domain Natural Earth land polygons.
 // Source: https://github.com/nvkelso/natural-earth-vector/blob/master/geojson/ne_110m_land.geojson
 import { readFile, writeFile } from 'node:fs/promises'
@@ -26,8 +27,8 @@ const parallels = Array.from({ length: 5 }, (_, index) => `<path d="M0,${((index
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
 <defs>
-  <linearGradient id="sea" x2="0" y2="1"><stop stop-color="#82d5db"/><stop offset=".52" stop-color="#5db9cc"/><stop offset="1" stop-color="#83cfdb"/></linearGradient>
-  <linearGradient id="land" x2="0" y2="1"><stop stop-color="#d7e5ae"/><stop offset=".42" stop-color="#a8d19b"/><stop offset=".72" stop-color="#a6d0a4"/><stop offset="1" stop-color="#d7e7b9"/></linearGradient>
+  <linearGradient id="sea" x2="0" y2="1"><stop stop-color="#8fd6e8"/><stop offset=".52" stop-color="#7fcde3"/><stop offset="1" stop-color="#8fd6e8"/></linearGradient>
+  <linearGradient id="land" x2="0" y2="1"><stop stop-color="#d9eeb4"/><stop offset=".42" stop-color="#cfe7a6"/><stop offset=".72" stop-color="#c6e29c"/><stop offset="1" stop-color="#d9edb8"/></linearGradient>
 </defs>
 <rect width="${WIDTH}" height="${HEIGHT}" fill="url(#sea)"/>
 <g fill="none" stroke="#d5f7ed" stroke-width="1" opacity=".18">${meridians}${parallels}</g>

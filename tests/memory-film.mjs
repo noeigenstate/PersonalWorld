@@ -10,6 +10,15 @@ import { chromium } from 'playwright'
 import { fallbackFilm, readFilmSources, validateFilmPlan } from '../server/memoryFilmPlan.mjs'
 import { runMedia } from '../server/memoryFilmRender.mjs'
 
+// Films live on a story line (not in the top bar): open the city, then the films entry
+async function openFilms(page) {
+  if (!(await page.locator('.story-apps .film-entry').count())) {
+    await page.locator('.globe-place, .globe-cluster, .map-label.place:visible').first().click()
+    if (await page.getByRole('dialog', { name: '选择地点' }).count()) await page.getByRole('dialog', { name: '选择地点' }).getByRole('button').first().click()
+  }
+  await page.getByRole('button', { name: '回忆短片', exact: true }).click()
+}
+
 const dir = mkdtempSync(join(tmpdir(), 'pw-memory-film-'))
 const sources = readFilmSources(Array.from({ length: 8 }, (_, i) => ({ id: `film-fixture-${i}`, date: `2026-0${Math.floor(i / 2) + 1}-15`, observed: ['插画中的湖边小路', '插画中的绿树与长椅', '插画中的粉色花朵', '插画中的风筝', '插画中的冰淇淋', '插画中的落叶', '插画中的蓝色小船', '插画中的橙色夕阳'][i], confirmed: '', place: '示例公园', tags: ['公园', '插画'] })))
 assert.equal(readFilmSources([...sources, sources[0], { id: '../invalid' }]).length, 8)
@@ -69,10 +78,10 @@ try {
       return { id: source.id, name: `${source.id}.jpg`, kind: 'image', mimeType: 'image/jpeg', size: 1000, capturedAt: source.date + 'T10:00:00+08:00', dateSource: 'exif', width: w, height: h, hash: `unique-${index}`, preview: canvas.toDataURL('image/jpeg', .9), card: { title: source.observed, caption: '', scene: source.observed, tags: source.tags, clues: [], questions: [], visibleText: '', eventGuess: { type: '插画', reason: '测试' }, createdAt: new Date().toISOString() } }
     })
     const { openAccountStorage, saveMemory } = await import('/src/lib/storage.ts')
-    await openAccountStorage(userId); await saveMemory({ assets, events: [], placeRoles: {}, autoPhotoCards: false })
+    await openAccountStorage(userId); await saveMemory({ assets, events: [{ id: 'story-e1', assetIds: assets.map((a) => a.id), occurredAt: assets[0].capturedAt, timeSource: 'exif', title: '测试故事', summary: '', type: '日常', place: '', city: '杭州市', citySource: 'user', lat: 30.25, lng: 120.15, people: [], visibleText: '', tags: [], questions: [], status: 'confirmed' }], placeRoles: {}, autoPhotoCards: false })
   }, { userId: user.id, sources })
   await page.reload()
-  await page.getByRole('button', { name: '回忆短片', exact: true }).click()
+  await openFilms(page)
   // Deliberately don't press Generate or supply a prompt. The default automation
   // must create the job, choose sources, upload and render on its own.
   await page.waitForFunction(() => document.querySelector('.film-screen video') || document.querySelector('.film-error'), null, { timeout: 240000 })
@@ -103,7 +112,7 @@ try {
   await page.reload(); await page.waitForTimeout(12000)
   const after = await (await fetch(`${base}/api/memory-films`, { headers: { cookie } })).json()
   assert.equal(after.jobs.length, 1, 'reload must not regenerate same collection')
-  await page.getByRole('button', { name: '回忆短片', exact: true }).click()
+  await openFilms(page)
   await page.setViewportSize({ width: 430, height: 900 }); await page.screenshot({ path: join(dir, 'film-mobile.png') })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   assert.deepEqual(errors, [])
@@ -128,7 +137,7 @@ try {
     await page.screenshot({ path: join(dir, 'film-story-context.png') })
     await page.reload(); await page.waitForTimeout(23000)
     assert.equal(calls, 2, 'a saved correction must not regenerate repeatedly')
-    await page.getByRole('button', { name: '回忆短片', exact: true }).click()
+    await openFilms(page)
     await page.getByRole('button', { name: '重新编排一版', exact: true }).click()
     await page.getByRole('button', { name: '暂停', exact: true }).click()
     await page.waitForTimeout(1200)

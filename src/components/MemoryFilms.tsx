@@ -8,7 +8,8 @@ import { nextFilmUpdate } from '../lib/filmUpdates'
 import { loadFilmSettings, saveFilmSettings } from '../lib/storage'
 import type { MemoryGraphState, StoryChapter } from '../lib/memoryGraph'
 
-export function MemoryFilms({ assets, events, ready, analyzing, graph, requestedChapter }: { assets: MemoryAsset[]; events: MemoryEvent[]; ready: boolean; analyzing: boolean; graph:MemoryGraphState|null; requestedChapter:{chapter:StoryChapter;at:number}|null }) {
+// `entry` shows the button; the component stays mounted without it so films keep being made in the background
+export function MemoryFilms({ assets, events, ready, analyzing, graph, requestedChapter, entry = true }: { assets: MemoryAsset[]; events: MemoryEvent[]; ready: boolean; analyzing: boolean; graph:MemoryGraphState|null; requestedChapter:{chapter:StoryChapter;at:number}|null; entry?: boolean }) {
   const [open, setOpen] = useState(false)
   const [jobs, setJobs] = useState<FilmJob[]>([])
   const [settings, setSettings] = useState<{ enabled: boolean; attempted: string[] } | null>(null)
@@ -231,9 +232,9 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
   const remaining = stories.filter(story => !attempted(story.key) && !made(story))
   const status = current?.status === 'planning' ? '正在寻找值得留住的故事…' : current?.status === 'awaiting-images' ? `正在准备照片 ${uploading || current.uploaded.length}/${current.plan?.shots.length || 0}` : current?.status === 'queued' ? '已排队，等待剪辑…' : current?.status === 'rendering' ? `正在剪辑 · ${current.progress}%` : analyzing ? '等照片理解完成后，自动剪一段回忆' : sources.length < 2 ? `已有 ${sources.length} 张可用照片，满 2 张后自动编排` : !settings?.enabled ? '自动生成已暂停' : roundUsed >= 3 ? '这批照片已尝试编排 3 段回忆，还可选择下方主题' : remaining.length ? `发现 ${remaining.length} 段回忆，接着编排${remaining[0].place}` : '照片就绪后会自动编排，无需填写创意'
   return <>
-    <button className={`button film-entry ${current || starting ? 'working' : ''}`} onClick={() => setOpen(true)} title="自动回忆短片" aria-label="回忆短片">
+    {entry && <button className={`button film-entry ${current || starting ? 'working' : ''}`} onClick={() => setOpen(true)} title="自动回忆短片" aria-label="回忆短片">
       {current || starting ? <LoaderCircle size={16} className="film-spin" /> : <Film size={16} />}<span>回忆短片</span>{jobs.some((j) => j.status === 'complete') && <i />}
-    </button>
+    </button>}
     {open && createPortal(<div className="modal-backdrop film-backdrop" onClick={() => setOpen(false)}>
       <section className="film-modal" role="dialog" aria-modal="true" aria-labelledby="film-heading" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header"><div><span className="section-kicker">留住平常的小日子</span><h2 id="film-heading">你的回忆，自己成片</h2></div><button className="icon-button" onClick={() => setOpen(false)} aria-label="关闭回忆短片"><X size={21} /></button></div>

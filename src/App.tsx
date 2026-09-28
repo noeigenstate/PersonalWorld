@@ -530,9 +530,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         <span className="app-brand"><Aperture size={22} strokeWidth={2} /><span>Personal World</span></span>
         <div className="app-actions">
           <PhotoCull assets={memory.assets} ready={ready} aiAvailable={aiConfig.available} onLooks={saveLooks} onDelete={async (ids) => { await deleteAssets(ids); setNotice(`已删除 ${ids.length} 张照片`) }} />
-          <MemoryLibrary library={library} assets={memory.assets} onPhoto={openPhoto} onFilm={chapter=>setFilmChapter({chapter,at:Date.now()})} />
-          <MemoryFilms assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId) || library.busy || Boolean(library.state?.understanding?.busy)} graph={library.state} requestedChapter={filmChapter} />
-          <span className={`connection-status ${aiConfig.available ? 'online' : ''}`} title={aiConfig.message}><span />{aiConfig.available ? 'StepFun 已连接' : '本地模式'}</span>
+          <span className={`connection-status ${aiConfig.available ? 'online' : ''}`} title={aiConfig.message}><span />{aiConfig.available ? 'AI 模型已接入' : 'AI 模型未接入'}</span>
           <button className="button button-primary top-import" onClick={() => setImportOpen(true)}><Plus size={16} />导入影像</button>
           <span className="account" title={`已登录：${account.username}`}><UserRound size={15} /><span>{account.username}</span></span>
           <button className="icon-button" onClick={() => { stopSpeaking(); onSignOut() }} aria-label="退出登录" title="退出登录"><LogOut size={17} /></button>
@@ -572,6 +570,10 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                 <button className="crumb" onClick={() => selectCity(null)}><ChevronLeft size={14} />人生地图</button>
                 <h1>{cityLabel(selectedCity)}的故事线<b>.</b></h1>
                 <p>{formatYearMonth(selectedPlace.firstAt)}{selectedPlace.isBase ? ' 至今' : ''} · {story.length} 件事</p>
+                {/* People and films belong to a story line, not to the top bar */}
+                <div className="story-apps">
+                  <MemoryLibrary library={library} assets={memory.assets} onPhoto={openPhoto} onFilm={chapter=>setFilmChapter({chapter,at:Date.now()})} />
+                </div>
               </>
             ) : (
               <>
@@ -586,6 +588,10 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
               </select>
               {routeEventIds.length > 0 && <small>按拍摄先后连接，仅表示这次回忆的地点顺序。</small>}
             </div>}
+            {/* Always mounted so films keep being made; its button shows on a story line */}
+            <div className={selectedCity ? 'story-apps' : 'story-apps-hidden'}>
+              <MemoryFilms entry={Boolean(selectedCity)} assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId) || library.busy || Boolean(library.state?.understanding?.busy)} graph={library.state} requestedChapter={filmChapter} />
+            </div>
             {aiConfig.amapJsKey && (<>
               {!globeOverview && <button
                 className={`building-toggle ${sceneEnabled ? 'active' : ''}`}

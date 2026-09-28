@@ -20,3 +20,10 @@ skills/photo-card/evals/*/photo.jpg
 skills/photo-context/evals/*/images/room-*.jpg
 skills/photo-card/evals/*/plate/*.jpg
 skills/photo-card/evals/*/plate/results.json
+
+# Raw inputs for building the map data (re-downloadable)
+world-data/sources/
+# Built map data lives on Seafile (world-data/manifest.json lists it; downloaded on start)
+world-data/*.mbtiles
+world-data/*.download
+world-data/osm/

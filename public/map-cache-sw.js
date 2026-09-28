@@ -1,4 +1,4 @@
-// Keeps the map in the browser: AMap base-map tiles, satellite imagery, terrain (DEM) and styles
+// Keeps the map in the browser: the cartoon world tiles, AMap tiles, terrain (DEM) and styles
 // are served from Cache Storage when present, so a map already seen opens without loading.
 // Entries older than MAX_AGE are fetched again in the background and replaced when the online
 // map changed; the next visit shows the update. Nothing else of the app goes through here.
@@ -12,7 +12,7 @@ const oneOff = /\/(v3\/log|log\/|stat|count)|[?&](callback|jsonp)=/
 
 function cacheable(request, url) {
   if (request.method !== 'GET') return false
-  if (url.origin === self.location.origin) return url.pathname.startsWith('/_AMapService/rest/lbs/dem/') || url.pathname === '/earth-cartoon.svg'
+  if (url.origin === self.location.origin) return url.pathname.startsWith('/api/cartoon-tiles/') || url.pathname.startsWith('/_AMapService/rest/lbs/dem/') || url.pathname === '/earth-cartoon.svg'
   return mapHost.test(url.hostname) && !oneOff.test(url.pathname + url.search)
 }
 

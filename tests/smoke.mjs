@@ -96,6 +96,9 @@ try {
   // The empty map appears once the account vault has been checked for photos to restore
   await page.getByRole('heading', { name: '从照片开始，画出你的人生地图' }).waitFor()
   assert.equal(await page.locator('.app-bar nav').count(), 0, '顶栏不放导航：人生管家随地点自动弹出')
+  // The globe's drawing loads asynchronously; compare only once it is on screen
+  await page.locator('.life-globe[data-texture]').waitFor()
+  await page.waitForTimeout(300)
   const still = await page.screenshot()
   await page.waitForTimeout(900)
   assert.ok(still.equals(await page.screenshot()), '页面不应自行漂浮或抖动')

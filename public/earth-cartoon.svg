@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2048" height="1024" viewBox="0 0 2048 1024">
 <defs>
-  <linearGradient id="sea" x2="0" y2="1"><stop stop-color="#82d5db"/><stop offset=".52" stop-color="#5db9cc"/><stop offset="1" stop-color="#83cfdb"/></linearGradient>
-  <linearGradient id="land" x2="0" y2="1"><stop stop-color="#d7e5ae"/><stop offset=".42" stop-color="#a8d19b"/><stop offset=".72" stop-color="#a6d0a4"/><stop offset="1" stop-color="#d7e7b9"/></linearGradient>
+  <linearGradient id="sea" x2="0" y2="1"><stop stop-color="#8fd6e8"/><stop offset=".52" stop-color="#7fcde3"/><stop offset="1" stop-color="#8fd6e8"/></linearGradient>
+  <linearGradient id="land" x2="0" y2="1"><stop stop-color="#d9eeb4"/><stop offset=".42" stop-color="#cfe7a6"/><stop offset=".72" stop-color="#c6e29c"/><stop offset="1" stop-color="#d9edb8"/></linearGradient>
 </defs>
 <rect width="2048" height="1024" fill="url(#sea)"/>
 <g fill="none" stroke="#d5f7ed" stroke-width="1" opacity=".18"><path d="M170.7,0V1024"/><path d="M341.3,0V1024"/><path d="M512.0,0V1024"/><path d="M682.7,0V1024"/><path d="M853.3,0V1024"/><path d="M1024.0,0V1024"/><path d="M1194.7,0V1024"/><path d="M1365.3,0V1024"/><path d="M1536.0,0V1024"/><path d="M1706.7,0V1024"/><path d="M1877.3,0V1024"/><path d="M0,170.7H2048"/><path d="M0,341.3H2048"/><path d="M0,512.0H2048"/><path d="M0,682.7H2048"/><path d="M0,853.3H2048"/></g>

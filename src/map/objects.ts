@@ -40,8 +40,11 @@ export function adder(parent: THREE.Object3D) {
     mesh.castShadow = shadow
     mesh.receiveShadow = true
     if (outline) {
-      const line = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x3a3548, side: THREE.BackSide }))
+      // Drawn first and without depth: seen from far away the shell sits a few metres from the
+      // model, too close for the depth buffer, and would otherwise cover it in the outline colour
+      const line = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x3a3548, side: THREE.BackSide, depthWrite: false }))
       line.scale.setScalar(outlineScale)
+      line.renderOrder = -1
       line.userData.outline = true
       mesh.add(line)
     }
@@ -251,4 +254,69 @@ export function eventLabel(event: MemoryEvent, now: boolean, unsure: boolean): L
     lines: [['time', formatYearMonth(event.occurredAt)], ['strong', event.title]],
     priority: now ? 6 : 2,
   }
+}
+
+// ---- Event markers: small static cartoon models chosen by what the event was ------------------
+export type MarkerKind = 'cake' | 'balloons' | 'flag' | 'pin'
+
+export function markerKind(event: Pick<MemoryEvent, 'type' | 'title' | 'summary'>): MarkerKind {
+  const text = `${event.type || ''} ${event.title || ''} ${event.summary || ''}`
+  if (/生日|蛋糕|寿|birthday/i.test(text)) return 'cake'
+  if (/聚会|派对|庆祝|庆功|婚礼|结婚|订婚|周年|毕业|节日|春节|过年|中秋|圣诞|年会|party/i.test(text)) return 'balloons'
+  if (/旅行|旅游|出游|度假|自驾|徒步|travel|trip/i.test(text)) return 'flag'
+  return 'pin'
+}
+
+// y-up, about one unit tall like the other scaled objects; nothing animates
+export function eventMarker(kind: MarkerKind, now: boolean): THREE.Group {
+  const group = new THREE.Group()
+  const add = adder(group)
+  // Readable at city scale; the current event a little larger
+  const s = now ? 2 : 1.6
+  group.scale.setScalar(s)
+  if (kind === 'cake') {
+    add(new THREE.CylinderGeometry(0.42, 0.42, 0.03, 32), 0xffffff, [0, 0.015, 0], { outline: false })
+    add(new THREE.CylinderGeometry(0.34, 0.34, 0.2, 32), 0xfff1d6, [0, 0.13, 0], { outlineScale: 1.04 })
+    add(new THREE.CylinderGeometry(0.345, 0.345, 0.05, 32), 0xf7a8c0, [0, 0.21, 0], { outline: false })
+    add(new THREE.CylinderGeometry(0.24, 0.24, 0.16, 32), 0xf7a8c0, [0, 0.31, 0], { outlineScale: 1.05 })
+    add(new THREE.CylinderGeometry(0.245, 0.245, 0.04, 32), 0xffffff, [0, 0.38, 0], { outline: false })
+    for (const [x, z, color] of [[-0.1, 0.04, 0x8fc9f5], [0.1, 0.04, 0xffd166], [0, -0.1, 0x9ee07a]] as const) {
+      add(new THREE.CylinderGeometry(0.025, 0.025, 0.16, 8), color, [x, 0.47, z], { outline: false })
+      add(new THREE.ConeGeometry(0.035, 0.08, 8), 0xffb02e, [x, 0.59, z], { outline: false, shadow: false })
+    }
+    add(new THREE.SphereGeometry(0.05, 12, 8), 0xe8403c, [0.17, 0.43, 0.12], { outline: false })
+  } else if (kind === 'balloons') {
+    add(new THREE.BoxGeometry(0.12, 0.08, 0.12), 0xb98cd8, [0, 0.04, 0], { outlineScale: 1.08 })
+    const balloons: [number, number, number, number][] = [[-0.2, 0.86, 0.02, 0xff6b6b], [0.18, 0.95, -0.04, 0xffd166], [0.02, 1.12, 0.1, 0x6fb6ff]]
+    for (const [x, y, z, color] of balloons) {
+      const top = new THREE.Vector3(x, y - 0.2, z)
+      const length = top.length()
+      const string = add(new THREE.CylinderGeometry(0.008, 0.008, length, 5), 0x8a8a8a, [x / 2, (y - 0.2) / 2 + 0.04, z / 2], { outline: false, shadow: false })
+      string.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), top.clone().normalize())
+      add(new THREE.SphereGeometry(0.17, 20, 16), color, [x, y, z], { scale: [1, 1.18, 1], outlineScale: 1.05 })
+      add(new THREE.ConeGeometry(0.04, 0.06, 8), color, [x, y - 0.21, z], { rot: [Math.PI, 0, 0], outline: false })
+      add(new THREE.SphereGeometry(0.045, 8, 6), 0xffffff, [x - 0.06, y + 0.07, z + 0.12], { outline: false, shadow: false })
+    }
+  } else if (kind === 'flag') {
+    add(new THREE.CylinderGeometry(0.1, 0.12, 0.05, 16), 0xffffff, [0, 0.025, 0], { outlineScale: 1.08 })
+    add(new THREE.CylinderGeometry(0.02, 0.02, 0.8, 8), 0x7a6a5c, [0, 0.42, 0], { outline: false })
+    const pennant = new THREE.Shape()
+    pennant.moveTo(0, 0); pennant.lineTo(0.36, -0.1); pennant.lineTo(0, -0.22); pennant.lineTo(0, 0)
+    add(new THREE.ShapeGeometry(pennant), 0xf08a24, [0.02, 0.8, 0], { outline: false })
+  } else {
+    add(new THREE.CylinderGeometry(0.12, 0.12, 0.02, 16), 0x3a3548, [0, 0.01, 0], { outline: false, shadow: false })
+    add(new THREE.ConeGeometry(0.15, 0.4, 20), 0xf08a24, [0, 0.24, 0], { rot: [Math.PI, 0, 0], outlineScale: 1.05 })
+    add(new THREE.SphereGeometry(0.2, 24, 16), 0xf08a24, [0, 0.52, 0], { outlineScale: 1.05 })
+    add(new THREE.SphereGeometry(0.08, 16, 12), 0xffffff, [0, 0.52, 0.16], { outline: false })
+  }
+  if (now) add(new THREE.TorusGeometry(0.5, 0.04, 8, 48), 0xf08a24, [0, 0.02, 0], { rot: [-Math.PI / 2, 0, 0], outline: false, shadow: false })
+  // Markers are tiny next to the scene's shadow map: in its stale shade they turned almost black
+  group.traverse((item) => {
+    item.receiveShadow = false
+    // Flat, unlit colours: at city scale these few-pixel models fell into the darkest toon band
+    const mesh = item as THREE.Mesh
+    const material = mesh.material as THREE.MeshToonMaterial | undefined
+    if (material?.isMeshToonMaterial) { mesh.material = new THREE.MeshBasicMaterial({ color: material.color }); material.dispose() }
+  })
+  return group
 }

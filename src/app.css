@@ -26,7 +26,7 @@ body{overflow:hidden}
 .app-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:-.02em;white-space:nowrap}
 .app-actions{display:flex;align-items:center;justify-content:flex-end;gap:14px}
 
-.stage{position:absolute;inset:0;overflow:hidden;background:linear-gradient(180deg,#bfe2f3 0%,#dcf0f8 45%,#e7f4f8 100%)}
+.stage{position:absolute;inset:0;overflow:hidden;background:linear-gradient(180deg,#5fb8f0 0%,#9fd8f7 42%,#d6f1fd 100%)}
 .life-map{position:absolute;inset:0}
 /* Street map and globe share the stage; the globe fades away when the view is handed over */
 .life-map-stack{position:absolute;inset:0}
@@ -63,7 +63,8 @@ body{overflow:hidden}
 .app-shell.globe-mode .map-heading{background:var(--glass-sheen),rgba(247,250,255,.8)}
 @media(max-width:640px){.globe-controls{top:auto;right:12px;bottom:148px}.globe-credit{left:12px;right:auto;bottom:155px;max-width:180px;font-size:9px}}
 .life-map-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
-.life-map-amap{position:absolute;inset:0}
+/* AMap drives the camera; what shows is the cartoon world drawn over it (cartoonWorld.ts) */
+.life-map-amap{position:absolute;inset:0;opacity:0}
 /* The AMap logo and copyright line are hidden at the user's request (see note in the commit) */
 .life-map-amap .amap-logo,.life-map-amap .amap-copyright{display:none!important}
 .map-neighbourhood .life-map-amap{filter:sepia(.3) saturate(.78)}
@@ -153,6 +154,8 @@ body{overflow:hidden}
 .map-heading{position:absolute;top:var(--chrome-top);left:20px;z-index:5;max-width:min(420px,calc(100% - 40px));border-radius:28px;padding:12px 16px 14px}
 .map-heading h1{margin:0;font-size:30px;letter-spacing:-.04em;line-height:1.15;text-wrap:balance}
 .map-heading h1 b{color:var(--story)}
+.story-apps{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 8px}
+.story-apps-hidden{display:contents}
 .map-heading p{margin:4px 0 10px;font-size:13px;color:var(--label-2)}
 .crumb{display:inline-flex;align-items:center;gap:2px;border:0;background:none;padding:0;margin-bottom:4px;font-size:12px;color:var(--accent)}
 .building-toggle{display:flex;align-items:center;gap:8px;margin-top:9px;border:0;border-radius:999px;background:var(--fill);color:var(--label);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}

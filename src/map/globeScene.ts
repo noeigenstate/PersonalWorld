@@ -74,7 +74,10 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
   scene.add(globe)
   const sphereGeometry = new THREE.SphereGeometry(RADIUS, 96, 64)
   const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x83b6c7, roughness: 1 })
-  globe.add(new THREE.Mesh(sphereGeometry, sphereMaterial))
+  // Shown once its drawing is ready: a plain blue ball first and continents popping in later looked broken
+  const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial)
+  sphere.visible = false
+  globe.add(sphere)
   const atmosphereGeometry = new THREE.SphereGeometry(RADIUS * 1.018, 64, 48)
   const atmosphereMaterial = new THREE.MeshBasicMaterial({ color: 0x91cfeb, side: THREE.BackSide, transparent: true, opacity: 0.38, depthWrite: false })
   globe.add(new THREE.Mesh(atmosphereGeometry, atmosphereMaterial))
@@ -93,11 +96,13 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
     loaded.colorSpace = THREE.SRGBColorSpace
     loaded.anisotropy = renderer.capabilities.getMaxAnisotropy()
     texture = loaded
+    sphere.visible = true
+    host.dataset.texture = 'ready'
     sphereMaterial.map = loaded
     sphereMaterial.color.set(0xffffff)
     sphereMaterial.needsUpdate = true
     draw()
-  }).catch(() => {})
+  }).catch(() => { sphere.visible = true; host.dataset.texture = 'plain'; draw() })
 
   const dotGeometry = new THREE.SphereGeometry(0.018, 12, 8)
   const dotMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff })
@@ -520,6 +525,8 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
   const onEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') { closeMenu(); closePlaceMenu() } }
   window.addEventListener('keydown', onEscape)
 
+  // Start facing China (with photos, facePlaces turns to them)
+  setView(view.lng, view.lat)
   resize()
   return {
     update(data: LifeMapData) {

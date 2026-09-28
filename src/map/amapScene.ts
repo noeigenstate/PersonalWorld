@@ -5,11 +5,12 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import type { MemoryEvent } from '../types'
 import { gcj02ToWgs84, wgs84ToGcj02 } from '../lib/geo'
-import { LAND, adder, box, building, createLabels, dim, eventLabel, labelDetailForZoom, placeLabel, seeded } from './objects'
+import { LAND, adder, box, building, createLabels, dim, eventLabel, eventMarker, labelDetailForZoom, markerKind, placeLabel, seeded } from './objects'
 import { createOrientalPearlScene, isOrientalPearl, ORIENTAL_PEARL_GCJ } from './memoryScene'
 import { createStyledDistrict, shanghaiScene, type SceneData } from './styledDistrict'
 import { fetchRegionScene, hasStreetLocation, metresApart, photoRegions, photoSceneKey, regionForPhoto } from './regionScene'
 import { clusterProjectedPhotos } from './photoClusters'
+import { createCartoonWorld } from './cartoonWorld'
 import { sceneCoverage } from './sceneCoverage'
 import type { AMapNS } from './amap'
 import type { LifeMapCallbacks, LifeMapData, MapPhoto } from './scene'
@@ -72,8 +73,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const map = new AMap.Map(mapEl, {
     viewMode: '3D',
-    // Real relief: mountains and valleys rise from the map (AMap 2.1Beta)
-    terrain: true,
+    // Past 18.5 the cartoon ground (built to zoom 14) would be stretched too far
+    zooms: [3, 18.5],
     pitch: 50,
     zoom: 5,
     center: [108.9, 34.3],
@@ -90,9 +91,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     heightFactor: 1,
   })
   map.add(buildings)
-  // Landforms: satellite imagery laid over the cartoon style shows forests, plains, farmland and rock.
-  // Street level is left to the cartoon 3D scenes.
-  map.add(new AMap.TileLayer.Satellite({ opacity: 0.55, zooms: [3, 15.5] }))
+  // AMap provides the camera and its zoom animation only; the ground is the cartoon world drawn
+  // below (the AMap canvas is transparent, see .life-map-amap in app.css)
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -101,6 +101,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   renderer.shadowMap.type = THREE.PCFShadowMap
   renderer.shadowMap.autoUpdate = false
   const scene = new THREE.Scene()
+  if (import.meta.env.DEV) (window as unknown as { __amapScene?: THREE.Scene }).__amapScene = scene
   const sky = new THREE.HemisphereLight(0xfff7e9, 0xc7d8d1, 1.25)
   sky.position.set(0, 0, 1) // Map geometry is Z-up; the default hemisphere is Y-up.
   scene.add(sky)
@@ -124,6 +125,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   const raycaster = new THREE.Raycaster()
 
   let origin: [number, number] | null = null
+  // Set once the cartoon world exists (draw() can run before that)
+  let cartoonStats: (() => { tiles: number; zoom: number; buildings: number; trees: number; crossings: number }) | null = null
   let size = { w: 1, h: 1 }
   let insets = { right: 0, bottom: 0, top: 0 }
   let unit = unitMetres(5)
@@ -171,6 +174,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   }
   const heights = new Map<string, number>() // label heights in scene units
 
+  // The cartoon world needs a frame before any place is known: start at the map's centre
+  if (!origin) origin = [108.9, 34.3]
   const gcj = (lat: number, lng: number): [number, number] => { const p = wgs84ToGcj02({ lat, lng }); return [p.lng, p.lat] }
   const coord = (lat: number, lng: number) => {
     const at = gcj(lat, lng)
@@ -335,11 +340,10 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       for (const { event, pos } of nodes) {
         const now = event.id === data.highlightedEventId
         const unsure = event.citySource === 'ai'
-        const disc = new THREE.Group()
+        // A cake for a birthday, balloons for a celebration, a flag for a trip, otherwise a pin
+        const disc = eventMarker(markerKind(event), now)
         const add = adder(disc)
-        const base = add(new THREE.CylinderGeometry(now ? 0.36 : 0.26, now ? 0.38 : 0.28, 0.18, 32), 0xffffff, [0, 0.09, 0], { outlineScale: 1.05 })
-        add(new THREE.CylinderGeometry(now ? 0.24 : 0.16, now ? 0.24 : 0.16, 0.06, 32), unsure ? 0xf0a14a : 0xf08a24, [0, 0.2, 0], { outline: false })
-        if (now) add(new THREE.TorusGeometry(0.6, 0.05, 8, 48), 0xf08a24, [0, 0.03, 0], { rot: [-Math.PI / 2, 0, 0], outline: false, shadow: false })
+        const base = disc.children[0]
         if (unsure) {
           for (let i = 0; i < 16; i++) {
             const a = (i / 16) * Math.PI * 2
@@ -382,6 +386,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
 
   function draw() {
     container.dataset.zoom = map.getZoom().toFixed(2)
+    const world = cartoonStats?.()
+    if (world) container.dataset.cartoon = `${world.tiles} tiles z${world.zoom} buildings:${world.buildings} trees:${world.trees} crossings:${world.crossings}`
     const mapCenter = map.getCenter()
     container.dataset.center = `${mapCenter.lng.toFixed(2)},${mapCenter.lat.toFixed(2)}`
     if (!origin) { labels.place(camera, size.w, size.h); return }
@@ -966,10 +972,27 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     callbacks.onZoomOutToGlobe({ gcj: [center.lng, center.lat], zoom: map.getZoom() })
   })
 
+  // The cartoon world: real geography as cartoon ground, trees, streets, buildings and hills
+  const cartoon = createCartoonWorld(scene, {
+    toScene: (lat, lng) => { map.customCoords.setCenter(origin!); return coord(lat, lng) },
+    view: () => {
+      const c = map.getCenter()
+      const center = gcj02ToWgs84({ lng: c.lng, lat: c.lat })
+      const b = map.getBounds?.()
+      const sw = b?.getSouthWest?.(), ne = b?.getNorthEast?.()
+      const bounds = sw && ne ? { west: sw.lng, south: sw.lat, east: ne.lng, north: ne.lat } : { west: center.lng - 5, south: center.lat - 4, east: center.lng + 5, north: center.lat + 4 }
+      return { zoom: map.getZoom(), center, bounds }
+    },
+    redraw: () => draw(),
+  })
+  cartoonStats = cartoon.stats
+  map.on('moveend', () => { if (!disposed) cartoon.refresh() })
+  map.on('zoomend', () => { if (!disposed) cartoon.refresh() })
   map.on('moveend', () => { if (!disposed) scheduleGroundSync() })
   map.on('complete', () => {
     if (disposed) return
     ready = true
+    cartoon.refresh()
     if (pending) { const data = pending; pending = null; api.update(data) }
     syncSceneForView()
     if (pendingFocus) { const photo = pendingFocus; pendingFocus = null; api.focusPhoto(photo) }
@@ -1056,6 +1079,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     },
     dispose() {
       disposed = true
+      cartoon.dispose()
       for (const timer of terrainTimers) window.clearTimeout(timer)
       cancelAnimationFrame(waterFrame)
       document.removeEventListener('visibilitychange', visibility)
