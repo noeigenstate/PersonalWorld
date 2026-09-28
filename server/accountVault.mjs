@@ -42,7 +42,10 @@ export function createAccountVault(root) {
       if (!memory || !Array.isArray(memory.assets) || !Array.isArray(memory.events)) throw new Error('记忆数据格式不正确')
       // Previews are stored as files; never let them bloat state.json
       const assets = memory.assets.map(({ preview: _preview, ...asset }) => asset)
-      const state = { memory: { ...memory, assets }, extras: body.extras && typeof body.extras === 'object' ? body.extras : {}, savedAt: new Date().toISOString() }
+      // Preferences merge: a browser that lost its copy (site data cleared) must not wipe them
+      const previous = await this.readState(user)
+      const extras = { ...(previous.extras || {}), ...(body.extras && typeof body.extras === 'object' ? body.extras : {}) }
+      const state = { memory: { ...memory, assets }, extras, savedAt: new Date().toISOString() }
       const dir = dirOf(user)
       await mkdir(dir, { recursive: true })
       await writeAtomic(join(dir, 'state.json'), JSON.stringify(state))

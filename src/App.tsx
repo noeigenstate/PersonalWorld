@@ -81,7 +81,14 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       .finally(() => setConfigChecked(true))
   }, [])
 
-  useEffect(() => { if (ready) saveMemory(memory).catch(() => setNotice('本地存储失败，请检查浏览器可用空间')) }, [memory, ready])
+  useEffect(() => {
+    if (!ready) return
+    saveMemory(memory).catch((error) => {
+      console.error('本地保存失败', error)
+      const reason = error instanceof DOMException && error.name === 'QuotaExceededError' ? '浏览器可用空间不足' : error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+      setNotice(`浏览器缓存没能保存（${reason}）；照片仍会备份到本机照片库`)
+    })
+  }, [memory, ready])
 
   useEffect(() => {
     if (!notice) return

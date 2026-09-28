@@ -103,6 +103,7 @@ try {
   })
   assert.equal(decoded, files.length, '恢复的预览图都能显示')
   // Originals come back on demand and are cached locally again
+  const storageUrl = await again.evaluate(() => performance.getEntriesByType('resource').map((entry) => entry.name).find((url) => url.includes('/src/lib/storage.ts')))
   const firstId = vault.state.memory.assets[0].id
   const original = await again.evaluate(async (id) => {
     const { getFile } = await import(performance.getEntriesByType('resource').map((entry) => entry.name).find((url) => url.includes('/src/lib/storage.ts')))
@@ -114,9 +115,29 @@ try {
   await again.waitForTimeout(1500)
   assert.equal(vault.state.memory.assets.length, files.length, '恢复后的备份不应丢照片')
   assert.ok(calls.filter((call) => call.startsWith('PUT /api/vault/state')).length >= putsBefore)
+  // Site data cleared while the page stays open: the browser closes the database under the page.
+  // Saving must keep working (the database is reopened) and backups must keep going.
+  const cdp = await second.newCDPSession(again)
+  await cdp.send('Storage.clearDataForOrigin', { origin: new URL(BASE).origin, storageTypes: 'indexeddb' })
+  const putsBeforeClear = calls.filter((call) => call === 'PUT /api/vault/state').length
+  const afterClear = await again.evaluate(async (url) => {
+    const { saveMemory, loadMemory } = await import(url)
+    const memory = await loadMemory()
+    try {
+      await saveMemory({ ...memory, placeRoles: { ...memory.placeRoles, 杭州市: 'work' } })
+      await saveMemory({ ...memory, placeRoles: { ...memory.placeRoles, 杭州市: 'study' } })
+    } catch (error) { return `${error.name}: ${error.message}` }
+    const reread = await loadMemory()
+    return `${reread.assets.length} ${reread.placeRoles['杭州市']}`
+  }, storageUrl)
+  assert.equal(afterClear, `${files.length} study`, '清除站点数据后仍能保存，重新读取得到最新记忆')
+  await again.waitForTimeout(1500)
+  assert.ok(calls.filter((call) => call === 'PUT /api/vault/state').length > putsBeforeClear, '备份继续进行')
+  assert.equal(vault.state.memory.placeRoles['杭州市'], 'study')
+  assert.equal(await again.locator('.toast').filter({ hasText: '没能保存' }).count(), 0)
   assert.deepEqual(errors, [])
   await second.close()
-  console.log(`Vault restore test passed: ${files.length} photos and ${events} events backed up, restored after clearing site data, originals fetched on demand.`)
+  console.log(`Vault restore test passed: ${files.length} photos and ${events} events backed up, restored after clearing site data, originals fetched on demand, saving survives site data cleared while open.`)
 } finally {
   await browser.close()
 }

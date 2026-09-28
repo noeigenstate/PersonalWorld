@@ -18,6 +18,37 @@ const open = (name: string) => openDB(name, 1, {
 
 let database: Promise<IDBPDatabase> | null = null
 let opening: { userId: string; ready: Promise<void> } | null = null
+let dbName: string | null = null
+// The memory the page holds, newest first: backups and a reopened database are written from it
+let latest: MemoryState | null = null
+
+// Clearing the browser's site data while the page is open deletes the database and closes this
+// connection ("The database connection is closing"). Open it again, empty, so saving keeps working.
+const openAccount = (name: string): Promise<IDBPDatabase> => openDB(name, 1, {
+  upgrade(db) {
+    db.createObjectStore('state')
+    db.createObjectStore('files')
+  },
+  terminated() { if (dbName === name) database = openAccount(name) },
+})
+
+// InvalidStateError for new transactions, AbortError for the ones running when it closed
+const closedUnderUs = (error: unknown) => error instanceof DOMException && (error.name === 'InvalidStateError' || (error.name === 'AbortError' && /clos/i.test(error.message)))
+
+// A database operation that survives the connection being closed under it: reopen, put back the
+// memory the page holds, retry once. Originals are fetched from the vault again when needed.
+async function withDb<T>(run: (db: IDBPDatabase) => Promise<T>): Promise<T> {
+  try {
+    return await run(await current())
+  } catch (error) {
+    if (!closedUnderUs(error) || !dbName) throw error
+    console.warn('浏览器数据库被关闭（可能清除了站点数据），已重新打开', error)
+    database = openAccount(dbName)
+    const db = await database
+    if (latest) await db.put('state', latest, 'current')
+    return run(db)
+  }
+}
 
 function current() {
   if (!database) throw new Error('请先登录')
@@ -27,7 +58,8 @@ function current() {
 export function openAccountStorage(userId: string): Promise<void> {
   // Opening twice for the same account (React dev double effects) must not migrate twice
   if (opening?.userId === userId) return opening.ready
-  const db = open(`personal-world-${userId}`)
+  dbName = `personal-world-${userId}`
+  const db = openAccount(dbName)
   database = db
   opening = { userId, ready: db.then(adoptLegacyData) }
   return opening.ready
@@ -44,6 +76,8 @@ export function closeAccountStorage() {
   backingUp = backingUp.then(() => db?.then((open) => open.close()))
   database = null
   opening = null
+  dbName = null
+  latest = null
   vault = null
   restoredCount = 0
   removedByUser = false
@@ -84,12 +118,11 @@ let startedEmpty = false
 export const restoredFromVault = () => restoredCount
 
 function scheduleBackup(delay = 800) {
-  const db = database
-  if (!db) return
+  if (!database) return
   window.clearTimeout(backupTimer)
   backupTimer = window.setTimeout(() => {
     backupTimer = undefined
-    backingUp = backingUp.then(() => backUp(db))
+    backingUp = backingUp.then(() => backUp())
   }, delay)
 }
 
@@ -104,15 +137,21 @@ async function connectVault() {
   return vault
 }
 
-async function backUp(dbPromise: Promise<IDBPDatabase>) {
+// Backs up from the memory the page holds, so a broken browser database does not stop backups.
+// `closing` is the database of an account being signed out (its connection is still open).
+async function backUp(closing?: Promise<IDBPDatabase>) {
+  const read = <T>(run: (db: IDBPDatabase) => Promise<T>) => (closing ? closing.then(run) : withDb(run))
   try {
-    const db = await dbPromise
-    const memory = ((await db.get('state', 'current')) as MemoryState | undefined) || EMPTY
+    const memory = latest || ((await read((db) => db.get('state', 'current'))) as MemoryState | undefined) || EMPTY
     const known = await connectVault()
     // Losing every photo at once only happens when the user removed them one by one
     if (!memory.assets.length && known.assets && !removedByUser) return
-    const extras: Record<string, unknown> = {}
-    for (const key of await db.getAllKeys('state')) if (key !== 'current') extras[String(key)] = await db.get('state', key)
+    // Preferences; when they cannot be read the vault keeps what it has (it merges them)
+    const extras = await read(async (db) => {
+      const found: Record<string, unknown> = {}
+      for (const key of await db.getAllKeys('state')) if (key !== 'current') found[String(key)] = await db.get('state', key)
+      return found
+    }).catch(() => ({}))
     await writeVaultState(memory, extras)
     known.assets = memory.assets.length
     for (const asset of memory.assets) {
@@ -121,7 +160,7 @@ async function backUp(dbPromise: Promise<IDBPDatabase>) {
         known.previews.add(asset.id)
       }
       if (!known.originals.has(asset.id)) {
-        const file = (await db.get('files', asset.id)) as File | undefined
+        const file = (await read((db) => db.get('files', asset.id)).catch(() => undefined)) as File | undefined
         if (file) {
           await uploadOriginal(asset.id, file)
           known.originals.add(asset.id)
@@ -154,10 +193,9 @@ async function restore(db: IDBPDatabase): Promise<MemoryState | undefined> {
 }
 
 export async function loadMemory(): Promise<MemoryState> {
-  const db = await current()
-  let state = (await db.get('state', 'current')) as MemoryState | undefined
+  let state = (await withDb((db) => db.get('state', 'current'))) as MemoryState | undefined
   if (!state?.assets.length) {
-    const restored = await restore(db).catch((error) => { console.warn('照片库暂时无法读取', error); startedEmpty = true; return undefined })
+    const restored = await withDb((db) => restore(db)).catch((error) => { console.warn('照片库暂时无法读取', error); startedEmpty = true; return undefined })
     state = restored || state
   }
   // Photos that so far lived only in this browser are backed up now
@@ -186,30 +224,28 @@ export async function loadMemory(): Promise<MemoryState> {
 }
 
 export async function saveMemory(state: MemoryState): Promise<void> {
-  const db = await current()
-  await db.put('state', state, 'current')
+  latest = state
+  // The vault backup goes ahead even if the browser database fails
   scheduleBackup()
+  await withDb((db) => db.put('state', state, 'current'))
 }
 
 export async function saveFile(id: string, file: File): Promise<void> {
-  const db = await current()
-  await db.put('files', file, id)
+  await withDb((db) => db.put('files', file, id))
   scheduleBackup()
 }
 
 export async function getFile(id: string): Promise<File | undefined> {
-  const db = await current()
-  const local = (await db.get('files', id)) as File | undefined
+  const local = (await withDb((db) => db.get('files', id))) as File | undefined
   if (local) return local
   // Site data was cleared: fetch the original from the vault once and keep it here again
   const file = await downloadOriginal(id).catch(() => undefined)
-  if (file) await db.put('files', file, id)
+  if (file) await withDb((db) => db.put('files', file, id)).catch(() => undefined)
   return file
 }
 
 export async function removeFile(id: string): Promise<void> {
-  const db = await current()
-  await db.delete('files', id)
+  await withDb((db) => db.delete('files', id))
   removedByUser = true
   await deleteVaultAsset(id).catch(() => undefined)
   vault?.previews.delete(id)
@@ -217,20 +253,18 @@ export async function removeFile(id: string): Promise<void> {
 }
 
 export async function loadFilmSettings(): Promise<{ enabled: boolean; attempted: string[] }> {
-  const db = await current()
-  return (await db.get('state', 'film-settings')) || { enabled: true, attempted: [] }
+  return (await withDb((db) => db.get('state', 'film-settings'))) || { enabled: true, attempted: [] }
 }
 
 export async function saveFilmSettings(settings: { enabled: boolean; attempted: string[] }): Promise<void> {
-  const db = await current()
-  await db.put('state', settings, 'film-settings')
+  await withDb((db) => db.put('state', settings, 'film-settings'))
   scheduleBackup()
 }
 
 export async function loadPreference<T>(key: string, fallback: T): Promise<T> {
-  return (await (await current()).get('state', key)) ?? fallback
+  return (await withDb((db) => db.get('state', key))) ?? fallback
 }
 export async function savePreference<T>(key: string, value: T): Promise<void> {
-  await (await current()).put('state', value, key)
+  await withDb((db) => db.put('state', value, key))
   scheduleBackup()
 }

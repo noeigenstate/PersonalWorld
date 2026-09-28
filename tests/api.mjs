@@ -221,6 +221,10 @@ try {
   const vaultRead = await (await fetch(`${apiBase}/api/vault/state`, { headers })).json()
   assert.equal(vaultRead.memory.assets[0].preview, undefined, '预览图不写进 state.json')
   assert.equal(vaultRead.extras['film-settings'].enabled, false)
+  // A browser that lost its preferences (site data cleared) sends none: the vault keeps them
+  assert.equal((await put('/api/vault/state', JSON.stringify({ memory: vaultState, extras: { 'cull-dismissed': ['a,b'] } }))).status, 200)
+  const merged = (await (await fetch(`${apiBase}/api/vault/state`, { headers })).json()).extras
+  assert.deepEqual(merged, { 'film-settings': { enabled: false }, 'cull-dismissed': ['a,b'] }, '偏好合并保存，不被清空')
   const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9])
   assert.equal((await put('/api/vault/assets/asset-0001/preview', jpeg, { 'Content-Type': 'image/jpeg' })).status, 200)
   assert.equal((await put('/api/vault/assets/asset-0001/original', Buffer.from('RAW'), { 'Content-Type': 'image/x-fuji', 'X-File-Name': encodeURIComponent('照片 1.RAF'), 'X-Last-Modified': '1633575300000' })).status, 200)
