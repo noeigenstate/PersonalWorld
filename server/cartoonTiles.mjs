@@ -178,7 +178,14 @@ export function reloadArchives() {
   archivesReady = null
 }
 
+// Archives that appear later (built, or downloaded from Seafile) are picked up within a minute
+let scannedAt = Date.now()
 async function archiveTile(z, x, y) {
+  if (Date.now() - scannedAt > 60000) {
+    scannedAt = Date.now()
+    const names = (await readdir(dirname(sourceRoot)).catch(() => [])).filter((n) => n.endsWith('.mbtiles')).sort().join()
+    if (names !== archives.map((a) => a.name).sort().join()) reloadArchives()
+  }
   await openArchives()
   const west = tileWest(x, z), east = tileWest(x + 1, z), north = tileNorth(y, z), south = tileNorth(y + 1, z)
   for (const archive of archives) {

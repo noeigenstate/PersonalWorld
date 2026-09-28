@@ -77,6 +77,40 @@ const canopyTexture = (base: string, leaf: string, light: string) => paintedText
   }
 })
 
+// Painted detail from the locally generated textures (scripts/assets/generate-textures.mjs): turned
+// into light/dark variation around the palette colour, so the palette stays in charge of colour.
+// Without the files the materials stay flat.
+function paintedDetail(name: string, material: THREE.MeshBasicMaterial | THREE.MeshLambertMaterial, color: string, redraw: () => void) {
+  const image = new Image()
+  image.src = `/world-assets/textures/${name}.png`
+  image.decode().then(() => {
+    const size = 512
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = size
+    const g = canvas.getContext('2d', { willReadFrequently: true })!
+    g.drawImage(image, 0, 0, size, size)
+    const pixels = g.getImageData(0, 0, size, size)
+    let mean = 0
+    for (let i = 0; i < pixels.data.length; i += 4) mean += 0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2]
+    mean /= pixels.data.length / 4
+    for (let i = 0; i < pixels.data.length; i += 4) {
+      const lum = 0.299 * pixels.data[i] + 0.587 * pixels.data[i + 1] + 0.114 * pixels.data[i + 2]
+      // centre on 0.8 so it can lighten as well as darken once the colour is raised by 1/0.8
+      const v = Math.max(0, Math.min(255, (0.8 + (lum / mean - 1) * 0.55) * 255))
+      pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = v
+    }
+    g.putImageData(pixels, 0, 0)
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.wrapS = texture.wrapT = THREE.RepeatWrapping
+    texture.anisotropy = 4
+    material.map?.dispose()
+    material.map = texture
+    material.color.set(color).multiplyScalar(1 / 0.8)
+    material.needsUpdate = true
+    redraw()
+  }).catch(() => {})
+}
+
 function materials() {
   const flat = (color: string, order: number, map?: THREE.Texture) => {
     const m = new THREE.MeshBasicMaterial({ color: map ? 0xffffff : color, map, side: THREE.DoubleSide, depthWrite: false })
@@ -113,6 +147,8 @@ function materials() {
     pineLight: lit(CARTOON.pineLight),
     // Cliffs face the water; lit so the rock reads as a wall
     cliff: new THREE.MeshLambertMaterial({ vertexColors: true }),
+    // Same walls with the painted rock (the vertex colours still give the lighter top)
+    cliffTextured: new THREE.MeshLambertMaterial({ vertexColors: true }),
     pole: new THREE.MeshLambertMaterial({ color: CARTOON.pole, side: THREE.DoubleSide }),
     lampRed: new THREE.MeshBasicMaterial({ color: CARTOON.lightRed }),
     lampAmber: new THREE.MeshBasicMaterial({ color: CARTOON.lightAmber }),
@@ -191,18 +227,25 @@ function shoreEdges(land: number[][][]) {
 
 // Rock walls from the land down to the water, facing the water, lighter at the top
 function cliffGeometry(edges: ReturnType<typeof shoreEdges>, depth: number) {
-  const positions: number[] = [], colors: number[] = []
+  const positions: number[] = [], colors: number[] = [], uvs: number[] = []
   const top = new THREE.Color(CARTOON.cliffTop), bottom = new THREE.Color(CARTOON.cliff)
+  let run = 0
   for (const { ax, ay, bx, by, landOnLeft } of edges) {
-    const P = [ax, ay, 0], Q = [bx, by, 0], Pb = [ax, ay, -depth], Qb = [bx, by, -depth]
+    const length = Math.hypot(bx - ax, by - ay)
+    const P = [ax, ay, 0, run], Q = [bx, by, 0, run + length], Pb = [ax, ay, -depth, run], Qb = [bx, by, -depth, run + length]
+    run += length
     // (P, Q, Pb) faces left of P→Q; the water is on the side away from the land
     const tris = landOnLeft ? [P, Pb, Q, Q, Pb, Qb] : [P, Q, Pb, Q, Qb, Pb]
-    for (const v of tris) { positions.push(v[0], v[1], v[2]); const c = v[2] < 0 ? bottom : top; colors.push(c.r, c.g, c.b) }
+    for (const v of tris) {
+      positions.push(v[0], v[1], v[2]); const c = v[2] < 0 ? bottom : top; colors.push(c.r, c.g, c.b)
+      uvs.push(v[3] * 40, v[2] < 0 ? 0 : 1)
+    }
   }
   if (!positions.length) return null
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
   geometry.computeVertexNormals()
   return geometry
 }
@@ -314,6 +357,9 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
   parent.add(root)
   if (import.meta.env.DEV) (window as unknown as { __cartoonRoot?: THREE.Group }).__cartoonRoot = root
   const m: Materials = materials()
+  for (const [name, key, color] of [['grass', 'land', CARTOON.land], ['grass', 'grass', CARTOON.grass], ['forest', 'forest', CARTOON.forest], ['grass', 'park', CARTOON.park], ['forest', 'forestPlain', CARTOON.forest], ['grass', 'parkPlain', CARTOON.park], ['water', 'water', CARTOON.water], ['sand', 'sand', CARTOON.sand], ['stone', 'town', CARTOON.town], ['cliff', 'cliffTextured', '#ffffff']] as const) {
+    paintedDetail(name, m[key] as THREE.MeshBasicMaterial, color, () => options.redraw())
+  }
   const tiles = new Map<string, { group: THREE.Group; used: number; ready: boolean }>()
   const loading = new Map<string, Promise<void>>()
   let wanted = new Set<string>()
@@ -379,7 +425,7 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
       const edges = shoreEdges(data.land)
       mesh(ribbonGeometry(edges.map((e) => ({ pts: [e.ax * GRID, e.ay * GRID, e.bx * GRID, e.by * GRID], width: px(5) })), false, -depth * 0.97), m.foam, ground, m.foam.userData.order + order)
       const walls = cliffGeometry(edges, depth)
-      if (walls) { const item = new THREE.Mesh(walls, m.cliff); item.frustumCulled = false; ground.add(item) }
+      if (walls) { const item = new THREE.Mesh(walls, m.cliffTextured); item.frustumCulled = false; ground.add(item) }
     } else if (data.water?.length) {
       // Tiles built before land was separated: flat water on the land
       mesh(polygonsGeometry(data.water, 6 * magnify, 0.001), m.water, ground, m.river.userData.order + order)
