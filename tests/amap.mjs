@@ -119,7 +119,7 @@ try {
   await page.waitForTimeout(2500)
   assert.ok(await page.locator('.map-label.event').count() >= 5, '上海的故事线节点')
   assert.equal(await page.locator('.map-label.event.has-photo').count(), await page.locator('.map-label.event').count(), '每个事件都合并显示封面和日期，包括没有独立定位的照片')
-  assert.equal(await page.locator('.map-photo').count(), 0, '城市内的事件照片不再重复显示为独立缩略图')
+  assert.equal(await page.locator('.life-map.life-map-layer .map-photo').count(), 0, '城市内的事件照片不再重复显示为独立缩略图；隐藏的地球层可以保留自己的入口')
   const visibleCards = await page.locator('.map-label.event').evaluateAll((els) => els.filter(el => getComputedStyle(el).visibility === 'visible').map(el => {
     const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}
   }))
