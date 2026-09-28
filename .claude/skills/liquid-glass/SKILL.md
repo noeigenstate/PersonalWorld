@@ -29,11 +29,13 @@ The HIG rules below are quoted or paraphrased; the CSS is our web translation.
 
 | Layer | Elements | Material |
 |---|---|---|
-| Navigation / controls (glass, regular) | `.app-bar` (full-width strip across the top of the page), `.map-heading`, `.timebar`, `.butler`, `.tray`, `.map-photo-menu`, `.map-empty`, sheets (`.import-modal`, `.detail-panel`, `.privacy-modal`, `.memory-library`, `.film-modal`, `.cull-sheet`), `.auth-card` | `.glass` tokens |
+| Navigation / controls (glass, regular) | `.app-bar` (full-width strip across the top of the page), `.map-heading`, `.butler`, `.tray`, `.map-photo-menu`, `.map-empty`, sheets (`.import-modal`, `.detail-panel`, `.privacy-modal`, `.memory-library`, `.film-modal`, `.cull-sheet`), `.auth-card` | `.glass` tokens |
 | Controls over photos (glass, clear + dim) | `.lightbox-toolbar button` | `--glass-clear` + 35 % dim |
 | Primary action (tinted glass) | `.button-primary`, `.hold`, `.send` | accent fill + rim |
 | Content | `.map-label`, `.map-photo`, `.map-scene-caption`, photo grids | standard material or opaque; **no** glass rim |
 | Controls inside glass | chips, legend, secondary buttons, inputs, bubbles | fills (`--fill`, `--fill-2`) |
+
+The timeline is a user-requested bare, draggable line over the scene, without a glass panel.
 
 ## Tokens (in `src/app.css` `:root`)
 
@@ -62,7 +64,7 @@ The sheen lives in `background`; the specular rim is the one `::before` of each 
 ## What makes it read as real glass
 
 - **Clear, not milky**: low fill (0.26–0.34 on the bar) and light blur, so the map shows through; text-heavy
-  panels (heading, time bar, butler, sheets) use a denser slab (0.58–0.68) to stay legible.
+  panels (heading, butler, sheets) use a denser slab (0.58–0.68) to stay legible.
 - **Refraction at the rim** (`src/lib/liquidGlass.ts`): an SVG displacement map per element size and corner
   radius bends what is behind the rim inwards, like a lens. Chromium only (`backdrop-filter: url(#…)`);
   other browsers keep the plain glass. Static — nothing wobbles.

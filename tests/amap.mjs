@@ -18,11 +18,18 @@ if (!key || !code) { console.log('跳过：.env 中没有 AMAP_JS_KEY / AMAP_JS_
 
 const shots = process.env.SMOKE_SHOTS || tmpdir()
 const browser = await chromium.launch({ channel: 'chrome' })
-const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } })
+// Map tiles here go through the routes below, not the map cache (tests/map-cache.mjs covers that)
+const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
 const consoleLog = []
 page.on('console', (m) => consoleLog.push(`${m.type()}: ${m.text().slice(0, 200)}`))
+async function chooseGlobeCity(name) {
+  const single = page.locator('.globe-place').filter({ hasText: name })
+  if (await single.count()) return single.first().click()
+  await page.locator('.globe-cluster').filter({ hasText: name }).first().click()
+  await page.getByRole('dialog', { name: '选择地点' }).getByRole('button', { name: new RegExp(name) }).click()
+}
 
 await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'amap-test', username: '测试', createdAt: '2026-09-24T00:00:00Z', privacyAccepted: true } } }))
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '测试', geocode: false, amapJsKey: key } }))
@@ -50,12 +57,17 @@ await page.route('**/_AMapService/**', async (route) => {
   const targets = [['/_AMapService/v4/map/styles', 'https://webapi.amap.com/v4/map/styles'], ['/_AMapService/v3/vectormap', 'https://fmap01.amap.com/v3/vectormap'], ['/_AMapService/', 'https://restapi.amap.com/']]
   const [prefix, target] = targets.find(([p]) => url.pathname.startsWith(p))
   url.searchParams.set('jscode', code)
-  const upstream = await fetch(`${target}${url.pathname.slice(prefix.length)}?${url.searchParams}`)
-  await route.fulfill({ status: upstream.status, contentType: upstream.headers.get('content-type') || undefined, body: Buffer.from(await upstream.arrayBuffer()) })
+  // Terrain asks for many tiles at once; a lost one must not end the test
+  try {
+    const upstream = await fetch(`${target}${url.pathname.slice(prefix.length)}?${url.searchParams}`, { signal: AbortSignal.timeout(15000) })
+    await route.fulfill({ status: upstream.status, contentType: upstream.headers.get('content-type') || undefined, body: Buffer.from(await upstream.arrayBuffer()) })
+  } catch {
+    await route.fulfill({ status: 502, body: '' }).catch(() => {})
+  }
 })
 
 try {
-  await page.goto(BASE, { waitUntil: 'networkidle' })
+  await page.goto(BASE, { waitUntil: 'load' })
   const sceneKeyCheck = await page.evaluate(async () => {
     const { photoSceneKey } = await import('/src/map/regionScene.ts')
     const local = { id: 'local', gcj: [121.5, 31.2], sceneCard: { createdAt: '1', scene: '阅读', tags: [] } }
@@ -65,12 +77,12 @@ try {
       photoSceneKey([local, { ...local, id: 'same-group' }, distant], local) === photoSceneKey([local, { ...local, id: 'same-group' }, distant], { ...local, id: 'same-group' })]
   })
   assert.deepEqual(sceneKeyCheck, [true, true, true], '信息卡更新及同组照片切换都不能重建地理场景')
-  await page.locator('.life-map-amap .amap-layer, .life-map-amap canvas').first().waitFor({ timeout: 20000 })
+  await page.locator('.life-globe-canvas').waitFor({ timeout: 20000 })
   const files = await makeLifeFixtures(page, mkdtempSync(join(tmpdir(), 'pw-amap-')))
   await page.getByRole('button', { name: '导入第一批影像' }).click()
   await page.locator('input[type="file"]').setInputFiles(files)
-  await page.locator('.map-label.place').nth(3).waitFor({ timeout: 30000 })
-  const names = (await page.locator('.map-label.place strong').allInnerTexts()).map((t) => t.split(' · ')[0]).sort()
+  await page.locator('.life-globe[data-place-count="4"]').waitFor({ timeout: 30000 })
+  const names = (await page.locator('.life-globe').getAttribute('data-place-names')).split('|').sort()
   assert.deepEqual(names, ['上海', '杭州', '武汉', '湘潭'], '高德浏览器端地理编码应识别出四个城市')
   await page.waitForTimeout(2500)
   // Photo layer: thumbnails clustered with a count, like a phone album's map
@@ -97,12 +109,12 @@ try {
   await page.locator('.photo-card .pc-file').getByText(secondName).waitFor()
   await page.getByRole('button', { name: '关闭影像' }).click()
   await page.getByRole('button', { name: '关闭事件详情' }).click()
-  await page.reload({ waitUntil: 'networkidle' })
-  await page.locator('.map-label.place').nth(3).waitFor({ timeout: 30000 })
+  await page.reload({ waitUntil: 'load' })
+  await page.locator('.life-globe[data-place-count="4"]').waitFor({ timeout: 30000 })
   await page.locator('.locating-chip').getByText(`已生成 ${files.length} 张照片信息卡`).waitFor({ timeout: 90000 })
   assert.equal(cardRequests.length, files.length, '有 GPS 和无 GPS 的真实导入照片都各生成一次信息卡')
 
-  await page.locator('.map-label.place').filter({ hasText: '上海' }).click()
+  await chooseGlobeCity('上海')
   await page.locator('.butler').waitFor()
   await page.waitForTimeout(2500)
   assert.ok(await page.locator('.map-label.event').count() >= 5, '上海的故事线节点')
@@ -136,8 +148,8 @@ try {
   if (await page.getByRole('button', { name: '关闭事件详情' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭事件详情' }).click()
 
   // The same complete renderer serves each group, before any photo theme is known.
-  await page.reload({ waitUntil: 'networkidle' })
-  await page.locator('.map-label.place').filter({ hasText: '杭州' }).click()
+  await page.reload({ waitUntil: 'load' })
+  await chooseGlobeCity('杭州')
   await page.locator('.map-label.event').first().click()
   await page.locator('.photo-open').first().click()
   await page.getByRole('button', { name: '在地图上看' }).click()
@@ -151,8 +163,8 @@ try {
   if (await page.getByRole('button', { name: '关闭影像' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭影像' }).click()
   if (await page.getByRole('button', { name: '关闭事件详情' }).isVisible().catch(() => false)) await page.getByRole('button', { name: '关闭事件详情' }).click()
 
-  await page.reload({ waitUntil: 'networkidle' })
-  await page.locator('.map-label.place').filter({ hasText: '武汉' }).click()
+  await page.reload({ waitUntil: 'load' })
+  await chooseGlobeCity('武汉')
   await page.locator('.map-label.event').first().click()
   await page.locator('.photo-open').first().click()
   await page.getByRole('button', { name: '在地图上看' }).click()
@@ -223,6 +235,15 @@ try {
   assert.notEqual(await sceneCaption.evaluate((element) => element.style.transform), beforeDrag, '记忆场景应跟随地图拖动')
   await focused.click()
   await page.locator('.photo-card').getByText('画面中认出地标，经高德地点搜索定位').waitFor({ timeout: 10000 })
+  await page.reload({ waitUntil: 'load' })
+  await page.locator('.life-globe[data-place-count="4"]').waitFor({ timeout: 30000 })
+  await page.locator('.globe-photo:has(b)').first().click()
+  await page.getByRole('button', { name: '放大到此处场景' }).click()
+  await page.locator('.life-map[data-scene-state="ready"]').waitFor({ timeout: 30000 })
+  await page.getByRole('button', { name: '返回地球' }).click()
+  await page.locator('.life-globe').waitFor()
+  for (let i = 0; i < 5; i++) await page.getByRole('button', { name: '放大地球' }).click()
+  await page.locator('.life-map[data-scene-state="ready"]').waitFor({ timeout: 30000 })
   assert.equal(errors.length, 0, `浏览器运行时不应报错：${errors.join('; ')}`)
   console.log('AMap test passed: security proxy, geocoding, real-photo map, story line, photo cluster chooser, GPS → street number, automatic cards and landmark locating, regional scenes, map dragging.')
   assert.equal(consoleLog.filter((item) => /error: THREE\.WebGLProgram: Shader Error/i.test(item)).length, 0, '地图场景着色器应在真实浏览器中编译成功')

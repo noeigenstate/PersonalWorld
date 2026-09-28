@@ -30,7 +30,7 @@ import type { StoryChapter } from './lib/memoryGraph'
 
 const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
 const BUTLER_WIDTH = 432
-const TIMEBAR_HEIGHT = 128
+const TIMEBAR_HEIGHT = 88
 // The glass top bar covers the top 52 px of the map
 const CHROME_TOP = 52
 const uid = () => crypto.randomUUID()
@@ -43,7 +43,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [aiConfig, setAiConfig] = useState<AiConfig>({ available: false, mode: 'unconfigured', message: '正在检查 AI 连接…', geocode: false })
   const [configChecked, setConfigChecked] = useState(false)
   const [selectedCity, setSelectedCity] = useState<string | null>(null)
+  const [globeOverview, setGlobeOverview] = useState(true)
   const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null)
+  const [timelineAt, setTimelineAt] = useState<number | null>(null)
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
   const [openPhotoId, setOpenPhotoId] = useState<string | null>(null)
   const [mapFocus, setMapFocus] = useState<{ photo: MapPhoto; at: number } | null>(null)
@@ -172,6 +174,11 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     const placeLandmark = /东方明珠|oriental\s*pearl/i.test(nearbyLandmark || '') ? nearbyLandmark : undefined
     return [{ id: a.id, name: a.name, gcj, preview: a.preview, inferred: Boolean(a.location && !['gps', 'meta', 'user'].includes(a.location.source)), precision: a.location?.precision || 'point', venueName: a.location?.aoi || a.location?.poi?.name, landmark: cardLandmark || placeLandmark, landmarkSource: cardLandmark ? 'photo' : placeLandmark ? 'place' : undefined, sceneCard: a.card ? { title: a.card.title, caption: a.card.caption, scene: a.card.scene, tags: a.card.tags, eventGuess: a.card.eventGuess, createdAt: a.card.createdAt } : undefined }]
   }), [memory.assets])
+  const visibleMapPhotos = useMemo(() => {
+    if (timelineAt === null) return mapPhotos
+    const captured = new Map(memory.assets.map((asset) => [asset.id, Date.parse(asset.capturedAt)]))
+    return mapPhotos.filter((photo) => (captured.get(photo.id) ?? Infinity) <= timelineAt + 86400000)
+  }, [mapPhotos, memory.assets, timelineAt])
   const sceneCoverage = useSceneCoverage(memory.assets, mapPhotos, ready && !locating)
   const library = useMemoryGraph(memory.assets, memory.events, ready, importing || autoBusyIds.length > 0 || Boolean(cardBusyId))
 
@@ -253,9 +260,10 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
 
   const selectCity = useCallback((city: string | null, announce = true) => {
     setSelectedCity(city)
+    setGlobeOverview(!city)
     setRouteId('')
     setHighlightedEventId(null)
-    if (!city) { setFocus(null); return }
+    if (!city) { setFocus(null); setMapFocus(null); setLandmarkPreviewAt(0); return }
     const place = places.find((p) => p.city === city)
     if (!place) return
     setFocus({ city, from: place.firstAt.slice(0, 10), to: place.lastAt.slice(0, 10) })
@@ -517,7 +525,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     : '可以问我人生中的任何一段'
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${globeOverview && !selectedCity ? ' globe-mode' : ''}`}>
       <header className="app-bar">
         <span className="app-brand"><Aperture size={22} strokeWidth={2} /><span>Personal World</span></span>
         <div className="app-actions">
@@ -536,6 +544,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           amapKey={aiConfig.amapJsKey}
           amapStyle={aiConfig.amapStyle}
           sceneEnabled={sceneEnabled}
+          globeOverview={globeOverview && !selectedCity}
           onMapError={setNotice}
           places={places}
           bases={bases}
@@ -549,7 +558,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           onSelectCity={(city) => selectCity(city)}
           onOpenEvent={setActiveEventId}
           onOpenPhoto={openPhoto}
-          photos={mapPhotos}
+          onFocusPhoto={(photo) => { setGlobeOverview(false); setMapFocus({ photo, at: Date.now() }) }}
+          onGlobeChange={(on) => { if (on && selectedCity) selectCity(null, false); else setGlobeOverview(on) }}
+          photos={visibleMapPhotos}
           focus={mapFocus}
           landmarkPreviewAt={landmarkPreviewAt}
         />}
@@ -564,15 +575,10 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
               </>
             ) : (
               <>
+                {!globeOverview && <button className="crumb" onClick={() => selectCity(null)}><ChevronLeft size={14} />返回地球</button>}
                 <h1>我的人生地图<b>.</b></h1>
-                <p>{bases.length} 个人生据点 · {events.length} 件事 · {places.length - bases.length} 个途经地点</p>
               </>
             )}
-            <div className="legend">
-              <span><em className="lg-story" />回忆事件</span>
-              <span><em className="lg-migrate" />迁徙</span>
-              <span><em className="lg-unsure" />待确认</span>
-            </div>
             {selectedCity && routes.length > 0 && <div className="memory-route-control">
               <select aria-label="选择回忆连线" value={routeEventIds.length ? routeId : ''} onChange={(event) => setRouteId(event.target.value)}>
                 <option value="">不显示回忆连线</option>
@@ -581,7 +587,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
               {routeEventIds.length > 0 && <small>按拍摄先后连接，仅表示这次回忆的地点顺序。</small>}
             </div>}
             {aiConfig.amapJsKey && (<>
-              <button
+              {!globeOverview && <button
                 className={`building-toggle ${sceneEnabled ? 'active' : ''}`}
                 type="button"
                 aria-pressed={sceneEnabled}
@@ -590,9 +596,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
               >
                 3D 记忆场景 {sceneEnabled ? '开' : '关'}
                 <small>{sceneCoverage.total ? sceneCoverage.done < sceneCoverage.total ? `检查街区 ${sceneCoverage.done}/${sceneCoverage.total}` : `${sceneCoverage.total} 处街区资料${sceneCoverage.partial + sceneCoverage.failed ? ` · ${sceneCoverage.partial + sceneCoverage.failed} 处待补` : ''}` : '真实照片地点'}</small>
-              </button>
-              {mapPhotos.length>0&&<SceneCoverage coverage={sceneCoverage} onFocus={id=>{const photo=mapPhotos.find(p=>p.id===id);if(photo){setMapFocus({photo,at:Date.now()})}}}/>}
-              {!mapPhotos.length && <button className="scene-preview" type="button" onClick={() => { selectCity(null, false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>}
+              </button>}
+              {mapPhotos.length>0&&<SceneCoverage coverage={sceneCoverage} onFocus={id=>{const photo=mapPhotos.find(p=>p.id===id);if(photo){setGlobeOverview(false);setMapFocus({photo,at:Date.now()})}}}/>}
+              {!mapPhotos.length && <button className="scene-preview" type="button" onClick={() => { selectCity(null, false); setGlobeOverview(false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>}
             </>)}
             {aiConfig.available && analyzablePhotos.length > 0 && (
               <div className="locating-chip" role="status" aria-label="照片自动分析状态">
@@ -642,7 +648,12 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
 
         {events.length > 0 && (
           <div className="timebar-wrap" style={{ right: panelOpen ? BUTLER_WIDTH + 24 : 24 }}>
-            <TimelineBar events={events} bases={bases} storyIds={storyIds} selectedCity={selectedCity} highlightedEventId={highlightedEventId} onOpenEvent={setActiveEventId} />
+            <TimelineBar events={events} bases={bases} storyIds={storyIds} selectedCity={selectedCity} highlightedEventId={highlightedEventId} scrubAt={timelineAt} onScrub={(at) => {
+              setTimelineAt(at)
+              const candidates = selectedCity ? story : events
+              const nearest = candidates.reduce<MemoryEvent | null>((best, event) => !best || Math.abs(Date.parse(event.occurredAt) - at) < Math.abs(Date.parse(best.occurredAt) - at) ? event : best, null)
+              setHighlightedEventId(nearest?.id || null)
+            }} onOpenEvent={setActiveEventId} />
           </div>
         )}
 
@@ -693,6 +704,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
               if (!photo) return
               setActiveEventId(null)
               setOpenPhotoId(null)
+              setGlobeOverview(false)
               setMapFocus({ photo, at: Date.now() })
             },
           }}

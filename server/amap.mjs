@@ -51,6 +51,20 @@ const proxyTargets = [
   ['/_AMapService/', 'https://restapi.amap.com/'],
 ]
 
+// Terrain (DEM) tiles never change and the map asks for many at once: keep the recent ones
+const demCache = new Map()
+const DEM_CACHE_SIZE = 1500
+const DEM_CACHE_BYTES = 64 * 1024 * 1024
+let demCacheBytes = 0
+
+async function fetchWithRetry(url) {
+  try {
+    return await fetch(url, { signal: AbortSignal.timeout(8000) })
+  } catch {
+    return fetch(url, { signal: AbortSignal.timeout(12000) })
+  }
+}
+
 export async function proxyAmapService(config, req, res) {
   if (!config.securityCode) {
     res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -58,8 +72,37 @@ export async function proxyAmapService(config, req, res) {
   }
   const url = new URL(req.url || '/', 'http://localhost')
   const [prefix, target] = proxyTargets.find(([p]) => url.pathname.startsWith(p))
+  const dem = url.pathname.includes('/rest/lbs/dem/')
+  const cacheKey = dem ? url.pathname + url.search : ''
+  if (dem && demCache.has(cacheKey)) {
+    const hit = demCache.get(cacheKey)
+    demCache.delete(cacheKey)
+    demCache.set(cacheKey, hit)
+    res.writeHead(hit.status, { 'Content-Type': hit.type, 'Cache-Control': 'public, max-age=86400' })
+    return res.end(hit.body)
+  }
   url.searchParams.set('jscode', config.securityCode)
-  const upstream = await fetch(`${target}${url.pathname.slice(prefix.length)}?${url.searchParams}`)
-  res.writeHead(upstream.status, { 'Content-Type': upstream.headers.get('content-type') || 'application/octet-stream' })
-  res.end(Buffer.from(await upstream.arrayBuffer()))
+  let upstream, type, body
+  try {
+    upstream = await fetchWithRetry(`${target}${url.pathname.slice(prefix.length)}?${url.searchParams}`)
+    type = upstream.headers.get('content-type') || 'application/octet-stream'
+    body = Buffer.from(await upstream.arrayBuffer())
+  } catch {
+    res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' })
+    return res.end(JSON.stringify({ error: '高德服务暂时连不上' }))
+  }
+  if (dem && (upstream.ok || upstream.status === 404) && body.length <= DEM_CACHE_BYTES) {
+    const previous = demCache.get(cacheKey)
+    if (previous) demCacheBytes -= previous.body.length
+    demCache.delete(cacheKey)
+    demCache.set(cacheKey, { status: upstream.status, type, body })
+    demCacheBytes += body.length
+    while (demCache.size > DEM_CACHE_SIZE || demCacheBytes > DEM_CACHE_BYTES) {
+      const oldestKey = demCache.keys().next().value
+      demCacheBytes -= demCache.get(oldestKey).body.length
+      demCache.delete(oldestKey)
+    }
+  }
+  res.writeHead(upstream.status, { 'Content-Type': type })
+  res.end(body)
 }

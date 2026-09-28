@@ -5,7 +5,7 @@ description: Put Three.js 3D objects on an AMap (高德地图) JS API 2.0 3D map
 
 # AMap JS API 2.0 + Three.js
 
-Verified on 2026-09-24 against the live API (JS API 2.0, three r186, Chrome). Working implementation: `src/map/amapScene.ts`, `src/map/amap.ts`, `server/amap.mjs` in this project.
+Verified on 2026-09-24 against the live API (JS API 2.0, three r186, Chrome). Terrain was separately checked on 2026-09-28 with JS API 2.1Beta. Working implementation: `src/map/amapScene.ts`, `src/map/amap.ts`, `server/amap.mjs` in this project.
 
 ## 1. Do not share AMap's WebGL context with modern three.js
 
@@ -90,3 +90,9 @@ Municipalities (上海、北京…) return an empty `city`; use `province` inste
 ## 7. Testing
 
 Headless Chrome renders AMap fine. To test without a signed-in session, route `/_AMapService/**` in Playwright and forward with `jscode` exactly like the server does (see `tests/amap.mjs`).
+
+## 8. Terrain and the globe overview
+
+- The global overview is a separate Three.js cartoon sphere (`src/map/globeScene.ts`); the local AMap scene starts when a city or precise photo is selected. Do not treat AMap's flat world view as a globe.
+- The local map loads `v=2.1Beta`, `viewMode:'3D'`, `terrain:true`; `map.getAltitude([lng,lat])` returns metres after DEM tiles arrive. A zero result can mean tiles are still loading, so it is rechecked after the map settles. The Three.js models, DOM labels, photos, story routes and space arcs must use the same ground altitude. [AMap terrain guide](https://lbs.amap.com/api/javascript-api-v2/guide/map/3d-map), [Map reference](https://lbs.amap.com/api/maps-javascript-api/reference/amap-map/map).
+- The security proxy in `server/amap.mjs` retries failed DEM fetches and keeps a 64 MiB bounded cache. `npm run test:terrain` checks real DEM responses and a nonzero mountain altitude; it requires the dev server and AMap keys, and can fail when the external tile service is unavailable.

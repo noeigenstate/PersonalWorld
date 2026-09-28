@@ -3,7 +3,7 @@
 import { VectorTile } from '@mapbox/vector-tile'
 import Pbf from 'pbf'
 import polygonClipping from 'polygon-clipping'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, utimes, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 import { containsPoint, loadSceneDetails } from './mapSceneDetails.mjs'
@@ -241,17 +241,42 @@ export async function mapSceneForPoint(lng, lat, radius = 900) {
   radius = Number.isFinite(radius) ? Math.max(900, Math.min(1800, Math.ceil(radius / 100) * 100)) : 900
   const key = `${centerLng.toFixed(3)}_${centerLat.toFixed(3)}_${radius}`
   const path = join(cacheDir, `v${sceneVersion}_${key}.json`)
+  // Local first: a saved neighbourhood is returned at once and never expires. Older than cacheAge,
+  // it is compared with the online map in the background and replaced only when that changed.
+  let cached = null, age = Infinity
   try {
-    const cached = JSON.parse(await readFile(path, 'utf8'))
-    if (Date.now() - (await stat(path)).mtimeMs < (cached.detailStatus === 'unavailable' ? 5 * 60000 : cacheAge)) return cached
+    cached = JSON.parse(await readFile(path, 'utf8'))
+    age = Date.now() - (await stat(path)).mtimeMs
   } catch (error) { if (error.code !== 'ENOENT') throw error }
+  const complete = cached && cached.detailStatus !== 'unavailable'
+  if (complete) {
+    if (age > cacheAge) refreshScene(key, path, cached, () => buildScene(centerLng, centerLat, radius)).catch(() => {})
+    return cached
+  }
+  if (cached && age < 5 * 60000) return cached
+  return refreshScene(key, path, cached, () => buildScene(centerLng, centerLat, radius))
+}
+
+// Fetches the neighbourhood again; writes it only when it differs from what is saved, and keeps
+// a complete saved copy when the new attempt comes back worse (source down, partial data)
+function refreshScene(key, path, saved, build) {
   if (inFlight.has(key)) return inFlight.get(key)
-  const task = buildScene(centerLng, centerLat, radius).then(async (scene) => {
+  const task = build().then(async (scene) => {
+    const worse = saved && saved.detailStatus !== 'unavailable' && scene.detailStatus === 'unavailable'
+    if (worse) { await touch(path); return saved }
+    const same = saved && sceneFingerprint(saved) === sceneFingerprint(scene)
     await mkdir(cacheDir, { recursive: true })
-    await writeFile(path, JSON.stringify(scene), 'utf8')
-    return scene
+    if (same) await touch(path)
+    else await writeFile(path, JSON.stringify(scene), 'utf8')
+    return same ? saved : scene
+  }, (error) => {
+    if (saved) return saved
+    throw error
   })
   inFlight.set(key, task)
-  try { return await task }
-  finally { inFlight.delete(key) }
+  return task.finally(() => inFlight.delete(key))
 }
+
+// What the map shows, without the time it was built
+const sceneFingerprint = (scene) => JSON.stringify({ ...scene, builtAt: undefined, createdAt: undefined, fetchedAt: undefined })
+const touch = (path) => utimes(path, new Date(), new Date()).catch(() => {})

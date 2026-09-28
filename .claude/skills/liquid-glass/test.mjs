@@ -42,7 +42,7 @@ test('真实玻璃：顶栏占满顶部，有高光描边，主要表面启用�
   assert.match(css, /--glass-specular:linear-gradient/)
   assert.match(css, /::before\{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:var\(--glass-specular\)/)
   const main = readFileSync(join(root, 'src/main.tsx'), 'utf8')
-  assert.match(main, /startLiquidGlass\('\.app-bar, \.map-heading, \.timebar/)
+  assert.match(main, /startLiquidGlass\('\.app-bar, \.map-heading, \.map-empty/)
 })
 
 test('项目样式表符合液态玻璃规则', () => {

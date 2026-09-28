@@ -67,7 +67,7 @@ try {
   const files = await makeLifeFixtures(page, mkdtempSync(join(tmpdir(), 'pw-vault-')))
   await page.getByRole('button', { name: '导入第一批影像' }).click()
   await page.locator('input[type="file"]').setInputFiles(files)
-  await page.locator('.map-label.place').nth(3).waitFor()
+  await page.locator('.timebar .dot').nth(15).waitFor() // 16 events: the overview is now the globe
   const events = await page.locator('.timebar .dot').count()
   const deadline = Date.now() + 30_000
   while ((vault.previews.size < files.length || vault.originals.size < files.length) && Date.now() < deadline) await page.waitForTimeout(250)
@@ -91,7 +91,7 @@ try {
   await again.locator('#auth-username').fill('小丁')
   await again.locator('#auth-password').fill('secret12')
   await again.locator('.auth-submit').click()
-  await again.locator('.map-label.place').nth(3).waitFor()
+  await again.locator('.timebar .dot').nth(15).waitFor()
   assert.equal(await again.locator('.timebar .dot').count(), events, '事件全部恢复')
   await again.getByText(`已从本机照片库恢复 ${files.length} 张照片`).waitFor()
   // Restored previews render as images

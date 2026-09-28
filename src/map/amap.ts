@@ -1,5 +1,5 @@
 import { isCountryName } from '../lib/memory'
-// Loads the AMap JS API 2.0. The security code stays on our server: requests go through
+// Loads the AMap JS API 2.1Beta for real terrain. The security code stays on our server: requests go through
 // /_AMapService, which appends it (see server/amap.mjs).
 import type { GeocodeResult, PhotoLocation } from '../types'
 import { wgs84ToGcj02 } from '../lib/geo'
@@ -20,7 +20,8 @@ export function loadAmap(key: string): Promise<AMapNS> {
   window._AMapSecurityConfig = { serviceHost: `${location.origin}/_AMapService` }
   loading = new Promise((resolve, reject) => {
     const script = document.createElement('script')
-    script.src = `https://webapi.amap.com/maps?v=2.0&key=${encodeURIComponent(key)}&plugin=AMap.Geocoder,AMap.PlaceSearch`
+    // 2.1Beta: 3D terrain (`terrain: true`) and map.getAltitude; 2.0 draws the ground flat
+    script.src = `https://webapi.amap.com/maps?v=2.1Beta&key=${encodeURIComponent(key)}&plugin=AMap.Geocoder,AMap.PlaceSearch`
     script.async = true
     script.onload = () => (window.AMap ? resolve(window.AMap) : reject(new Error('高德地图加载失败')))
     script.onerror = () => { loading = null; reject(new Error('无法连接高德地图，请检查网络')) }

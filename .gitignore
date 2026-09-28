@@ -9,6 +9,7 @@ server/data/
 data/
 !src/map/data/
 !src/map/data/shanghai-pearl.json
+!src/map/data/earth-land-110m.geojson
 __pycache__/
 *.pyc
 docs/mockups/lighting-trial/

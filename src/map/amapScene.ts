@@ -26,6 +26,9 @@ const unitMetres = (zoom: number) => (156543.034 / 2 ** zoom) * PX_PER_UNIT
 
 interface Scaled { object: THREE.Object3D }
 
+// Below this zoom (reached by the user zooming out) the globe takes over again
+export const GLOBE_HANDBACK_ZOOM = 4.2
+
 export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCallbacks, AMap: AMapNS, mapStyle = 'amap://styles/macaron') {
   const mapEl = document.createElement('div')
   mapEl.className = 'life-map-amap'
@@ -69,6 +72,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   const map = new AMap.Map(mapEl, {
     viewMode: '3D',
+    // Real relief: mountains and valleys rise from the map (AMap 2.1Beta)
+    terrain: true,
     pitch: 50,
     zoom: 5,
     center: [108.9, 34.3],
@@ -85,6 +90,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     heightFactor: 1,
   })
   map.add(buildings)
+  // Landforms: satellite imagery laid over the cartoon style shows forests, plains, farmland and rock.
+  // Street level is left to the cartoon 3D scenes.
+  map.add(new AMap.TileLayer.Satellite({ opacity: 0.55, zooms: [3, 15.5] }))
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -165,8 +173,63 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
 
   const gcj = (lat: number, lng: number): [number, number] => { const p = wgs84ToGcj02({ lat, lng }); return [p.lng, p.lat] }
   const coord = (lat: number, lng: number) => {
-    const [x, y] = map.customCoords.lngLatsToCoords([gcj(lat, lng)])[0]
-    return new THREE.Vector3(x, y, 0)
+    const at = gcj(lat, lng)
+    const [x, y] = map.customCoords.lngLatsToCoords([at])[0]
+    const v = new THREE.Vector3(x, y, 0)
+    groundOf.set(v, at)
+    return v
+  }
+
+  // Our objects stand on the terrain, not at sea level. AMap knows the ground height only where its
+  // terrain tiles are loaded, so heights are looked up again whenever the map comes to rest.
+  const groundOf = new WeakMap<THREE.Vector3, [number, number]>() // position → GCJ-02 point
+  const groundCache = new Map<string, number>()
+  let grounded: { object: THREE.Object3D; at: [number, number] }[] = []
+  let terrainArcs: { a: THREE.Vector3; b: THREE.Vector3; line: Line2; arrow: THREE.Group }[] = []
+  let terrainRoutes: { nodes: THREE.Vector3[]; line: Line2 }[] = []
+  let terrainTimers: number[] = []
+  function ground(at?: [number, number]) {
+    if (!at) return 0
+    const key = `${at[0].toFixed(5)},${at[1].toFixed(5)}`
+    if (!groundCache.has(key)) {
+      let metres = 0
+      try { metres = Math.max(0, Number(map.getAltitude?.(at)) || 0) } catch { metres = 0 }
+      if (!metres) return 0 // not loaded yet: ask again later
+      groundCache.set(key, metres)
+    }
+    return groundCache.get(key)!
+  }
+  function liftToGround() {
+    for (const { object, at } of grounded) object.position.z = ground(at)
+    for (const entry of photos) entry.at.z = ground(entry.photo.gcj)
+    for (const { a, b, line, arrow } of terrainArcs) {
+      const curve = arcBetween(a, b)
+      line.geometry.setPositions(curve.getPoints(64).flatMap((point) => [point.x, point.y, point.z]))
+      line.computeLineDistances()
+      arrow.position.copy(curve.getPointAt(0.97))
+      arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), curve.getTangentAt(0.97).normalize())
+    }
+    for (const { nodes, line } of terrainRoutes) {
+      line.geometry.setPositions(nodes.flatMap((node) => [node.x, node.y, ground(groundOf.get(node)) + 2]))
+      line.computeLineDistances()
+    }
+  }
+  function arcBetween(a: THREE.Vector3, b: THREE.Vector3) {
+    const start = a.clone().setZ(ground(groundOf.get(a)) + 2)
+    const end = b.clone().setZ(ground(groundOf.get(b)) + 2)
+    const mid = start.clone().add(end).multiplyScalar(0.5)
+    mid.z += Math.hypot(a.x - b.x, a.y - b.y) * 0.22
+    return new THREE.QuadraticBezierCurve3(start, mid, end)
+  }
+  function scheduleGroundSync() {
+    for (const timer of terrainTimers) window.clearTimeout(timer)
+    terrainTimers = []
+    liftToGround()
+    draw()
+    // DEM often arrives after moveend. Keep the overlay aligned as late tiles finish loading.
+    for (const delay of [700, 2400, 6000, 12000]) terrainTimers.push(window.setTimeout(() => {
+      if (!disposed) { liftToGround(); draw() }
+    }, delay))
   }
 
   // A y-up cartoon object stood upright in AMap's z-up frame, scaled with zoom
@@ -177,6 +240,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     wrapper.add(object)
     world.add(wrapper)
     scaled.push({ object: wrapper })
+    const point = groundOf.get(at)
+    if (point) { wrapper.position.z = ground(point); grounded.push({ object: wrapper, at: point }) }
     return wrapper
   }
 
@@ -204,6 +269,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     lines = []
     storyLines = []
     overviewCities = []
+    grounded = []
+    terrainArcs = []
+    terrainRoutes = []
     heights.clear()
     container.dataset.storySegments = '0'
     const located = data.places.filter((p) => p.lat !== undefined && p.lng !== undefined)
@@ -230,7 +298,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       if (selected && selected !== place.city) dim(group, 0.4)
       stand(group, pos)
       const spec = placeLabel(place, selected)
-      labels.add(spec.className, new THREE.Vector3(pos.x, pos.y, heights.get(place.city)!), spec.lines, () => callbacks.onSelectCity(place.city), spec.priority)
+      labels.add(spec.className, anchorOver(pos, heights.get(place.city)!), spec.lines, () => callbacks.onSelectCity(place.city), spec.priority)
     }
 
     // Space line: geographic arcs between life bases, height proportional to distance
@@ -238,10 +306,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       const a = positions.get(data.bases[i - 1].city)
       const b = positions.get(data.bases[i].city)
       if (!a || !b) continue
-      const mid = a.clone().add(b).multiplyScalar(0.5)
-      mid.z = a.distanceTo(b) * 0.22
-      const curve = new THREE.QuadraticBezierCurve3(a, mid, b)
-      fatLine(curve.getPoints(64), 0x2fae76, 5, selected ? 0.45 : 1)
+      const curve = arcBetween(a, b)
+      const line = fatLine(curve.getPoints(64), 0x2fae76, 5, selected ? 0.45 : 1)
       const tip = curve.getPointAt(0.97)
       const cone = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.5, 16), new THREE.MeshToonMaterial({ color: 0x2fae76 }))
       const holder = new THREE.Group()
@@ -251,6 +317,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       if (selected) dim(holder, 0.45)
       world.add(holder)
       scaled.push({ object: holder })
+      terrainArcs.push({ a, b, line, arrow: holder })
     }
 
     // Story line: events at their real positions, in time order
@@ -258,7 +325,12 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     if (selected && cityPos && data.story.length) {
       const nodes = data.story.map((event, index) => ({ event, pos: storyPosition(event, index, data.story.length, cityPos, positions) }))
       const route = (data.routeEventIds || []).map((id) => nodes.find((node) => node.event.id === id)).filter((node) => node !== undefined)
-      if (route.length > 1) storyLines.push(fatLine(route.map((n) => n.pos.clone().setZ(2)), 0xf08a24, 3, .8))
+      if (route.length > 1) {
+        const nodes = route.map((node) => node.pos)
+        const line = fatLine(nodes.map((node) => node.clone().setZ(ground(groundOf.get(node)) + 2)), 0xf08a24, 3, .8)
+        storyLines.push(line)
+        terrainRoutes.push({ nodes, line })
+      }
       container.dataset.storySegments = String(Math.max(0, route.length - 1))
       for (const { event, pos } of nodes) {
         const now = event.id === data.highlightedEventId
@@ -278,21 +350,40 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
         base.userData.eventId = event.id
         stand(disc, pos)
         const spec = eventLabel(event, now, unsure)
-        labels.add(spec.className, new THREE.Vector3(pos.x, pos.y, 0.5), spec.lines, () => callbacks.onOpenEvent(event.id), spec.priority)
+        labels.add(spec.className, anchorOver(pos, 0.5), spec.lines, () => callbacks.onOpenEvent(event.id), spec.priority)
       }
     }
+  }
+
+  // A label anchor `height` scaled units above a position, remembering where on the ground it is
+  function anchorOver(pos: THREE.Vector3, height: number) {
+    const anchor = new THREE.Vector3(pos.x, pos.y, height)
+    const point = groundOf.get(pos)
+    if (point) groundOf.set(anchor, point)
+    return anchor
   }
 
   // Events without coordinates sit on a small ring around the city in time order
   function storyPosition(event: MemoryEvent, index: number, count: number, cityPos: THREE.Vector3, positions: Map<string, THREE.Vector3>) {
     if (event.lat !== undefined && event.lng !== undefined) return coord(event.lat, event.lng)
     const trip = event.city ? positions.get(event.city) : undefined
-    if (trip && !trip.equals(cityPos)) return trip.clone()
+    if (trip && !trip.equals(cityPos)) {
+      const point = trip.clone()
+      const at = groundOf.get(trip)
+      if (at) groundOf.set(point, at)
+      return point
+    }
     const angle = -Math.PI / 2 + (index / Math.max(1, count)) * Math.PI * 2
-    return cityPos.clone().add(new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0).multiplyScalar(unit * 2.4))
+    const point = cityPos.clone().add(new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0).multiplyScalar(unit * 2.4))
+    const at = groundOf.get(cityPos)
+    if (at) groundOf.set(point, at)
+    return point
   }
 
   function draw() {
+    container.dataset.zoom = map.getZoom().toFixed(2)
+    const mapCenter = map.getCenter()
+    container.dataset.center = `${mapCenter.lng.toFixed(2)},${mapCenter.lat.toFixed(2)}`
     if (!origin) { labels.place(camera, size.w, size.h); return }
     const cc = map.customCoords
     cc.setCenter(origin)
@@ -321,7 +412,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     for (const material of lines) material.resolution.set(size.w, size.h)
     renderer.render(scene, camera)
     if (!waterFrame && !reduceMotion && !document.hidden && memoryWorld.visible && hasAnimatedWater) waterFrame = requestAnimationFrame(animateWater)
-    const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit)
+    const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit + ground(groundOf.get(anchor)))
     // In a city's story the event labels carry the chronology. Lay them out first and
     // move photo buttons a short distance when they would cover a label.
     // Bubbles stay clear of the floating top bar and show as much as the zoom allows
@@ -711,7 +802,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     photoKey = key
     map.customCoords.setCenter(origin)
     const coords = next.length ? map.customCoords.lngLatsToCoords(next.map((p) => p.gcj)) : []
-    photos = next.map((photo, i) => ({ photo, at: new THREE.Vector3(coords[i][0], coords[i][1], 0) }))
+    photos = next.map((photo, i) => ({ photo, at: new THREE.Vector3(coords[i][0], coords[i][1], ground(photo.gcj)) }))
   }
 
   function thumb(cover: MapPhoto, members: MapPhoto[]) {
@@ -861,6 +952,21 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let pending: LifeMapData | null = null
   let pendingLandmark = false
   let pendingFocus: MapPhoto | null = null
+  // Zooming out past the country scale hands the view back to the globe (LifeMapView). Only the
+  // user's own zooming counts: our framing of a whole life can also end up far out.
+  let userZoomUntil = 0
+  const userZoom = () => { userZoomUntil = performance.now() + 1500 }
+  mapEl.addEventListener('wheel', userZoom, { passive: true })
+  mapEl.addEventListener('touchstart', userZoom, { passive: true })
+  map.on('zoomend', () => {
+    if (disposed || !callbacks.onZoomOutToGlobe || performance.now() > userZoomUntil) return
+    if (map.getZoom() >= GLOBE_HANDBACK_ZOOM) return
+    userZoomUntil = 0
+    const center = map.getCenter()
+    callbacks.onZoomOutToGlobe({ gcj: [center.lng, center.lat], zoom: map.getZoom() })
+  })
+
+  map.on('moveend', () => { if (!disposed) scheduleGroundSync() })
   map.on('complete', () => {
     if (disposed) return
     ready = true
@@ -868,6 +974,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     syncSceneForView()
     if (pendingFocus) { const photo = pendingFocus; pendingFocus = null; api.focusPhoto(photo) }
     else if (pendingLandmark) api.focusLandmark()
+    scheduleGroundSync()
   })
 
   const api = {
@@ -919,6 +1026,15 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       else clearMemoryScene()
       if (sceneState === 'ready') frameFocusedVenue = false
     },
+    // Taking over from the globe: straight down on the same point at the matching scale
+    showAt(gcj: [number, number], zoom: number) {
+      cancelVenueFit()
+      focusAfterMove = null
+      map.setRotation(0, true)
+      map.setPitch(0, true)
+      map.setZoomAndCenter(Math.max(GLOBE_HANDBACK_ZOOM + 0.4, zoom), gcj, true)
+      draw()
+    },
     focusLandmark() {
       if (!ready) { pendingLandmark = true; pendingFocus = null; return }
       cancelVenueFit()
@@ -940,6 +1056,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     },
     dispose() {
       disposed = true
+      for (const timer of terrainTimers) window.clearTimeout(timer)
       cancelAnimationFrame(waterFrame)
       document.removeEventListener('visibilitychange', visibility)
       window.removeEventListener('keydown', escapePhotoMenu)

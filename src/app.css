@@ -28,6 +28,40 @@ body{overflow:hidden}
 
 .stage{position:absolute;inset:0;overflow:hidden;background:linear-gradient(180deg,#bfe2f3 0%,#dcf0f8 45%,#e7f4f8 100%)}
 .life-map{position:absolute;inset:0}
+/* Street map and globe share the stage; the globe fades away when the view is handed over */
+.life-map-stack{position:absolute;inset:0}
+.life-map-layer{position:absolute;inset:0;z-index:0}
+.life-map-globe{z-index:1;transition:opacity .35s ease,visibility .35s}
+.life-map-globe.away{opacity:0;visibility:hidden;pointer-events:none}
+/* Under the globe the street map keeps rendering (for an instant hand-over) but its labels and photos are out of reach */
+.life-map-layer.under{visibility:hidden}
+@media(prefers-reduced-motion:reduce){.life-map-globe{transition:none}}
+.life-globe{position:absolute;inset:0;overflow:hidden;background:radial-gradient(ellipse at 50% 44%,#243976 0%,#111d4c 48%,#070d29 100%)}
+.life-globe:before{content:'';position:absolute;inset:7% 12%;background:radial-gradient(circle,rgba(95,185,214,.18),rgba(99,103,214,.09) 47%,transparent 73%);pointer-events:none}
+.globe-stars{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
+.life-globe-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+.life-globe-canvas:active{cursor:grabbing}
+.life-globe-canvas:focus-visible{outline:3px solid var(--accent);outline-offset:-4px}
+.globe-controls{position:absolute;right:20px;top:calc(var(--bar) + 16px);z-index:5;display:flex;gap:4px;padding:5px;border:1px solid rgba(255,255,255,.65);border-radius:999px;background:var(--glass-sheen),rgba(255,255,255,.42);backdrop-filter:blur(10px) saturate(150%);-webkit-backdrop-filter:blur(10px) saturate(150%);box-shadow:var(--glass-rim),var(--glass-shadow)}
+.globe-controls button{width:36px;height:36px;border:0;border-radius:50%;background:transparent;color:var(--label);font-size:21px;line-height:1;cursor:pointer}
+.globe-controls button:hover,.globe-controls button:focus-visible{background:var(--fill);outline:none}
+.globe-credit{position:absolute;right:24px;bottom:148px;z-index:5;padding:5px 9px;border-radius:999px;background:rgba(255,255,255,.78);color:#365461;font-size:10px;text-decoration:none;box-shadow:0 2px 10px rgba(15,50,65,.1)}
+.globe-credit:hover{text-decoration:underline}
+.globe-labels .map-label.place{min-height:0;max-width:210px;padding:8px 12px 9px;border-radius:15px;background:rgba(255,255,255,.95);white-space:normal}
+.globe-labels .map-label.place strong{font-size:14px;letter-spacing:0}
+.globe-labels .map-label.place small{font-size:10px;margin-top:2px;line-height:1.25;white-space:normal}
+.globe-labels .map-label.globe-cluster{border-color:rgba(0,122,255,.28)}
+.globe-place-menu{position:absolute;z-index:7;display:flex;flex-direction:column;gap:3px;min-width:200px;max-width:calc(100% - 16px);padding:10px;border:1px solid var(--glass-edge);border-radius:18px;background:var(--glass-sheen),rgba(250,250,252,.85);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);box-shadow:var(--glass-rim),var(--glass-shadow)}
+.globe-place-menu[hidden]{display:none}
+.globe-place-menu strong{padding:3px 8px 6px;font-size:12px}
+.globe-place-menu button{border:0;border-radius:11px;background:transparent;padding:8px;text-align:left;color:var(--label);font-size:13px;cursor:pointer}
+.globe-place-menu button:hover,.globe-place-menu button:focus-visible{background:var(--fill);outline:none}
+.globe-photos .map-photo{box-shadow:0 5px 20px rgba(5,39,61,.3)}
+.app-shell.globe-mode .app-bar{background:linear-gradient(180deg,rgba(65,92,157,.34),rgba(10,25,61,.58));border-bottom-color:rgba(211,233,255,.25);color:#f4f9ff}
+.app-shell.globe-mode .app-actions .button:not(.button-primary),.app-shell.globe-mode .app-bar .icon-button{background:rgba(255,255,255,.13);color:#f4f9ff}
+.app-shell.globe-mode .app-bar .connection-status,.app-shell.globe-mode .app-bar .account{color:#edf7ff}
+.app-shell.globe-mode .map-heading{background:var(--glass-sheen),rgba(247,250,255,.8)}
+@media(max-width:640px){.globe-controls{top:auto;right:12px;bottom:148px}.globe-credit{left:12px;right:auto;bottom:155px;max-width:180px;font-size:9px}}
 .life-map-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .life-map-amap{position:absolute;inset:0}
 /* The AMap logo and copyright line are hidden at the user's request (see note in the commit) */
@@ -60,6 +94,8 @@ body{overflow:hidden}
 .map-photo-menu[hidden]{display:none}
 .map-photo-menu-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink)}
 .map-photo-menu-heading button{border:0;background:var(--fill);border-radius:999px;padding:4px 10px;color:var(--label);cursor:pointer}
+.map-photo-menu-enter{margin:8px 10px 2px;padding:9px 12px;border:0;border-radius:12px;background:rgba(0,122,255,.14);color:var(--accent);font-size:12px;font-weight:700;text-align:left;cursor:pointer}
+.map-photo-menu-enter:hover,.map-photo-menu-enter:focus-visible{background:rgba(0,122,255,.22);outline:none}
 .map-photo-menu-list{overflow-y:auto;padding:6px}
 .map-photo-menu-item{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:9px;width:100%;padding:5px;border:0;border-radius:16px;background:none;text-align:left;color:var(--ink);cursor:pointer}
 .map-photo-menu-item:hover,.map-photo-menu-item:focus-visible{background:var(--fill)}
@@ -119,10 +155,6 @@ body{overflow:hidden}
 .map-heading h1 b{color:var(--story)}
 .map-heading p{margin:4px 0 10px;font-size:13px;color:var(--label-2)}
 .crumb{display:inline-flex;align-items:center;gap:2px;border:0;background:none;padding:0;margin-bottom:4px;font-size:12px;color:var(--accent)}
-.legend{display:flex;flex-wrap:wrap;gap:6px}
-.legend span{display:flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--label)}
-.legend em{width:16px;height:4px;border-radius:2px;display:inline-block}
-.lg-story{background:var(--story)}.lg-migrate{background:#2fae76}.lg-unsure{background:repeating-linear-gradient(90deg,var(--warn) 0 4px,transparent 4px 7px)}
 .building-toggle{display:flex;align-items:center;gap:8px;margin-top:9px;border:0;border-radius:999px;background:var(--fill);color:var(--label);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
 .building-toggle.active{background:rgba(0,122,255,.14);color:var(--accent)}
 .building-toggle small{font-size:10px;font-weight:400;opacity:.8}
@@ -154,17 +186,24 @@ body{overflow:hidden}
 .map-empty p{font-size:14px;color:var(--label-2);line-height:1.7;margin:0 0 18px}
 .map-empty.compact{top:auto;bottom:160px;transform:translateX(-50%);padding:22px 24px}
 
-.timebar-wrap{position:absolute;left:24px;bottom:20px;z-index:4}
-.timebar{height:104px;border-radius:28px;padding:12px 22px 0}
+.timebar-wrap{position:absolute;left:24px;bottom:16px;z-index:4}
+.timebar{height:68px;padding:0 14px}
 .timebar-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
-.timebar-head b{font-size:14px}
+.timebar-head b{font-size:13px}
 .timebar-head span{font:500 12px 'JetBrains Mono',Consolas,monospace;color:var(--story);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.track{position:relative;height:30px;margin-top:18px}
-.band{position:absolute;top:8px;height:14px;border-radius:7px;opacity:.45}
-.band.on{opacity:1}
+.track{position:relative;height:30px;margin-top:16px}
+.timebar-rail,.timebar-progress{position:absolute;left:0;top:13px;height:4px;border-radius:999px;pointer-events:none}
+.timebar-rail{right:0;background:rgba(19,48,65,.48);box-shadow:0 0 0 1px rgba(255,255,255,.7)}
+.timebar-progress{background:var(--story);box-shadow:0 0 0 1px rgba(255,255,255,.8)}
+.time-scrubber{position:absolute;inset:0;z-index:2;width:100%;height:30px;margin:0;appearance:none;-webkit-appearance:none;background:transparent;cursor:ew-resize}
+.time-scrubber::-webkit-slider-runnable-track{height:4px;background:transparent}
+.time-scrubber::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:18px;height:18px;margin-top:-7px;border:3px solid #fff;border-radius:50%;background:var(--story);box-shadow:0 1px 7px rgba(0,0,0,.45)}
+.time-scrubber::-moz-range-track{height:4px;background:transparent}
+.time-scrubber::-moz-range-thumb{width:13px;height:13px;border:3px solid #fff;border-radius:50%;background:var(--story);box-shadow:0 1px 7px rgba(0,0,0,.45)}
+.time-scrubber:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:5px}
 .band-name{position:absolute;top:-12px;font-size:11px;font-weight:700;color:#8b8f98;transform:translateX(-50%);white-space:nowrap}
 .band-name.on{color:var(--space)}
-.dot{position:absolute;top:10px;width:10px;height:10px;margin-left:-5px;border-radius:50%;border:1.5px solid #fff;background:#8e8e93;padding:0}
+.dot{position:absolute;z-index:3;top:10px;width:10px;height:10px;margin-left:-5px;border-radius:50%;border:1.5px solid #fff;background:#8e8e93;padding:0;cursor:pointer}
 .dot.story{background:var(--story)}
 .dot.now{top:7px;width:16px;height:16px;margin-left:-8px;background:var(--story);border:3px solid #fff;box-shadow:0 0 0 2px var(--story)}
 .dot:hover{box-shadow:0 0 0 3px rgba(0,122,255,.3)}
@@ -323,10 +362,13 @@ body{overflow:hidden}
   .app-brand span,.account span{display:none}
   .map-heading{left:12px;padding:10px 14px;border-radius:24px}
   .map-heading h1{font-size:22px}
-  .legend{display:none}
-  .timebar{padding:10px 14px 0}
-  /* Up to nine labels do not fit a phone: keep every other one */
-  .years span:nth-child(even){display:none}
+  .timebar-wrap{bottom:14px}
+  .timebar{height:80px;padding:0 6px}
+  .timebar-head span{font-size:10px}
+  .band-name{display:none}
+  .years span:not(:first-child):not(:last-child){display:none}
+  .years span:first-child{transform:translateX(0)}
+  .years span:last-child{transform:translateX(-100%)}
 }
 
 /* 整理重复照片: similar photos stacked as a pile, then spread out to choose */
@@ -364,7 +406,7 @@ body{overflow:hidden}
 
 /* ---- Liquid Glass (.claude/skills/liquid-glass) ------------------------------------------------
    Navigation and controls float above the map as glass; the map, its labels and photos are content. */
-.app-bar,.map-heading,.timebar,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
+.app-bar,.map-heading,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
 .import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{
   background:var(--glass-sheen),var(--glass-fill);
   backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
@@ -376,13 +418,20 @@ body{overflow:hidden}
 /* The top bar: a full-width glass strip with one bright lower edge */
 .app-bar{border-width:0 0 1px;border-radius:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.7),inset 0 -1px 0 rgba(255,255,255,.35),0 1px 0 rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.08)}
 /* Specular rim drawn as a 1 px gradient ring (masked), so the glass reads as a slab with thickness */
-.timebar,.auth-card,.import-modal,.privacy-modal,.cull-sheet{position:relative}
-.map-heading::before,.timebar::before,.butler::before,.tray::before,.map-empty::before,.auth-card::before,.map-photo-menu::before,
+.auth-card,.import-modal,.privacy-modal,.cull-sheet{position:relative}
+.map-heading::before,.butler::before,.tray::before,.map-empty::before,.auth-card::before,.map-photo-menu::before,
 .import-modal::before,.privacy-modal::before,.cull-sheet::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:var(--glass-specular);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
 /* Refracting surfaces (src/lib/liquidGlass.ts, Chromium) bend the map at their rim and need less blur */
 .refracts{--glass-refract-blur:5px;background:var(--glass-sheen),rgba(255,255,255,.34)}
 /* Panels with text need a denser slab to stay legible over a busy map */
-.map-heading.refracts,.timebar.refracts,.map-empty.refracts{--glass-refract-blur:9px;background:var(--glass-sheen),rgba(255,255,255,.58)}
+.map-heading.refracts,.map-empty.refracts{--glass-refract-blur:9px;background:var(--glass-sheen),rgba(255,255,255,.58)}
+/* The timeline is one interactive line over the map, without a panel behind it. */
+.timebar,.timebar.refracts{background:none;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}
+.timebar .timebar-head b,.timebar .timebar-head span,.timebar .band-name,.timebar .years{color:#17303d;text-shadow:0 1px 1px #fff,0 0 6px #fff}
+.timebar .band-name.on{color:#176446}
+.app-shell.globe-mode .timebar .timebar-head b,.app-shell.globe-mode .timebar .timebar-head span,.app-shell.globe-mode .timebar .band-name,.app-shell.globe-mode .timebar .years{color:#f6f9ff;text-shadow:0 1px 4px #071229,0 0 8px #071229}
+.app-shell.globe-mode .timebar-rail{background:rgba(232,243,255,.62);box-shadow:0 0 0 1px rgba(20,37,78,.6)}
+.app-shell.globe-mode .timebar .band-name.on{color:#c9f5dc}
 .auth-card.refracts{--glass-refract-blur:16px;background:var(--glass-sheen),var(--glass-fill-thick)}
 .modal-backdrop .memory-library,.film-backdrop .film-modal{background:var(--glass-sheen),var(--glass-fill-thick);color:var(--label)}
 .detail-panel{border-width:0 0 0 1px;border-radius:30px 0 0 30px}
@@ -411,13 +460,14 @@ body{overflow:hidden}
 
 /* Accessibility: reduce transparency → nearly opaque; increase contrast → visible edges */
 @media (prefers-reduced-transparency: reduce){
-  .app-bar,.map-heading,.timebar,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
+  .app-bar,.map-heading,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
   .import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{background:#f5f5f7;backdrop-filter:none;-webkit-backdrop-filter:none}
   .toast{background:#1c1c1e;backdrop-filter:none;-webkit-backdrop-filter:none}
   .lightbox-toolbar button{background:#3a3a3c;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .timebar .timebar-head b,.timebar .timebar-head span,.timebar .band-name,.timebar .years{text-shadow:0 1px 1px #fff}
 }
 @media (prefers-contrast: more){
-  .app-bar,.map-heading,.timebar,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
+  .app-bar,.map-heading,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
   .import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{border-color:rgba(0,0,0,.45)}
   .map-label,.map-photo{border-color:rgba(0,0,0,.5)}
 }

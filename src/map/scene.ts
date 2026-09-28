@@ -23,6 +23,10 @@ export interface LifeMapCallbacks {
   onSelectCity: (city: string | null) => void
   onOpenEvent: (id: string) => void
   onOpenPhoto?: (id: string) => void
+  onFocusPhoto?: (photo: MapPhoto) => void
+  // Continuous zoom between the globe and the street map (LifeMapView hands the view over)
+  onZoomIntoMap?: (view: { lng: number; lat: number; altitude: number }) => void // globe, WGS-84, altitude in globe units
+  onZoomOutToGlobe?: (view: { gcj: [number, number]; zoom: number }) => void // street map, GCJ-02
 }
 
 // A photo shown on the map as a thumbnail (the real-map view clusters them like a phone album)
