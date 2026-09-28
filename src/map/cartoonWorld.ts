@@ -393,6 +393,45 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
   const cap = new THREE.ConeGeometry(0.36, 0.36, 7).rotateX(Math.PI / 2).translate(0, 0, 0.82)
   const skirt = new THREE.ConeGeometry(1, 1, 9).rotateX(Math.PI / 2).translate(0, 0, 0.5)
 
+  // Tile buildings are rebuilt without the footprints a styled street scene (styledDistrict.ts)
+  // draws itself: they are the same OSM buildings, and the cartoon houses' gable roofs would
+  // otherwise poke out between the styled ones as coloured shards.
+  type TileBuildings = { list: NonNullable<CartoonTile['buildings']>; metresPerUnit: number; across: number; tileMetres: number; solid: THREE.Group; z: number; x: number; y: number; filterKey?: string }
+  let hiddenBounds: { west: number; south: number; east: number; north: number } | null = null
+  function addBuildingMeshes(group: THREE.Group, list: NonNullable<CartoonTile['buildings']>) {
+    const info = group.userData.buildings as TileBuildings
+    const { walls, roofs } = buildingsGeometry(list, info.metresPerUnit, info.across, info.tileMetres)
+    for (const [geometry, material] of [[walls, m.building], [roofs, m.roof]] as const) {
+      if (!geometry) continue
+      // footprints are in tile space: scale them back up inside the undo-scale group
+      const item = new THREE.Mesh(geometry, material)
+      item.scale.set(group.scale.x, group.scale.y, 1)
+      item.frustumCulled = false
+      item.userData.building = true
+      info.solid.add(item)
+    }
+  }
+  function applyBuildingFilter(tile: { group: THREE.Group }) {
+    const info = tile.group.userData.buildings as TileBuildings | undefined
+    if (!info) return false
+    const b = hiddenBounds
+    const west = tileLng(info.x, info.z), east = tileLng(info.x + 1, info.z), north = tileLat(info.y, info.z), south = tileLat(info.y + 1, info.z)
+    const touches = Boolean(b && west < b.east && east > b.west && south < b.north && north > b.south)
+    const key = touches && b ? `${b.west},${b.south},${b.east},${b.north}` : ''
+    if (key === (info.filterKey ?? '')) return false
+    info.filterKey = key
+    for (const item of [...info.solid.children]) if (item.userData.building) { (item as THREE.Mesh).geometry.dispose(); info.solid.remove(item) }
+    // A building is left out when its centre lies inside the styled scene (ring points run 0..GRID across the tile, north down)
+    const kept = touches && b ? info.list.filter(({ ring }) => {
+      let cx = 0, cy = 0, n = 0
+      for (let i = 0; i < ring.length; i += 2) { cx += ring[i] / GRID; cy += ring[i + 1] / GRID; n++ }
+      const lng = tileLng(info.x + cx / n, info.z), lat = tileLat(info.y + cy / n, info.z)
+      return !(lng > b.west && lng < b.east && lat > b.south && lat < b.north)
+    }) : info.list
+    if (kept.length) addBuildingMeshes(tile.group, kept)
+    return true
+  }
+
   function place(group: THREE.Group, z: number, x: number, y: number) {
     const nw = options.toScene(tileLat(y, z), tileLng(x, z))
     const se = options.toScene(tileLat(y + 1, z), tileLng(x + 1, z))
@@ -469,15 +508,8 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
       solid.scale.set(1 / group.scale.x, 1 / group.scale.y, 1)
       const metre = 1 / metresPerUnit // scene units per metre
       if (data.buildings?.length && z >= 14) {
-        const { walls, roofs } = buildingsGeometry(data.buildings, metresPerUnit, across, tileMetres)
-        for (const [geometry, material] of [[walls, m.building], [roofs, m.roof]] as const) {
-          if (!geometry) continue
-          // footprints are in tile space: scale them back up inside the undo-scale group
-          const item = new THREE.Mesh(geometry, material)
-          item.scale.set(group.scale.x, group.scale.y, 1)
-          item.frustumCulled = false
-          solid.add(item)
-        }
+        group.userData.buildings = { list: data.buildings, metresPerUnit, across, tileMetres, solid, z, x, y } satisfies TileBuildings
+        addBuildingMeshes(group, data.buildings)
       }
       // Trees: mostly pines in woods, round leafy trees in parks and a few on open grass
       const size = (z >= 14 ? 10 : 28) * metre
@@ -566,7 +598,9 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
       if (disposed) return
       const group = build(z, x, y, data, detail)
       root.add(group)
-      tiles.set(key, { group, used: serial, ready: true })
+      const tile = { group, used: serial, ready: true }
+      tiles.set(key, tile)
+      applyBuildingFilter(tile)
       showWanted()
       options.redraw()
     })().catch(() => { retrySoon() }).finally(() => loading.delete(key))
@@ -659,6 +693,15 @@ export function createCartoonWorld(parent: THREE.Object3D, options: CartoonWorld
       return { tiles: shown.length, zoom: shown.length ? Math.max(...shown.map(([key]) => Number(key.split('/')[0]))) : 0, buildings, trees, crossings }
     },
     setVisible(visible: boolean) { root.visible = visible },
+    // Leave out tile buildings inside this WGS-84 box (a styled street scene draws them); null shows all again
+    hideBuildingsIn(bounds: { west: number; south: number; east: number; north: number } | null) {
+      const same = bounds === hiddenBounds || (bounds && hiddenBounds && bounds.west === hiddenBounds.west && bounds.south === hiddenBounds.south && bounds.east === hiddenBounds.east && bounds.north === hiddenBounds.north)
+      if (same) return
+      hiddenBounds = bounds
+      let changed = false
+      for (const tile of tiles.values()) if (applyBuildingFilter(tile)) changed = true
+      if (changed) options.redraw()
+    },
     dispose() {
       disposed = true
       window.clearTimeout(retryTimer)

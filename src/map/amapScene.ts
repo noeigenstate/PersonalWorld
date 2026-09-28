@@ -137,6 +137,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let appliedBuildingStyle = '[]'
   let disposed = false
   let hasStyledDistrict = false
+  // The styled scene's WGS-84 box; the cartoon world leaves its own tile buildings out of it
+  let districtBounds: { west: number; south: number; east: number; north: number } | null = null
+  let hideTileBuildings: (bounds: typeof districtBounds) => void = () => {}
   let sceneGeneration = 0
   let shadowSceneWasVisible = false
   type BuildingArea = { visible?: boolean; color1?: string; color2?: string; path: [number, number][] }
@@ -415,6 +418,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     const sceneryShown = memoryWorld.visible && hasStyledDistrict
     setSceneCredit(sceneryShown)
     atmosphere.hidden = !sceneryShown
+    hideTileBuildings(sceneryShown ? districtBounds : null)
     for (const { object } of scaled) object.scale.setScalar(unit)
     for (const material of lines) material.resolution.set(size.w, size.h)
     const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit + ground(groundOf.get(anchor)))
@@ -630,6 +634,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     activeVenue = undefined
     requestedSceneKey = ''
     hasStyledDistrict = false
+    districtBounds = null
+    hideTileBuildings(null)
     sceneAreas = []
     sceneCaption.hidden = true
     setSceneCredit(false)
@@ -779,6 +785,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       activeSceneKey = photo ? sceneKey(photo) : key
       requestedSceneKey = activeSceneKey
       hasStyledDistrict = true
+      districtBounds = { west: data.bbox[0], south: data.bbox[1], east: data.bbox[2], north: data.bbox[3] }
+      hideTileBuildings(memoryWorld.visible ? districtBounds : null)
       const count = resolved?.photoIds.length || region?.photoIds.length || 0
       title.textContent = pearl ? '东方明珠 · 风格化地标' : `${activeVenue?.name || `照片地点 · 风格化${district.kind}`}${count > 1 ? ` · ${count} 张照片` : ''}`
       const coverage = sceneCoverage(data)
@@ -1048,6 +1056,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     redraw: () => draw(),
   })
   cartoonStats = cartoon.stats
+  hideTileBuildings = cartoon.hideBuildingsIn
   map.on('moveend', () => { if (!disposed) cartoon.refresh() })
   map.on('zoomend', () => { if (!disposed) cartoon.refresh() })
   map.on('moveend', () => { if (!disposed) scheduleGroundSync() })

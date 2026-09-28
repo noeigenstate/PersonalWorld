@@ -76,7 +76,9 @@ try {
   const amap = page.locator('.life-map.life-map-layer')
   await page.waitForTimeout(800)
   const handZoom = Number(await amap.getAttribute('data-zoom'))
-  assert.ok(handZoom > 4.2 && handZoom < 6.5, `街区地图从全国尺度接手（${handZoom} 级）`)
+  // The hand-over is close (HANDOFF_ALTITUDE ≈ 500 km of view): the street map starts at city scale
+  assert.ok(handZoom > 7.2 && handZoom < 8.8, `街区地图从城市尺度接手（${handZoom} 级）`)
+  assert.equal(await globe.getAttribute('data-detail'), 'on', '交接前地球已经换上局部高清贴图')
   const [mlng, mlat] = await center(amap)
   assert.ok(Math.abs(mlng - before[0]) < 3 && Math.abs(mlat - before[1]) < 3, `接手时仍对着同一处（地球 ${before}，地图 ${mlng},${mlat}）`)
   assert.equal(await page.locator('.app-shell.globe-mode').count(), 0)
@@ -92,7 +94,7 @@ try {
   const [glng, glat] = await center(globe)
   const [alng, alat] = await center(amap)
   assert.ok(Math.abs(glng - alng) < 3 && Math.abs(glat - alat) < 3, `地球回到地图所在处（地图 ${alng},${alat}，地球 ${glng},${glat}）`)
-  assert.ok(Number(await globe.getAttribute('data-altitude')) > 0.5, '回到地球时高度高于交接点（HANDOFF_ALTITUDE），不会立刻又切走')
+  assert.ok(Number(await globe.getAttribute('data-altitude')) > 0.16, '回到地球时高度高于交接点（HANDOFF_ALTITUDE），不会立刻又切走')
   await page.locator('.app-shell.globe-mode').waitFor()
 
   // Time bar: scrubbing back hides photos taken later

@@ -265,7 +265,7 @@ try {
   await page.getByRole('button', { name: '返回地球' }).click()
   await page.locator('.life-globe').waitFor()
   // Zoom in until the street map takes over (the hand-over altitude is the globe's business)
-  for (let i = 0; i < 14 && !(await page.locator('.life-map-globe.away').count()); i++) { await page.getByRole('button', { name: '放大地球' }).click(); await page.waitForTimeout(250) }
+  for (let i = 0; i < 30 && !(await page.locator('.life-map-globe.away').count()); i++) { await page.getByRole('button', { name: '放大地球' }).click(); await page.waitForTimeout(250) }
   await page.locator('.life-map-globe.away').waitFor({ state: 'attached', timeout: 10000 })
   await page.locator('.life-map[data-scene-state="ready"]').waitFor({ timeout: 30000 })
   assert.equal(errors.length, 0, `浏览器运行时不应报错：${errors.join('; ')}`)

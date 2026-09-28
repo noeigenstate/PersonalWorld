@@ -51,7 +51,7 @@ try {
   await page.getByRole('button', { name: '导入第一批影像' }).click()
   await page.locator('input[type="file"]').setInputFiles(files)
   await page.locator('.life-globe[data-place-count="4"]').waitFor({ timeout: 45000 })
-  assert.equal(await page.locator('.life-map-amap').evaluate((el) => getComputedStyle(el).opacity), '0', '高德底图不显示，只用它的相机')
+  assert.equal(await page.locator('.life-map.life-map-layer .life-map-amap').first().evaluate((el) => getComputedStyle(el).opacity), '0', '高德底图不显示，只用它的相机')
 
   // Globe → country scale
   const box = await page.locator('.life-globe-canvas').boundingBox()

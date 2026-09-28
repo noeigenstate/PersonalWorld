@@ -9,14 +9,17 @@ const RADIUS = 1.6
 // Globe units: RADIUS is the Earth's 6371 km. Below this camera altitude the street map takes over.
 export const GLOBE_KM_PER_UNIT = 6371 / RADIUS
 // The globe stays a sphere all the way in (it used to unroll into the flat map, which read as a
-// deformed Earth). The street map takes over this close, where the patch on screen is about
-// 1500 km high and the two can cross-fade without the curve showing.
-export const HANDOFF_ALTITUDE = 0.5
-const CLOSEST_ALTITUDE = 0.46
+// deformed Earth). The street map takes over only this close — the view is then about 500 km
+// high, where the curve is imperceptible — and a detail patch (below) keeps the globe crisp
+// down to there.
+export const HANDOFF_ALTITUDE = 0.16
+const CLOSEST_ALTITUDE = 0.15
 const DEG = Math.PI / 180
 // From this altitude down, the street map is kept on the same view underneath and fades in over
 // the last part of the approach: at the hand-over there is nothing left to change.
-const APPROACH_FROM = 1.4
+const APPROACH_FROM = 0.5
+// Below this altitude the globe is drawn again, larger, around the view (Natural Earth 50 m)
+const DETAIL_FROM = 0.7
 const smooth = (x: number) => { const t = THREE.MathUtils.clamp(x, 0, 1); return t * t * (3 - 2 * t) }
 export const approachAt = (altitude: number) => smooth(Math.log(APPROACH_FROM / altitude) / Math.log(APPROACH_FROM / HANDOFF_ALTITUDE))
 export const fadeAt = (altitude: number) => smooth((approachAt(altitude) - 0.5) / 0.45)
@@ -314,6 +317,140 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
   }
   if (!reduceMotion) skyFrame = requestAnimationFrame(animateSky)
 
+  // ---- Detail patch: the same drawing as the texture, made again around the view when close ----
+  // The whole-Earth texture is 8192 px for 40,000 km; zoomed in to a few hundred kilometres it blurs.
+  // Below DETAIL_FROM a canvas of the region (Natural Earth 50 m: land, ice, lakes, rivers, borders)
+  // is drawn on a slightly raised piece of sphere, fading out at its edges into the base texture.
+  type Ring = [number, number][]
+  type Bounded<T> = T & { bbox: [number, number, number, number] }
+  interface EarthData { land: Bounded<{ rings: Ring[] }>[]; ice: Bounded<{ rings: Ring[] }>[]; lakes: Bounded<{ rings: Ring[] }>[]; rivers: Bounded<{ line: Ring; rank: number }>[]; borders: Bounded<{ line: Ring }>[] }
+  let earthData: Promise<EarthData | null> | null = null
+  let detail: { mesh: THREE.Mesh; texture: THREE.CanvasTexture; lng: number; lat: number; span: number } | null = null
+  const boundsOf = (points: Ring): [number, number, number, number] => points.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)], [Infinity, Infinity, -Infinity, -Infinity] as [number, number, number, number])
+  function loadEarthData() {
+    earthData ??= (async () => {
+      try {
+        const [land, ice, lakes, rivers, borders] = await Promise.all(['ne_50m_land', 'ne_50m_glaciated_areas', 'ne_50m_lakes', 'ne_50m_rivers_lake_centerlines', 'ne_50m_admin_0_boundary_lines_land'].map(async (name) => (await fetch(`/earth-data/${name}.geojson`)).json()))
+        const polygons = (collection: { features: { geometry: { type: string; coordinates: unknown } }[] }) => collection.features.flatMap((f) => {
+          const list = f.geometry.type === 'Polygon' ? [f.geometry.coordinates as Ring[]] : f.geometry.type === 'MultiPolygon' ? (f.geometry.coordinates as Ring[][]) : []
+          return list.map((rings) => ({ rings, bbox: boundsOf(rings[0]) }))
+        })
+        const lines = (collection: { features: { properties?: { scalerank?: number }; geometry: { type: string; coordinates: unknown } }[] }) => collection.features.flatMap((f) => {
+          const list = f.geometry.type === 'LineString' ? [f.geometry.coordinates as Ring] : f.geometry.type === 'MultiLineString' ? (f.geometry.coordinates as Ring[]) : []
+          return list.map((line) => ({ line, rank: f.properties?.scalerank ?? 9, bbox: boundsOf(line) }))
+        })
+        return { land: polygons(land), ice: polygons(ice), lakes: polygons(lakes), rivers: lines(rivers), borders: lines(borders) }
+      } catch { return null }
+    })()
+    return earthData
+  }
+  function drawDetail(data: EarthData, lng0: number, lat0: number, lngSpan: number, latSpan: number) {
+    const W = 4096, H = 2048
+    const board = document.createElement('canvas')
+    board.width = W
+    board.height = H
+    const g = board.getContext('2d')!
+    const lngMin = lng0 - lngSpan / 2, latMax = lat0 + latSpan / 2, latMin = lat0 - latSpan / 2
+    const inView = (bbox: [number, number, number, number]) => bbox[2] >= lngMin && bbox[0] <= lngMin + lngSpan && bbox[3] >= latMin && bbox[1] <= latMax
+    const px = (lng: number) => (lng - lngMin) / lngSpan * W
+    const py = (lat: number) => (latMax - lat) / latSpan * H
+    const trace = (points: Ring, close: boolean) => {
+      points.forEach(([lng, lat], i) => (i ? g.lineTo(px(lng), py(lat)) : g.moveTo(px(lng), py(lat))))
+      if (close) g.closePath()
+    }
+    const fillPolygons = (items: Bounded<{ rings: Ring[] }>[], style: string | CanvasGradient, dy = 0) => {
+      g.save(); g.translate(0, dy); g.fillStyle = style; g.beginPath()
+      for (const item of items) if (inView(item.bbox)) item.rings.forEach((ring) => trace(ring, true))
+      g.fill('evenodd'); g.restore()
+    }
+    const strokePolygons = (items: Bounded<{ rings: Ring[] }>[]) => { g.beginPath(); for (const item of items) if (inView(item.bbox)) item.rings.forEach((ring) => trace(ring, true)); g.stroke() }
+    const strokeLines = (items: Bounded<{ line: Ring }>[]) => { g.beginPath(); for (const item of items) if (inView(item.bbox)) trace(item.line, false); g.stroke() }
+    const sea = g.createLinearGradient(0, 0, 0, H); sea.addColorStop(0, '#3dbdee'); sea.addColorStop(.52, '#33b6ea'); sea.addColorStop(1, '#3dbdee')
+    const land = g.createLinearGradient(0, 0, 0, H); land.addColorStop(0, '#97d862'); land.addColorStop(.42, '#8fd35a'); land.addColorStop(.72, '#8ad056'); land.addColorStop(1, '#97d862')
+    g.fillStyle = sea; g.fillRect(0, 0, W, H)
+    // graticule every degree, faint
+    g.strokeStyle = 'rgba(213,247,237,.12)'; g.lineWidth = 1; g.beginPath()
+    for (let lng = Math.ceil(lngMin); lng <= lngMin + lngSpan; lng++) { g.moveTo(px(lng), 0); g.lineTo(px(lng), H) }
+    for (let lat = Math.ceil(latMin); lat <= latMax; lat++) { g.moveTo(0, py(lat)); g.lineTo(W, py(lat)) }
+    g.stroke()
+    fillPolygons(data.land, 'rgba(31,149,216,.35)', 5)
+    fillPolygons(data.land, land)
+    fillPolygons(data.ice, 'rgba(244,248,255,.95)')
+    fillPolygons(data.lakes, '#3dbdee')
+    g.strokeStyle = 'rgba(95,208,242,.85)'; g.lineCap = 'round'; g.lineJoin = 'round'
+    for (const [maxRank, width] of [[3, 3], [5, 2.2], [7, 1.5], [9, 1]] as const) { g.lineWidth = width; strokeLines(data.rivers.filter((r) => r.rank <= maxRank && r.rank > maxRank - 2)) }
+    g.strokeStyle = 'rgba(255,255,255,.42)'; g.lineWidth = 1.4; g.setLineDash([8, 5]); strokeLines(data.borders); g.setLineDash([])
+    g.strokeStyle = 'rgba(255,255,255,.6)'; g.lineWidth = 2; strokePolygons(data.land)
+    // Fade to nothing towards the edges, so the patch melts into the base texture
+    g.globalCompositeOperation = 'destination-in'
+    g.save(); g.translate(W / 2, H / 2); g.scale(1, H / W)
+    const fade = g.createRadialGradient(0, 0, 0, 0, 0, W / 2)
+    fade.addColorStop(0, 'rgba(0,0,0,1)'); fade.addColorStop(.72, 'rgba(0,0,0,1)'); fade.addColorStop(1, 'rgba(0,0,0,0)')
+    g.fillStyle = fade; g.fillRect(-W / 2, -W / 2, W, W)
+    g.restore()
+    g.globalCompositeOperation = 'source-over'
+    return board
+  }
+  // A piece of sphere over the region, its uv running with the canvas above
+  function patchGeometry(lng0: number, lat0: number, lngSpan: number, latSpan: number) {
+    const cols = 64, rows = 32
+    const positions: number[] = [], uvs: number[] = [], normals: number[] = [], indices: number[] = []
+    for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
+      const lng = lng0 - lngSpan / 2 + lngSpan * c / cols
+      const lat = lat0 - latSpan / 2 + latSpan * r / rows
+      const at = onGlobe(lng, lat, RADIUS * 1.0015)
+      positions.push(at.x, at.y, at.z)
+      const n = at.clone().normalize(); normals.push(n.x, n.y, n.z)
+      uvs.push(c / cols, r / rows)
+    }
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const a = r * (cols + 1) + c, b = a + 1, d = a + cols + 1, e = d + 1
+      indices.push(a, b, e, a, e, d)
+    }
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+    geometry.setIndex(indices)
+    return geometry
+  }
+  function disposeDetail() {
+    if (!detail) return
+    globe.remove(detail.mesh)
+    detail.mesh.geometry.dispose()
+    ;(detail.mesh.material as THREE.Material).dispose()
+    detail.texture.dispose()
+    detail = null
+  }
+  let detailBuilding = false
+  function updateDetail() {
+    const alt = altitude()
+    if (alt >= DETAIL_FROM || !texture) { if (detail) detail.mesh.visible = false; return }
+    const center = centerLngLat()
+    // Wide enough to fill the screen at this height; never so wide that 4096 px gets coarse
+    const lngSpan = THREE.MathUtils.clamp(alt * 60, 20, 42)
+    const latSpan = lngSpan / 2
+    if (detail && Math.abs(center.lng - detail.lng) < lngSpan * 0.12 && Math.abs(center.lat - detail.lat) < latSpan * 0.12 && Math.abs(lngSpan - detail.span) / detail.span < 0.2) { detail.mesh.visible = true; return }
+    if (detailBuilding) return
+    detailBuilding = true
+    void loadEarthData().then((data) => {
+      detailBuilding = false
+      if (disposed || !data || altitude() >= DETAIL_FROM) return
+      const now = centerLngLat()
+      const lat0 = THREE.MathUtils.clamp(now.lat, -84 + latSpan / 2, 84 - latSpan / 2)
+      const board = drawDetail(data, now.lng, lat0, lngSpan, latSpan)
+      const loaded = new THREE.CanvasTexture(board)
+      loaded.colorSpace = THREE.SRGBColorSpace
+      loaded.anisotropy = renderer.capabilities.getMaxAnisotropy()
+      const mesh = new THREE.Mesh(patchGeometry(now.lng, lat0, lngSpan, latSpan), new THREE.MeshStandardMaterial({ map: loaded, roughness: 1, transparent: true, depthWrite: false }))
+      mesh.renderOrder = 1
+      disposeDetail()
+      globe.add(mesh)
+      detail = { mesh, texture: loaded, lng: now.lng, lat: lat0, span: lngSpan }
+      draw()
+    })
+  }
+
   function fitDistance() {
     const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
     const usable = Math.max(0.45, (height - insets.top - insets.bottom) / height)
@@ -610,6 +747,8 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
     host.dataset.approach = approach.toFixed(3)
     // The globe's own controls go as the street map comes through
     controls.style.opacity = credit.style.opacity = approach > 0 ? String(1 - approach) : ''
+    updateDetail()
+    host.dataset.detail = detail?.mesh.visible ? 'on' : 'off'
     renderer.render(scene, camera)
     if (!enteringScene) callbacks.onApproachMap?.({ ...center, altitude: altitude(), fade: fadeAt(altitude()) })
     const taken = placePhotos()
@@ -713,6 +852,8 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
         dots.add(dot)
       }
       photos = data.photos || []
+      // The close-up data (~4.5 MB) is wanted the moment someone zooms in: start it now, quietly
+      if (places.length && !earthData) window.setTimeout(() => { if (!disposed) void loadEarthData() }, 4000)
       draw()
     },
     setInsets(next: typeof insets) { insets = next; draw() },
@@ -740,6 +881,7 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
       shown.clear()
       placeButtons.clear()
       cancelAnimationFrame(skyFrame)
+      disposeDetail()
       texture?.dispose()
       sphereGeometry.dispose()
       sphereMaterial.dispose()

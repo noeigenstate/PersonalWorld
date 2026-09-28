@@ -1,13 +1,14 @@
 // Colours follow src/map/cartoonPalette.ts (land, water) so the globe hands over to the cartoon ground seamlessly.
 // Regenerate the code-native cartoon globe texture from public-domain Natural Earth data (50 m):
-// land, glaciers, lakes, rivers and country borders. Sources (src/map/data/ne50m/):
+// land, glaciers, lakes, rivers and country borders. Sources (public/earth-data/, also fetched by the
+// browser for the close-up detail patch in src/map/globeScene.ts):
 // https://github.com/nvkelso/natural-earth-vector/tree/master/geojson — ne_50m_land, ne_50m_glaciated_areas,
 // ne_50m_lakes, ne_50m_rivers_lake_centerlines, ne_50m_admin_0_boundary_lines_land
 import { readFile, writeFile } from 'node:fs/promises'
 
 const WIDTH = 4096
 const HEIGHT = 2048
-const dataDir = new URL('../src/map/data/ne50m/', import.meta.url)
+const dataDir = new URL('../public/earth-data/', import.meta.url)
 const output = new URL('../public/earth-cartoon.svg', import.meta.url)
 const load = async (name) => JSON.parse(await readFile(new URL(`${name}.geojson`, dataDir), 'utf8'))
 const [land, glaciers, lakes, rivers, borders] = await Promise.all(['ne_50m_land', 'ne_50m_glaciated_areas', 'ne_50m_lakes', 'ne_50m_rivers_lake_centerlines', 'ne_50m_admin_0_boundary_lines_land'].map(load))
