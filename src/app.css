@@ -9,12 +9,8 @@ html,body,#root{height:100%}
 body{overflow:hidden}
 .app-shell{height:100%;min-height:0;display:flex;flex-direction:column}
 
-.app-bar{flex:none;height:var(--bar);display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;padding:0 24px;background:#fffaf3f2;border-bottom:1px solid #e6d9cc;backdrop-filter:saturate(180%) blur(16px);-webkit-backdrop-filter:saturate(180%) blur(16px);position:relative;z-index:20}
+.app-bar{flex:none;height:var(--bar);display:grid;grid-template-columns:auto 1fr;align-items:center;gap:16px;padding:0 24px;background:#fffaf3f2;border-bottom:1px solid #e6d9cc;backdrop-filter:saturate(180%) blur(16px);-webkit-backdrop-filter:saturate(180%) blur(16px);position:relative;z-index:20}
 .app-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;letter-spacing:-.02em;white-space:nowrap}
-.app-tabs{display:flex;gap:28px;height:100%}
-.app-tabs button{border:0;background:none;padding:2px 2px 0;font-size:14px;color:#606066;border-bottom:2px solid transparent}
-.app-tabs button:hover{color:var(--ink)}
-.app-tabs button.on{color:var(--ink);font-weight:700;border-bottom-color:var(--story)}
 .app-actions{display:flex;align-items:center;justify-content:flex-end;gap:14px}
 .top-import.button-primary{background:#d87542;box-shadow:0 4px 12px #b7643b35}
 .top-import.button-primary:hover:not(:disabled){background:#c36738;box-shadow:0 6px 16px #b7643b45}
@@ -299,10 +295,9 @@ body{overflow:hidden}
   .tray{left:20px;top:auto;bottom:140px;width:calc(100% - 40px);max-height:50%}
 }
 @media(max-width:640px){
-  .app-bar{grid-template-columns:auto 1fr auto;padding:0 14px;gap:10px}
+  .app-bar{grid-template-columns:auto 1fr;padding:0 14px;gap:10px}
   .app-brand span,.account span{display:none}
-  .app-tabs{gap:18px;justify-content:center}
-  .map-heading{top:12px;left:12px;padding:10px 12px}
+    .map-heading{top:12px;left:12px;padding:10px 12px}
   .map-heading h1{font-size:22px}
   .legend{display:none}
   .timebar{padding:10px 14px 0}

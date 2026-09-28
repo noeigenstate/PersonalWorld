@@ -27,7 +27,6 @@ import { MemoryLibrary } from './components/MemoryLibrary'
 import { SceneCoverage } from './components/SceneCoverage'
 import type { StoryChapter } from './lib/memoryGraph'
 
-type Tab = 'map' | 'butler'
 const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
 const BUTLER_WIDTH = 432
 const TIMEBAR_HEIGHT = 128
@@ -40,7 +39,6 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [filmChapter, setFilmChapter] = useState<{chapter:StoryChapter;at:number}|null>(null)
   const [aiConfig, setAiConfig] = useState<AiConfig>({ available: false, mode: 'unconfigured', message: '正在检查 AI 连接…', geocode: false })
   const [configChecked, setConfigChecked] = useState(false)
-  const [tab, setTab] = useState<Tab>('map')
   const [selectedCity, setSelectedCity] = useState<string | null>(null)
   const [highlightedEventId, setHighlightedEventId] = useState<string | null>(null)
   const [activeEventId, setActiveEventId] = useState<string | null>(null)
@@ -232,7 +230,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     })
   }, [memory.assets, memory.events, memory.autoPhotoCards, ready, aiConfig.available, aiConfig.amapJsKey])
   const selectedPlace = places.find((p) => p.city === selectedCity)
-  const panelOpen = tab === 'butler' || Boolean(selectedCity)
+  // The life butler opens by itself when a place is chosen on the map; there is no separate entry
+  const panelOpen = Boolean(selectedCity)
 
   const updateEvent = useCallback((next: MemoryEvent) => {
     setMemory((current) => ({ ...current, events: current.events.map((e) => (e.id === next.id ? next : e)) }))
@@ -486,7 +485,6 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   }
 
   function closeButler() {
-    setTab('map')
     selectCity(null)
   }
 
@@ -498,10 +496,6 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     <div className="app-shell">
       <header className="app-bar">
         <span className="app-brand"><Aperture size={22} strokeWidth={2} /><span>Personal World</span></span>
-        <nav className="app-tabs" aria-label="主导航">
-          <button className={tab === 'map' ? 'on' : ''} onClick={() => setTab('map')} aria-current={tab === 'map' ? 'page' : undefined}>人生地图</button>
-          <button className={tab === 'butler' ? 'on' : ''} onClick={() => setTab('butler')} aria-current={tab === 'butler' ? 'page' : undefined}>人生管家</button>
-        </nav>
         <div className="app-actions">
           <MemoryLibrary library={library} assets={memory.assets} onPhoto={openPhoto} onFilm={chapter=>setFilmChapter({chapter,at:Date.now()})} />
           <MemoryFilms assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId) || library.busy} graph={library.state} requestedChapter={filmChapter} />
@@ -571,8 +565,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                 3D 记忆场景 {sceneEnabled ? '开' : '关'}
                 <small>{sceneCoverage.total ? sceneCoverage.done < sceneCoverage.total ? `检查街区 ${sceneCoverage.done}/${sceneCoverage.total}` : `${sceneCoverage.total} 处街区资料${sceneCoverage.partial + sceneCoverage.failed ? ` · ${sceneCoverage.partial + sceneCoverage.failed} 处待补` : ''}` : '真实照片地点'}</small>
               </button>
-              {mapPhotos.length>0&&<SceneCoverage coverage={sceneCoverage} onFocus={id=>{const photo=mapPhotos.find(p=>p.id===id);if(photo){setTab('map');setMapFocus({photo,at:Date.now()})}}}/>}
-              {!mapPhotos.length && <button className="scene-preview" type="button" onClick={() => { setTab('map'); selectCity(null, false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>}
+              {mapPhotos.length>0&&<SceneCoverage coverage={sceneCoverage} onFocus={id=>{const photo=mapPhotos.find(p=>p.id===id);if(photo){setMapFocus({photo,at:Date.now()})}}}/>}
+              {!mapPhotos.length && <button className="scene-preview" type="button" onClick={() => { selectCity(null, false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>}
             </>)}
             {aiConfig.available && analyzablePhotos.length > 0 && (
               <div className="locating-chip" role="status" aria-label="照片自动分析状态">

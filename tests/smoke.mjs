@@ -87,7 +87,7 @@ try {
   await register('小丁', 'secret12')
   await page.locator('.account').filter({ hasText: '小丁' }).waitFor()
   assert.equal(await page.getByRole('heading', { name: '从照片开始，画出你的人生地图' }).count(), 1)
-  assert.deepEqual(await page.locator('.app-tabs button').allInnerTexts(), ['人生地图', '人生管家'], '顶栏只有两项')
+  assert.equal(await page.locator('.app-bar nav').count(), 0, '顶栏不放导航：人生管家随地点自动弹出')
   const still = await page.screenshot()
   await page.waitForTimeout(900)
   assert.ok(still.equals(await page.screenshot()), '页面不应自行漂浮或抖动')
@@ -198,10 +198,10 @@ try {
   await page.locator('.map-label.place').nth(3).waitFor()
   assert.equal(await page.locator('.timebar .dot').count(), 16, '登录回来数据还在')
 
-  // Butler tab without a place
-  await page.getByRole('button', { name: '人生管家' }).click()
+  // Choosing a place opens the life butler by itself
+  assert.equal(await page.locator('.butler').count(), 0, '没选地点时不显示对话框')
+  await page.locator('.map-label.place').filter({ hasText: '上海' }).click()
   await page.locator('.butler').waitFor()
-  assert.match(await page.locator('.butler-head').innerText(), /可以问我人生中的任何一段/)
 
   for (const width of [320, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 844 })
