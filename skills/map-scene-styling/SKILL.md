@@ -5,17 +5,17 @@ description: 为 Personal World 的人生地图设计或实现统一的卡通地
 
 # 人生地图场景风格化
 
-目标是让用户从照片中的一件事进入可辨认、可解释的个人记忆场景。先读 [路线与技术边界](../../../docs/MAP_SCENE_STYLE_2026-09-25.md)及[竞品视觉规则](../../../docs/MAP_STYLE_REFERENCES_2026-09-25.md)，再检查当前 `src/map/amapScene.ts`、`src/map/objects.ts` 与界面色板；高德和 Three.js 的坐标／相机细节见 [amap-threejs](../amap-threejs/SKILL.md)。
+目标是让用户从照片中的一件事进入可辨认、可解释的个人记忆场景。先读 [路线与技术边界](../../docs/MAP_SCENE_STYLE_2026-09-25.md)及[竞品视觉规则](../../docs/MAP_STYLE_REFERENCES_2026-09-25.md)，再检查当前 `src/map/amapScene.ts`、`src/map/objects.ts` 与界面色板；高德和 Three.js 的坐标／相机细节见 [amap-threejs](../amap-threejs/SKILL.md)。
 
-当前基准是 `fe86d44` 的武汉、杭州区域截图，见 [2026-09-26 恢复记录](../../../docs/MAP_REGIONS_RECOVERY_2026-09-26.md)。`src/map/regionScene.ts` 将街道级或更精确的照片聚成约 450 米内的区域。`server/mapScene.mjs` 按区域坐标读取 OpenFreeMap 的 OpenStreetMap／OpenMapTiles 矢量瓦片，截取约 1.8 公里的建筑、道路、水面与绿地。所有区域统一调用 `src/map/styledDistrict.ts` 的完整渲染器：楼体窗格、檐口、屋顶、道路、树、草坪、水面反射及阴影使用同一套参数，不按城市特调、不以照片主题识别为前提。不要把普通区域重新降成几棵树或少量装饰楼。普通照片不挖圆形空地、不加通用圆盘。东方明珠在同一街区渲染器上增加已有塔模型及其地标快照。
+当前基准是 `fe86d44` 的武汉、杭州区域截图，见 [2026-09-26 恢复记录](../../docs/MAP_REGIONS_RECOVERY_2026-09-26.md)。`src/map/regionScene.ts` 将街道级或更精确的照片聚成约 450 米内的区域。`server/mapScene.mjs` 按区域坐标读取 OpenFreeMap 的 OpenStreetMap／OpenMapTiles 矢量瓦片，截取约 1.8 公里的建筑、道路、水面与绿地。所有区域统一调用 `src/map/styledDistrict.ts` 的完整渲染器：楼体窗格、檐口、屋顶、道路、树、草坪、水面反射及阴影使用同一套参数，不按城市特调、不以照片主题识别为前提。不要把普通区域重新降成几棵树或少量装饰楼。普通照片不挖圆形空地、不加通用圆盘。东方明珠在同一街区渲染器上增加已有塔模型及其地标快照。
 
 `src/map/amapScene.ts` 同步高德相机与 Three.js。只隐藏实际已生成卡通楼体的足迹；数据稀疏时不铺整块底板和用地面，以免盖住高德中仍需保留的楼。建筑少于 100 栋仍应生成同样的窗格材质；水面为空必须是正常输入。街区 key 只取区域位置，同组照片切换以及任意信息卡更新都不重建场景；异步加载完成后才替换原组，过期响应丢弃，失败显示重试入口。服务端只接收坐标；区域 JSON 缓存 7 天，并带版本文件名，改变派生规则时须更新缓存版本，避免旧默认楼高重新压扁楼群。动态场景保留 OSM／OpenMapTiles 署名。`npm run test:amap` 检查正常应用路径；`node tests/scene-regions.mjs` 用隔离账户和真实接口检查多个地区、同组切换、缩放恢复、开关、慢响应及失败重试。该文件是开发用 skill；`regionalMemory.ts`／`sceneRecipe.ts` 是上一轮保留的实验代码，当前基础地图不调用它们。照片主题装饰属于后续独立层，不可再次替换掉完整街区。
 
-上海快照还包含有类别的 OSM 用地面和标注树列。先用用地面区分街区铺地，按道路等级画路面、路缘和小径，再在原建筑足迹内按高度与占地选择低楼、中层、高楼或大占地楼的窗、檐口和屋顶。颜色、缺失楼高、贴图、额外树木和屋顶细节属于艺术推断；道路宽度也是表现参数。概念参照与当前真实截图见[还原进度](../../../docs/MAP_CONCEPT_FIDELITY_2026-09-25.md)。
+上海快照还包含有类别的 OSM 用地面和标注树列。先用用地面区分街区铺地，按道路等级画路面、路缘和小径，再在原建筑足迹内按高度与占地选择低楼、中层、高楼或大占地楼的窗、檐口和屋顶。颜色、缺失楼高、贴图、额外树木和屋顶细节属于艺术推断；道路宽度也是表现参数。概念参照与当前真实截图见[还原进度](../../docs/MAP_CONCEPT_FIDELITY_2026-09-25.md)。
 
 ## 决策顺序
 
-2026-09-26 后续：完整公园/商场优先用已验证的 OSM 地点边界共享场景，`server/mapSceneDetails.mjs` 仅为具名公共地点按需补充有上限的地理资料。AOI/POI 名只在浏览器辅助合并附近照片，不能连接异地同名商场。边界 ID 是场景 key；同地重访仍保留不同时间事件。见[地点场景调整](../../../docs/VENUE_SCENES_2026-09-26.md)。场馆按来源类别调用 `venueArchitecture.ts`，没有具体城市名称分支。水面必须高于公园草坪；同时处理 `water` 面和 `waterway` 线，保留孔洞、避免往运动场里种树。树木数量预算须覆盖整个园区。当前细节缓存为 `v3`。场馆屋盖细节是艺术表现，不可宣称精确复刻特殊地标。
+2026-09-26 后续：完整公园/商场优先用已验证的 OSM 地点边界共享场景，`server/mapSceneDetails.mjs` 仅为具名公共地点按需补充有上限的地理资料。AOI/POI 名只在浏览器辅助合并附近照片，不能连接异地同名商场。边界 ID 是场景 key；同地重访仍保留不同时间事件。见[地点场景调整](../../docs/VENUE_SCENES_2026-09-26.md)。场馆按来源类别调用 `venueArchitecture.ts`，没有具体城市名称分支。水面必须高于公园草坪；同时处理 `water` 面和 `waterway` 线，保留孔洞、避免往运动场里种树。树木数量预算须覆盖整个园区。当前细节缓存为 `v3`。场馆屋盖细节是艺术表现，不可宣称精确复刻特殊地标。
 
 地图默认不机械连接历史事件。短时段回忆由用户主动选择连线，概览隐藏橙线；长时间跨度的成长和重访关系应进入时间章节。新增验证：`node tests/scene-details.mjs`、`node tests/story-routes.mjs`；`node tests/scene-regions.mjs` 同时检查真实公园南北组共享、完整取景、窄屏、商场边界与异地分支。
 
@@ -29,7 +29,7 @@ description: 为 Personal World 的人生地图设计或实现统一的卡通地
 
 有明确身份的特殊建筑精修，执行 [landmark-refinement](../landmark-refinement/SKILL.md)：从真实足迹和公开多角度资料提取识别特征，依次完成轮廓、结构、立面、材质与真实地图验收。该 skill 固化了拱墅两馆已获认可的生成过程；生成的是可复用资产，仍须为每个新地标核实资料和制作模型。
 
-特殊场馆精修见[交付记录](../../../docs/LANDMARKS_AND_MEMORY_FILM_2026-09-26.md)。`src/map/landmarkVenues.ts` 按确认的 OSM 建筑 ID 注册专属资产：杭州伞的开放翼形屋盖、玉琮馆的斜切椭圆及叠鳞玻璃外壳。新增资产须有建筑依据、沿用地面位置和轮廓；不能按城市名替换整区，也不能宣称任意新地标会自动精确生成。`npm run test:venues` 检查多视角实际模型；`SCENE_CLOSEUPS=gongshu` 的 `tests/scene-region-preview.mjs` 检查公园地图近景。参考摄影仅作本机观察，不作为可分发纹理。
+特殊场馆精修见[交付记录](../../docs/LANDMARKS_AND_MEMORY_FILM_2026-09-26.md)。`src/map/landmarkVenues.ts` 按确认的 OSM 建筑 ID 注册专属资产：杭州伞的开放翼形屋盖、玉琮馆的斜切椭圆及叠鳞玻璃外壳。新增资产须有建筑依据、沿用地面位置和轮廓；不能按城市名替换整区，也不能宣称任意新地标会自动精确生成。`npm run test:venues` 检查多视角实际模型；`SCENE_CLOSEUPS=gongshu` 的 `tests/scene-region-preview.mjs` 检查公园地图近景。参考摄影仅作本机观察，不作为可分发纹理。
 
 用同一照片地点、同一镜头对比原图和风格图；查看地理轮廓、照片与故事线可读性、近景地标辨认、桌面与手机帧率。若工作涉及运行时 skill，展示输入证据、`sceneRecipe`、实际渲染结果和用户确认／改风格后的再生成。概念效果图需明确标成美术参照。
 

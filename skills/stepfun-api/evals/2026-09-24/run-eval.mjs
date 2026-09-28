@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 const here = (p) => fileURLToPath(new URL(p, import.meta.url))
-process.loadEnvFile(here('../../../../../.env'))
+process.loadEnvFile(here('../../../../.env'))
 const key = process.env.STEPFUN_API_KEY
 // Reference inputs made with the verified call
 const wavRes = await fetch('https://api.stepfun.com/v1/audio/speech', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: 'stepaudio-2.5-tts', input: '我们去外滩散步吧', voice: 'cixingnansheng', response_format: 'wav' }) })
 const wav = Buffer.from(await wavRes.arrayBuffer())
-const png = readFileSync(here('../../../../../docs/mockups/3d-cartoon-map.png'))
+const png = readFileSync(here('../../../../docs/mockups/3d-cartoon-map.png'))
 const dataUrl = 'data:image/png;base64,' + png.toString('base64')
 for (const variant of ['with', 'without']) {
   const mod = await import(new URL(`./${variant}-skill/stepfun.mjs`, import.meta.url).href)

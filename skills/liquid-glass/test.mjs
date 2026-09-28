@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { checkSkillFile, root } from '../../../tests/skill-kit.mjs'
+import { checkSkillFile, root } from '../../tests/skill-kit.mjs'
 import { audit, contrast, parseCss } from './audit.mjs'
 
 const dir = fileURLToPath(new URL('.', import.meta.url))

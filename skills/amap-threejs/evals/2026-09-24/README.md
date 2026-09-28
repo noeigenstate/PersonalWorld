@@ -4,7 +4,7 @@
 
 两个全新的子代理（Claude Sonnet）执行同一任务，都禁止联网：
 
-- **with-skill**：先读 `.claude/skills/amap-threejs/SKILL.md`
+- **with-skill**：先读 `skills/amap-threejs/SKILL.md`
 - **without-skill**：只凭已有知识
 
 任务：写一个页面，高德 JS API 2.0 3D 地图（上海，13 级），用 Three.js r186 在外滩（手机 GPS 的 WGS-84 坐标 31.2397, 121.4998）放一个纯红立方体，屏幕上始终约 40 px。
@@ -35,7 +35,7 @@ skill 有效。不用 skill 时，模型按常见教程把 three.js 渲染器接
 ## 复现
 
 ```bash
-node .claude/skills/amap-threejs/evals/2026-09-24/run-eval.mjs
+node skills/amap-threejs/evals/2026-09-24/run-eval.mjs
 ```
 
 需要项目根目录 `.env` 中的 `AMAP_JS_KEY`、`AMAP_JS_SECURITY_CODE` 和网络。

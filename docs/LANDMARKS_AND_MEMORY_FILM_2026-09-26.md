@@ -29,7 +29,7 @@
 
 ### 精修能力已经固化
 
-开发 skill：[landmark-refinement](../.claude/skills/landmark-refinement/SKILL.md)，由原有 `map-scene-styling` 路由到它。详细[流程与已验收实例](../.claude/skills/landmark-refinement/references/workflow.md)记录了输入资料、构件取舍、坐标、模型注册和多视角验证。当前模型外观在本次 skill 整理中保持不变。
+开发 skill：[landmark-refinement](../skills/landmark-refinement/SKILL.md)，由原有 `map-scene-styling` 路由到它。详细[流程与已验收实例](../skills/landmark-refinement/references/workflow.md)记录了输入资料、构件取舍、坐标、模型注册和多视角验证。当前模型外观在本次 skill 整理中保持不变。
 
 依赖过程为：**真实建筑身份与足迹 → 多角度参考和图纸 → 最有辨识度的形态特征 → Three.js 程序化几何 → 统一材质与光照 → 模型和真实地图验收 → 资产注册复用**。资产制作由开发 agent 按 skill 执行，运行时按建筑 ID 自动装配。无需把私人照片上传到新的 3D 生成商，也没有依赖临时的图片贴片。关键瓶颈是新建筑参考资料的完整性、识别特征提取和建模验收；skill 固化成功路径，不能保证无参考资料的任意地标一次成功。
 

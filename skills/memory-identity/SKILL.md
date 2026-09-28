@@ -5,7 +5,7 @@ description: 为 Personal World 维护增量人物库和有照片依据的故事
 
 # 从照片到人物、故事和短片
 
-这是开发和验收 skill。日常导入的自动处理由产品代码运行，无需用户每次调用 skill 或填写创意。短片导演另见 [memory-film](../../../skills/memory-film/SKILL.md)。
+这是开发和验收 skill。日常导入的自动处理由产品代码运行，无需用户每次调用 skill 或填写创意。短片导演另见 [memory-film](../../skills/memory-film/SKILL.md)。
 
 ## 三层证据
 
@@ -15,7 +15,7 @@ description: 为 Personal World 维护增量人物库和有照片依据的故事
 
 ## 实际接线
 
-- `src/lib/useMemoryGraph.ts` 在单图分析空闲后同步当前账户照片清单，顺序上传待分析 JPEG；原片仍在该账户 IndexedDB。暂停设置持久化。
+- `src/lib/useMemoryGraph.ts` 在单图分析空闲后同步当前账户照片清单，顺序上传待分析 JPEG；原片由账户本机照片库保存，IndexedDB 是工作缓存。暂停设置持久化。
 - `server/faceEngine.mjs` / `identity/worker.py` 使用已有 Python/OpenCV，模型指纹含模型文件及 OpenCV 版本。中文路径用字节读取后 imdecode。
 - `server/identityStore.mjs` 保存 assets、runs、people、faces、corrections、manual_facts。内容 hash 未变时卡片更新不重复做人脸提取；删除照片同步清掉对应观测和缩略图。
 - `server/identityCandidates.mjs` 为未锁定候选提供批次聚合，检查组间相似度与同图互斥，不用连通分量把相似链条全并起来。批次最多复查 400 条未确认观测；更大规模仍走增量原型匹配，不能宣称已验证巨量数据精度。
@@ -25,7 +25,7 @@ description: 为 Personal World 维护增量人物库和有照片依据的故事
 
 ## 运行和修改
 
-先检查现有 Git 与数据库 schema，不重置用户人物库。安装说明见 [交付文档](../../../docs/IDENTITY_STORY_CREATIVE_FILM_2026-09-27.md)。模型下载使用 `python server/identity/setup_models.py`，校验官方文件 SHA-256 并保存许可证。
+先检查现有 Git 与数据库 schema，不重置用户人物库。安装说明见 [交付文档](../../docs/IDENTITY_STORY_CREATIVE_FILM_2026-09-27.md)。模型下载使用 `python server/identity/setup_models.py`，校验官方文件 SHA-256 并保存许可证。
 
 当前阈值仅是初始工程配置，没有标注真值集就不能报告准确率。低质量侧脸、小脸、遮挡与儿童跨年龄变化可以导致拆组；保留候选给人核对，不为减少组数而放宽已确认身份的事实门槛。不同模型指纹的向量禁止混比，已确认身份的模型升级须单独迁移。
 
@@ -37,7 +37,9 @@ description: 为 Personal World 维护增量人物库和有照片依据的故事
 
 明确引用唯一人物名字的亲属说明可以解析为稳定 ID 关系，关系随改名保留；无法唯一解析时保留原始文字。长期关系与每张照片的在场证据分开，不能把亲属身份套到所有同区域人物。关系参与共同经历章节、人生管家上下文和导演输入。
 
-短片通过实际资料的 `knowledgeRevision` 检测更新，覆盖无 chapterId 的影片，继承手动重编的章节绑定。连续修改合并后重编，旧版本保持历史、不能循环触发；上传期间变化需重新编排。规则章节和资料失效机制不等于完整的持续语义理解，边界和下一阶段见 [持续理解架构](../../../docs/EVOLVING_MEMORY_ARCHITECTURE_2026-09-28.md)。
+短片通过实际资料的 `knowledgeRevision` 检测更新，覆盖无 chapterId 的影片，继承手动重编的章节绑定。连续修改合并后重编，旧版本保持历史、不能循环触发；上传期间变化需重新编排。
+
+持续理解由 `storyUnderstanding.mjs` 的持久队列执行：原始事件保持 `sourceEventId`，单张照片也可形成事件；当前有效解释投影到地图和逐图说明，不写回来源事实。关系字段“我/本人/自己”只能绑定到唯一已确认本人，关系“女儿/妻子”等以此建立稳定 ID 边；逐图在场身份仍独立检查。轮询不得覆盖较新的修改，短片同时跟踪外层与图谱 revision。具体接线、测试和局限见 [持续同步交付](../../docs/CONTINUOUS_MEMORY_SYNC_2026-09-28.md)。
 
 运行 `node --test tests/identity-graph.mjs` 和 `node tests/memory-library.mjs`。前者验证增量、隔离、同图互斥、相似链防护、人工锁定、撤销和章节失效；后者用隔离测试插画操作真实 UI，确认人物到章节再到短片请求的来源链。检查桌面和手机截图。
 

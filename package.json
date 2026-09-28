@@ -32,7 +32,7 @@
     "test:landmarks": "node tests/landmark-expansion.mjs",
     "test:overview": "node tests/map-overview.mjs",
     "test:film-stories": "node --experimental-strip-types --test tests/film-stories.mjs",
-    "test:skills": "node --test skills/*/test.mjs .claude/skills/*/test.mjs"
+    "test:skills": "node --test skills/*/test.mjs tests/skill-inventory.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^2.0.0",

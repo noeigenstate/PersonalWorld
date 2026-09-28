@@ -5,9 +5,9 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 const here = (p) => fileURLToPath(new URL(p, import.meta.url))
-const root = here('../../../../../')
+const root = here('../../../../')
 const { chromium } = createRequire(root + 'package.json')('playwright')
-const { wgs84ToGcj02 } = await import(pathToFileURL(root + 'src/lib/geo.js').href)
+const { wgs84ToGcj02 } = await import(pathToFileURL(root + 'src/lib/geo.ts').href)
 process.loadEnvFile(root + '.env')
 const bund = wgs84ToGcj02({ lat: 31.2397, lng: 121.4998 })
 

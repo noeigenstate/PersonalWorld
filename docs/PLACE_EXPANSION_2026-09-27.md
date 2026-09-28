@@ -157,8 +157,8 @@ data/exports/memory-films-three-places-2026-09-27.json
 
 | 入口 | 本次更新 |
 |---|---|
-| `.claude/skills/landmark-refinement/` | 点地标补足、资料与估算分开记录、瓦片交叠去重、立面与倒角、地标避让、高楼与手机取景 |
-| `.claude/skills/map-scene-styling/` | 可复用水面流程、动画/反射预算、真实岸线与地理边界、全国卡片视觉 |
+| `skills/landmark-refinement/` | 点地标补足、资料与估算分开记录、瓦片交叠去重、立面与倒角、地标避让、高楼与手机取景 |
+| `skills/map-scene-styling/` | 可复用水面流程、动画/反射预算、真实岸线与地理边界、全国卡片视觉 |
 | `skills/memory-film/SKILL.md` | 2–5 张短片、地点候选队列、有界校验修复、事实范围、缓存行为 |
 | `src/map/landmarkSites.json` | 公共地标身份、位置、真实/估算几何及来源 |
 | `server/mapLandmarks.mjs` | 地标补足、区域覆盖判断、重复楼体去除、商场 AOI |

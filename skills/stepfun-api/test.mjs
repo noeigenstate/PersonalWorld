@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { stripTypeScriptTypes } from 'node:module'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { checkSkillFile, imageDataUrl, importRoot, live } from '../../../tests/skill-kit.mjs'
+import { checkSkillFile, imageDataUrl, importRoot, live } from '../../tests/skill-kit.mjs'
 
 const dir = fileURLToPath(new URL('.', import.meta.url))
 const wavSource = readFileSync(new URL('./scripts/wav.ts', import.meta.url), 'utf8')

@@ -24,7 +24,7 @@ Personal World 的核心是**从照片重建有证据的事件，再把事件投
 | 高德底图 | JS API 2.0 支持官方主题，或在自定义地图平台创建并**发布**样式 ID；可配置道路、水、绿地、天空、建筑等元素 | 先统一整张地图的色彩、线宽、标签和留白。当前 `macaron` 仍保留标准街道语言；新的自定义样式需要平台上的样式 ID。[自定义样式教程](https://lbs.amap.com/api/maps-javascript-api/guide/map/map-style)、[平台能力](https://lbs.amap.com/product/mapstyle/m) |
 | 高德 `Buildings` | 可设墙／顶颜色、高度系数、透明度；`setStyle` 可按围栏区域改色或隐藏 | 保留有地理依据的楼块轮廓，适合做背景体量。公开 API 没有逐栋楼 ID、UV 或逐栋贴图接口，改色仍会呈现“白膜”的形体。[楼块 API](https://lbs.amap.com/api/maps-javascript-api/reference/layer/buildings) |
 | 高德自定义纹理 | 平台产品页称可配置部分地图元素纹理；较早的 JS API 2.0 升级指南写明“暂不支持自定义纹理” | 两份官方材料存在版本／产品边界差异。拿到实际发布的样式 ID 后在**本项目 JS API 2.0** 实测，再决定能否依赖网页端贴图；现阶段不把它当作已可用功能。[平台说明](https://lbs.amap.com/product/mapstyle/m)、[升级指南](https://lbs.amap.com/api/javascript-api-v2/update) |
-| 独立 Three.js 画布 | 当前 `src/map/amapScene.ts` 已通过高德相机同步叠加 Three.js | 可画特定地点的玩具建筑、招牌、树木和材质。与高德画布**不共享深度缓冲**，定制建筑占用的区域需隐藏或避开原生楼块，实测遮挡关系。现有 [amap-threejs skill](../.claude/skills/amap-threejs/SKILL.md) 记录了同步与坐标规则。 |
+| 独立 Three.js 画布 | 当前 `src/map/amapScene.ts` 已通过高德相机同步叠加 Three.js | 可画特定地点的玩具建筑、招牌、树木和材质。与高德画布**不共享深度缓冲**，定制建筑占用的区域需隐藏或避开原生楼块，实测遮挡关系。现有 [amap-threejs skill](../skills/amap-threejs/SKILL.md) 记录了同步与坐标规则。 |
 | 开放街区轮廓 | [OpenStreetMap API](https://wiki.openstreetmap.org/wiki/Api06) 可按小范围取得建筑、道路、水面、绿地；数据受 [ODbL](https://www.openstreetmap.org/copyright) 约束 | 上海东方明珠周边已取得可用静态样本，可支撑一块完整的卡通街区。绝大多数楼没有高度，立面与屋顶仍需要艺术生成；覆盖范围不足以直接推至整个华东。 |
 | 自有矢量地图引擎 | MapLibre 支持按要素的 3D 拉伸图案、圆角等 | 只有连同合法可用、覆盖足够的建筑轮廓和高度数据一起接入才有意义；不能直接把高德内部瓦片当成自有数据源。它是长期可控路线，本次不为贴图重写地图底座。[MapLibre 样式规范](https://maplibre.org/maplibre-style-spec/layers/) |
 

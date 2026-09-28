@@ -1,4 +1,4 @@
-// Shared helpers for the per-skill tests (skills/*/test.mjs, .claude/skills/*/test.mjs).
+// Shared helpers for all project skills (skills/*/test.mjs).
 // Offline checks always run; checks against real services run with LIVE=1.
 import assert from 'node:assert/strict'
 import http from 'node:http'

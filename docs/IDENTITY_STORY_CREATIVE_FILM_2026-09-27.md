@@ -106,7 +106,7 @@ StepFun 只接收选片所需的观察、时间和确认事实，不接收人脸
 
 ## 四、Skills 与部署依赖
 
-- `.claude/skills/memory-identity/SKILL.md`：新增开发/验收流程和评估场景。
+- `skills/memory-identity/SKILL.md`：新增开发/验收流程和评估场景。
 - `skills/memory-film/SKILL.md`：运行时导演的新叙事、确认人物、layout 和精确时间规则。
 - `skills/life-butler/SKILL.md`：读取有来源的图谱记忆，区分观察与确认。
 - 地图两个开发 skill：明确任意自动专属建模的边界，记录新地点通知接线。

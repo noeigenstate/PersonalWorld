@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import http from 'node:http'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { checkSkillFile, importRoot, live } from '../../../tests/skill-kit.mjs'
+import { checkSkillFile, importRoot, live } from '../../tests/skill-kit.mjs'
 
 const dir = fileURLToPath(new URL('.', import.meta.url))
 const { wgs84ToGcj02 } = await importRoot('src/lib/geo.js')

@@ -1,4 +1,4 @@
-// Edge refraction for the glass surfaces (see .claude/skills/liquid-glass): near its rim a real
+// Edge refraction for the glass surfaces (see skills/liquid-glass): near its rim a real
 // glass slab bends what is behind it inwards, like a lens. An SVG displacement map, built for each
 // element's size and corner radius, is used as the element's backdrop filter.
 //

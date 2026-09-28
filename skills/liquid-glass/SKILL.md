@@ -74,5 +74,5 @@ The sheen lives in `background`; the specular rim is the one `::before` of each 
 
 ## Check
 
-`node --test .claude/skills/liquid-glass/test.mjs` checks the stylesheet against these rules. Screenshots for
+`node --test skills/liquid-glass/test.mjs` checks the stylesheet against these rules. Screenshots for
 review: `node tests/ui-shots.mjs <dir>` with `npm run dev` running.

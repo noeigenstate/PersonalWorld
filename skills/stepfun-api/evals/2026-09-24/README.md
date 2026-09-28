@@ -4,7 +4,7 @@
 
 两个全新的子代理（Claude Sonnet）执行同一任务，都禁止联网：
 
-- **with-skill**：先读 `.claude/skills/stepfun-api/SKILL.md`
+- **with-skill**：先读 `skills/stepfun-api/SKILL.md`
 - **without-skill**：只凭已有知识
 
 任务：用 Node 24 原生 ESM 写 `askJson`（图片 + 问题 → JSON）、`transcribe`（WAV → 文字）、`speak`（文字 → mp3）三个函数，并说明 Chrome 录音如何交给 `transcribe`。
@@ -28,7 +28,7 @@ skill 有效：3/3 一次跑通，且使用当前推荐的模型；不用 skill 
 ## 复现
 
 ```bash
-node .claude/skills/stepfun-api/evals/2026-09-24/run-eval.mjs
+node skills/stepfun-api/evals/2026-09-24/run-eval.mjs
 ```
 
 需要项目根目录 `.env` 中的 `STEPFUN_API_KEY`，会产生少量真实调用。

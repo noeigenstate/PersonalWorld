@@ -6,7 +6,7 @@
   --fill:rgba(120,120,128,.12);--fill-2:rgba(120,120,128,.2);
   --story:#e2703a;--space:#248a5a;--warn:#b86a1f;
   --role-home:#f5b98b;--role-study:#8fb8ea;--role-work:#8fd3a8;--role-residence:#c9b8ea;
-  /* Liquid Glass (see .claude/skills/liquid-glass) */
+  /* Liquid Glass (see skills/liquid-glass) */
   --glass-fill:rgba(255,255,255,.26);--glass-fill-thick:rgba(250,250,252,.68);--glass-clear:rgba(255,255,255,.14);
   --glass-blur:blur(12px) saturate(160%) brightness(1.04);--glass-blur-thick:blur(22px) saturate(180%);
   --glass-sheen:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,.06) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,.1));
@@ -444,7 +444,7 @@ body{overflow:hidden}
 .cull-delete:hover:not(:disabled){background:#e0342b}
 @media(max-width:640px){.cull-entry span{display:none}.cull-sheet{padding:18px 16px;border-radius:24px}.cull-stacks{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}.cull-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-/* ---- Liquid Glass (.claude/skills/liquid-glass) ------------------------------------------------
+/* ---- Liquid Glass (skills/liquid-glass) ------------------------------------------------
    Navigation and controls float above the map as glass; the map, its labels and photos are content. */
 .app-bar,.map-heading,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
 .import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{
