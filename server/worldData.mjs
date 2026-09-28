@@ -1,7 +1,8 @@
 // The cartoon world's map data (world-data/*.mbtiles) is too large for git. It lives on the project's
-// Seafile; world-data/manifest.json (in git) lists each file with its size and SHA-256. When the
-// service starts, missing or outdated files are downloaded in the background from WORLD_DATA_URL, a
-// template with {name}, e.g. a Seafile folder share:
+// Seafile; world-data/manifest.json (in git) lists each file with its size, SHA-256 and download
+// link (a Seafile file share with ?dl=1). When the service starts, missing or outdated files are
+// downloaded in the background. A file without a link falls back to WORLD_DATA_URL, a template
+// with {name}, e.g. a Seafile folder share:
 //   WORLD_DATA_URL=https://seafile.example.com/d/<share-token>/files/?p=/{name}&dl=1
 // Until a file is in place the map keeps working from the online source.
 import { createHash } from 'node:crypto'
@@ -38,8 +39,10 @@ export async function missingWorldData() {
   return missing
 }
 
+const linkFor = (file, template) => file.url || (template ? template.replace('{name}', encodeURIComponent(file.name)) : '')
+
 async function download(file, template, log) {
-  const url = template.replace('{name}', encodeURIComponent(file.name))
+  const url = linkFor(file, template)
   const target = join(worldDataDir, file.name)
   const partial = `${target}.download`
   await mkdir(worldDataDir, { recursive: true })
@@ -63,12 +66,9 @@ async function download(file, template, log) {
 export async function syncWorldData({ template = process.env.WORLD_DATA_URL, log = console.log } = {}) {
   const missing = await missingWorldData()
   if (!missing.length) return []
-  if (!template) {
-    log(`地图数据缺少 ${missing.map((f) => f.name).join('、')}：在 .env 设置 WORLD_DATA_URL 后会自动下载；在此之前地图使用在线数据`)
-    return []
-  }
   const done = []
   for (const file of missing) {
+    if (!linkFor(file, template)) { log(`地图数据缺少 ${file.name}：manifest 里没有下载链接，也没有在 .env 设置 WORLD_DATA_URL；在此之前地图使用在线数据`); continue }
     log(`下载地图数据 ${file.name}（${Math.round(file.size / 1048576)} MB）…`)
     try { await download(file, template, log); done.push(file.name); log(`${file.name} 已就绪`) } catch (error) { log(error.message) }
   }

@@ -2,12 +2,25 @@
 
 Personal World 是一个个人世界模型（Personal World Model）：先把照片、视频和截图整理成事件，再从事件中分离出时间线和空间线。产品分为人生地图和人生管家（大模型）两部分：在地图上点击地点会出现故事线，并可用语音问人生管家当时发生了什么。详见 [需求说明书](docs/需求说明书.html)。
 
-## 启动
+## 本地部署
 
-在项目目录运行：
+### 需要准备什么
+
+| 项目 | 说明 | 必需 |
+|---|---|---|
+| **Node.js 24**（≥ 22.5） | 服务端用 `node:sqlite` 读取地图档案，旧版本没有这个模块 | 是 |
+| **`.env`** | 复制 `.env.example` 为 `.env`，填 StepFun 与高德的密钥（见下表）。所有密钥只由本机 API 服务读取，不进浏览器、不入库 | 是 |
+| **地图数据** | 卡通世界的地理档案 `world-data/*.mbtiles`（浙江+江苏 558 MB）不在 Git 里。第一次 `npm run dev` 时服务端按 `world-data/manifest.json` 里的 Seafile 链接自动下载并校验 SHA-256（约 5 分钟），下载完成前地图用在线 OpenStreetMap 数据。也可以先手动 `npm run world:pull` | 自动 |
+| **Chrome** | 只有跑浏览器测试（`test:smoke` 等）时需要 | 否 |
+| **Python 3 + FFmpeg** | 人物识别、回忆短片合成（`FACE_PYTHON`、`MEMORY_FILM_PYTHON`；模型文件用 `python server/identity/setup_models.py` 下载） | 用这两项功能时 |
+| **ComfyUI + Depth Anything 3** | 4D 时空场景把照片重建成可环视的三维模型，在本机 GPU 上完成。需要本机运行 ComfyUI（默认 `http://127.0.0.1:8188`，可用 `COMFY_URL` 改）并在其 `models/geometry_estimation/` 放入 `depth_anything_3_mono_large.safetensors`（[Comfy-Org/Depth-Anything-3](https://huggingface.co/Comfy-Org/Depth-Anything-3)，1.3 GB）。没有时时空场景只显示照片和各层证据 | 用 4D 场景时 |
+| **Java 23 + Planetiler** | 只有自己构建新地区的地图档案时需要（`npm run build:osm <地区>`，源数据见 `scripts/build-osm-region.mjs` 开头） | 否 |
+
+### 启动
 
 ```powershell
 npm install
+copy .env.example .env   # 填入密钥
 npm run dev
 ```
 
@@ -29,13 +42,23 @@ npm run dev:lan
 
 | 字段 | 用途 | 必填 |
 |---|---|---|
-| `STEPFUN_API_KEY`、`STEPFUN_MODEL` | 自动照片信息卡、手动事件分析与人生管家（模型需支持图片，如 `step-3.7-flash`） | 用 AI 时必填 |
+| `STEPFUN_API_KEY`、`STEPFUN_MODEL` | 自动照片信息卡、事件分析、人生管家、时空场景分段（模型需支持图片，如 `step-3.7-flash`） | 用 AI 时必填 |
+| `STEPFUN_BASE_URL` | 默认 `https://api.stepfun.com/step_plan/v1`，走 Step Plan 套餐；改成 `https://api.stepfun.com/v1` 会扣账户余额 | 否 |
 | `STEPFUN_ASR_MODEL`、`STEPFUN_TTS_MODEL`、`STEPFUN_TTS_VOICE` | 语音识别 / 合成，默认 `stepaudio-2.5-asr`、`stepaudio-2.5-tts`、`cixingnansheng` | 否 |
-| `AMAP_JS_KEY`、`AMAP_JS_SECURITY_CODE` | 高德 3D 真实底图，以及在浏览器里把照片 GPS 识别成城市；安全密钥经本机 `/_AMapService` 代理，不进浏览器 | 用真实地图时必填 |
-| `AMAP_MAP_STYLE` | 可选的已发布高德自定义地图样式，格式为 `amap://styles/样式ID`；不填时使用与已认可街区预览一致的 `fresh` 底图 | 可选 |
+| `AMAP_JS_KEY`、`AMAP_JS_SECURITY_CODE` | 高德地图相机与缩放动画，以及在浏览器里把照片 GPS 识别成城市；安全密钥经本机 `/_AMapService` 代理，不进浏览器 | 用真实地图时必填 |
+| `AMAP_MAP_STYLE` | 可选的已发布高德自定义地图样式，格式为 `amap://styles/样式ID` | 否 |
 | `AMAP_WEB_SERVICE_KEY` | 可选：改由服务端做逆地理编码 | 否 |
+| `WORLD_DATA_URL` | 地图档案的备用下载模板（含 `{name}`）；manifest 里已有链接的文件不需要 | 否 |
+| `COMFY_URL` | 本机 ComfyUI 地址，默认 `http://127.0.0.1:8188` | 否 |
+| `FACE_PYTHON`、`MEMORY_FILM_PYTHON`、`MEMORY_FILM_EXPORT_DIR` | 人物识别与回忆短片用的 Python 解释器和 MP4 导出目录 | 否 |
 
-修改后重启 `npm run dev`。所有密钥只由本机 API 服务读取。
+修改后重启 `npm run dev`。
+
+### 地图数据与素材
+
+- `world-data/manifest.json`（入库）列出每个地理档案的文件名、大小、SHA-256 和 Seafile 下载链接；服务启动时后台下载缺失或大小不符的文件，校验通过才替换。
+- 新增地区：准备 `world-data/sources/` 的源数据后运行 `npm run build:osm <地区…>`（地区在 `world-data/regions.json`），上传生成的 `.mbtiles` 到 Seafile，`npm run world:manifest` 更新清单，再把分享链接（`?dl=1`）填进对应文件的 `url`。
+- 卡通地面的贴图已在 `public/world-assets/textures/`（10 张灰度 WebP，共 0.5 MB），随仓库分发；要重画需本机 ComfyUI 与 Qwen-Image，见 `scripts/assets/generate-textures.mjs`。
 
 ## 账户与数据
 
@@ -63,13 +86,13 @@ npm run dev:lan
 8. **照片信息卡**：在事件里点开一张照片，右侧是信息卡。上半部分是程序读到的事实（时间及其来源、定位、尺寸、文件名；微信等图片没有 EXIF 时从文件名读保存时间），下半部分是 StepFun 看到的画面、可读文字、带依据和把握程度的线索、认出的地标和待确认问题。
 9. **从其他照片补全**：没有定位的照片可以和带定位（或已确认地点、认出地标）的照片对比。程序按画面颜色布局、时间和标签挑出最多 4 张参考照片，由模型判断是否同一场景、同一地点或同一事件，补全城市和地点并注明依据来自哪张照片；点「采用」后写入事件。待整理列表里可以批量补全，批量结果在地图上以虚线显示，确认后变实线。
 
-同一公园或商场的不同拍摄位置，现在优先按公共地点边界共用完整场景。湖/河层级、河道提取和场馆类型已补充，详见[完整地点场景调整](docs/VENUE_SCENES_2026-09-26.md)。地图默认不显示跨历史事件的橙色连线；选中城市后可以选择某次短时段回忆的连线。已有照片自动回忆短片；原始视频理解另见[长期计划](docs/VIDEO_MEMORY_ROADMAP.md)。可漫游的 4D 时空场景仍需合格的同地点多视角素材和独立重建流水线，见[4D 实现契约](docs/FOUR_D_HOME_RECONSTRUCTION_2026-09-28.md)。
+同一公园或商场的不同拍摄位置，现在优先按公共地点边界共用完整场景。湖/河层级、河道提取和场馆类型已补充，详见[完整地点场景调整](docs/VENUE_SCENES_2026-09-26.md)。地图默认不显示跨历史事件的橙色连线；选中城市后可以选择某次短时段回忆的连线。已有照片自动回忆短片；原始视频理解另见[长期计划](docs/VIDEO_MEMORY_ROADMAP.md)。城市故事线里的**时空场景**把同一地点的照片按时间片分段、逐层标注证据（照片可见 / 推断 / 无依据），并可在本机 GPU 上把每个时段的关键照片重建成可环视的三维浮雕；可自由漫游的多视角重建仍是后续方向，见[4D 实现契约](docs/FOUR_D_HOME_RECONSTRUCTION_2026-09-28.md)。
 
 导入后默认自动将每张图片缩放到最长边 2560 像素（失败时用预览图），经本机服务发送给 StepFun 生成信息卡；可在地图上暂停。手动事件分析发送最多 6 张预览图；人生管家只发送事件文字。账户照片库保存在服务电脑，浏览器 IndexedDB 为工作缓存，清除站点数据后可以恢复。
 
 ## Skills
 
-全部 **13 个项目技能**统一放在根目录 [skills/](skills/README.md)：地图风格、特殊建筑精修、地图叠加、人物一致性等 6 个开发技能，以及单图理解、故事理解、回忆短片等 7 个运行时技能。正文、测试、参考资料与可分发评估一起入库，详见[技能交付清单](docs/SKILLS_INVENTORY_2026-09-28.md)。
+全部 **13 个项目技能**统一放在根目录 [skills/](skills/README.md)：地图风格、特殊建筑精修、地图叠加、人物一致性等 6 个开发技能，以及单图理解、故事理解、回忆短片、4D 时空场景等 8 个运行时技能。正文、测试、参考资料与可分发评估一起入库，详见[技能交付清单](docs/SKILLS_INVENTORY_2026-09-28.md)。
 
 ## 验证
 
@@ -83,6 +106,8 @@ node tests/scene-regions.mjs # 需开发服务和高德配置；隔离测试账�
 npm run test:card    # 照片信息卡
 npm run test:context # 多张照片协同补全
 npm run test:skills  # 每个 skill 的专门测试；LIVE=1 连接真实 StepFun / 高德
+npm run test:world   # 需先 npm run dev；地球→全国→城市→街道的卡通世界
+npm run test:spacetime # 需先 npm run dev；4D 时空场景，本机有 ComfyUI + DA3 时真实重建
 ```
 
 冒烟测试需要本机安装 Chrome，使用独立浏览器会话，不修改你日常浏览器中的数据。
