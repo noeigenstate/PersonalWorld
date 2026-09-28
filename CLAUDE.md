@@ -10,6 +10,7 @@
 - **每个 skill 都要有专门的测试** `test.mjs`（格式与关键规则、使用它的接口、`LIVE=1` 时的真实调用），用 `npm run test:skills` 运行。
 - 能测试的 skill 做对比测试（用 / 不用 skill 执行同一任务），结果放在该 skill 的 `evals/`。评分脚本要先核对失败样例，避免误判。
 - 顶栏不放导航按钮：点击地图上的地点时人生管家对话框自动弹出，关闭即回到全图；四个能力融入人生管家的记忆，不做单独入口。
+- 界面风格是 Apple 液态玻璃，按 `.claude/skills/liquid-glass` 执行：顶栏、面板、弹层等控件层用玻璃，地图标签和照片属于内容层，不用玻璃。
 - 界面保持静止：图标和标记不漂浮、不抖动，卡片悬停不位移。
 - 密钥只放 `.env`，由服务端读取；`.env`、`server/data/`、`data/`（用户照片）不入库。
 - 用户的照片和记忆按账户存在服务电脑硬盘 `server/data/accounts/<账户>/`（`server/accountVault.mjs`）；浏览器 IndexedDB 只是缓存，清除后登录自动恢复。改动存储时同步修改隐私声明并升级 `PRIVACY_VERSION`（`server/users.mjs` 与 `PrivacyStatement.tsx` 两处）。

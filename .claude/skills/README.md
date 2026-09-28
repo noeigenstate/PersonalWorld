@@ -10,6 +10,7 @@
 |---|---|---|---|
 | [stepfun-api](stepfun-api/SKILL.md) | StepFun 对话/图片/JSON、语音识别、语音合成的已验证调用方法 | [test.mjs](stepfun-api/test.mjs) | [3/3 vs 2/3](stepfun-api/evals/2026-09-24/README.md) |
 | [amap-threejs](amap-threejs/SKILL.md) | 高德 JS API 2.0 3D 地图上叠加 Three.js 的做法 | [test.mjs](amap-threejs/test.mjs) | [位置偏差 1 px、尺寸恒定 vs 画不出来](amap-threejs/evals/2026-09-24/README.md) |
+| [liquid-glass](liquid-glass/SKILL.md) | Apple 液态玻璃风格：哪些界面用玻璃、材质变量、无障碍回退 | [test.mjs](liquid-glass/test.mjs) | [10/10 vs 5/10](liquid-glass/evals/2026-09-28/README.md) |
 | [map-scene-styling](map-scene-styling/SKILL.md) | 人生地图的整体卡通风格、记忆地点场景与材质路线 | 场景层试作已接入；运行时 Agent skill 待做 | — |
 
 ## 引用过的外部 skill（未复制进仓库）

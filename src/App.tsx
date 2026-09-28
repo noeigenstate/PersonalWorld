@@ -30,6 +30,8 @@ import type { StoryChapter } from './lib/memoryGraph'
 const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
 const BUTLER_WIDTH = 432
 const TIMEBAR_HEIGHT = 128
+// The glass top bar floats over the map: 12 px margin + 52 px bar
+const CHROME_TOP = 64
 const uid = () => crypto.randomUUID()
 const years = (from: string, to: string) => Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / (365.25 * 86400000)))
 
@@ -524,6 +526,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           highlightedEventId={highlightedEventId}
           insetRight={panelOpen ? BUTLER_WIDTH : 0}
           insetBottom={events.length ? TIMEBAR_HEIGHT : 0}
+          insetTop={CHROME_TOP}
           onSelectCity={(city) => selectCity(city)}
           onOpenEvent={setActiveEventId}
           onOpenPhoto={openPhoto}

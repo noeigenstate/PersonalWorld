@@ -9,6 +9,8 @@ interface Props extends LifeMapData {
   amapStyle?: string
   insetRight: number
   insetBottom: number
+  // Height of the floating glass bar over the top of the map
+  insetTop?: number
   sceneEnabled: boolean
   onSelectCity: (city: string | null) => void
   onOpenEvent: (id: string) => void
@@ -21,18 +23,18 @@ interface Props extends LifeMapData {
 
 interface MapApi {
   update: (data: LifeMapData) => void
-  setInsets: (insets: { right: number; bottom: number }) => void
+  setInsets: (insets: { right: number; bottom: number; top: number }) => void
   dispose: () => void
   focusPhoto?: (photo: MapPhoto) => void
   focusLandmark?: () => void
   setSceneEnabled?: (visible: boolean) => void
 }
 
-export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, sceneEnabled, onSelectCity, onOpenEvent, onOpenPhoto, onMapError, focus, landmarkPreviewAt = 0, ...data }: Props) {
+export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, insetTop = 0, sceneEnabled, onSelectCity, onOpenEvent, onOpenPhoto, onMapError, focus, landmarkPreviewAt = 0, ...data }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const map = useRef<MapApi | null>(null)
-  const latest = useRef({ data, insets: { right: insetRight, bottom: insetBottom }, sceneEnabled, landmarkPreviewAt, focus })
-  latest.current = { data, insets: { right: insetRight, bottom: insetBottom }, sceneEnabled, landmarkPreviewAt, focus }
+  const latest = useRef({ data, insets: { right: insetRight, bottom: insetBottom, top: insetTop }, sceneEnabled, landmarkPreviewAt, focus })
+  latest.current = { data, insets: { right: insetRight, bottom: insetBottom, top: insetTop }, sceneEnabled, landmarkPreviewAt, focus }
   const callbacks = useRef({ onSelectCity, onOpenEvent, onOpenPhoto, onMapError })
   callbacks.current = { onSelectCity, onOpenEvent, onOpenPhoto, onMapError }
 
@@ -68,7 +70,7 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, scene
   }, [amapKey, amapStyle])
 
   // Insets first, so the camera is framed for the space the panels leave free
-  useEffect(() => { map.current?.setInsets({ right: insetRight, bottom: insetBottom }) }, [insetRight, insetBottom])
+  useEffect(() => { map.current?.setInsets({ right: insetRight, bottom: insetBottom, top: insetTop }) }, [insetRight, insetBottom, insetTop])
   useEffect(() => { map.current?.setSceneEnabled?.(sceneEnabled) }, [sceneEnabled])
 
   useEffect(() => {

@@ -89,7 +89,7 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
   scene.add(world)
 
   const labels = createLabels(labelLayer)
-  let insets = { right: 0, bottom: 0 }
+  let insets = { right: 0, bottom: 0, top: 0 }
   let size = { w: 1, h: 1 }
   let positions = new Map<string, THREE.Vector3>()
   let lastSelected: string | null | undefined
@@ -323,9 +323,9 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
   // inside the area not covered by the heading, the time bar and the butler panel
   function fitDistance(target: THREE.Vector3, dir: THREE.Vector3, points: THREE.Vector3[], start: number) {
     const { w, h } = size
-    const safe = { left: 90, right: w - insets.right - 90, top: 70, bottom: h - insets.bottom - 16 }
+    const safe = { left: 90, right: w - insets.right - 90, top: 70 + insets.top, bottom: h - insets.bottom - 16 }
     camera.aspect = w / h
-    camera.setViewOffset(w, h, insets.right / 2, insets.bottom / 2, w, h)
+    camera.setViewOffset(w, h, insets.right / 2, (insets.bottom - insets.top) / 2, w, h)
     camera.updateProjectionMatrix()
     const v = new THREE.Vector3()
     let d = start
@@ -388,7 +388,7 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
     const { w, h } = size
     camera.aspect = w / h
     // Keep the subject centred in the area not covered by panels
-    camera.setViewOffset(w, h, insets.right / 2, insets.bottom / 2, w, h)
+    camera.setViewOffset(w, h, insets.right / 2, (insets.bottom - insets.top) / 2, w, h)
     camera.updateProjectionMatrix()
     renderer.render(scene, camera)
     labels.place(camera, w, h)
@@ -427,8 +427,8 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
         lastSignature = signature
       } else render()
     },
-    setInsets(next: { right: number; bottom: number }) {
-      if (next.right === insets.right && next.bottom === insets.bottom) return
+    setInsets(next: { right: number; bottom: number; top: number }) {
+      if (next.right === insets.right && next.bottom === insets.bottom && next.top === insets.top) return
       insets = next
       if (lastSelected === undefined) render()
       else flyTo(lastSelected, false)

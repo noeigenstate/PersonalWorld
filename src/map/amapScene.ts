@@ -117,7 +117,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
 
   let origin: [number, number] | null = null
   let size = { w: 1, h: 1 }
-  let insets = { right: 0, bottom: 0 }
+  let insets = { right: 0, bottom: 0, top: 0 }
   let unit = unitMetres(5)
   let scaled: Scaled[] = []
   let lines: LineMaterial[] = []
@@ -346,7 +346,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
           : [[x + 105, y - 100], [x - 225, y - 100], [x + 105, y + 55], [x - 225, y + 55]]
         const choices = candidates.map(([cx, cy]) => {
           const left = Math.max(8, Math.min(size.w - insets.right - width - 12, cx))
-          const top = Math.max(65, Math.min(size.h - insets.bottom - height - 12, cy))
+          const top = Math.max(65 + insets.top, Math.min(size.h - insets.bottom - height - 12, cy))
           const overlap = [...taken, ...labelRects, ...landmarkRects].reduce((sum, rect) => sum + Math.max(0, Math.min(left + width, rect.right) - Math.max(left, rect.left)) * Math.max(0, Math.min(top + height, rect.bottom) - Math.max(top, rect.top)), 0)
           return { left, top, overlap }
         }).sort((a, b) => a.overlap - b.overlap)
@@ -430,7 +430,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     const usableRight = Math.max(width + 8, size.w - insets.right - 8)
     photoMenu.style.width = `${width}px`
     photoMenu.style.left = `${Math.max(8, Math.min(usableRight - width, x + 24))}px`
-    photoMenu.style.top = `${Math.max(72, Math.min(size.h - insets.bottom - 220, y - 80))}px`
+    photoMenu.style.top = `${Math.max(72 + insets.top, Math.min(size.h - insets.bottom - 220, y - 80))}px`
     photoMenu.hidden = false
   }
   const escapePhotoMenu = (event: KeyboardEvent) => { if (event.key === 'Escape') closePhotoMenu() }
@@ -504,13 +504,13 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       if (phase === 2) {
         resize()
         map.setPitch(52, true)
-        map.setBounds(new AMap.Bounds(gcj(south, west), gcj(north, east)), true, [110, insets.bottom + 50, 90, insets.right + 90])
+        map.setBounds(new AMap.Bounds(gcj(south, west), gcj(north, east)), true, [110 + insets.top, insets.bottom + 50, 90, insets.right + 90])
         if (map.getZoom() < VENUE_MIN_ZOOM) map.setZoom(VENUE_MIN_ZOOM, true)
         phase++; venueFitFrame = requestAnimationFrame(step); return
       }
       if (phase >= 8) { framingVenue = false; draw(); syncSceneForView(); return }
       const left = size.w < 700 ? 25 : 65, right = Math.max(left + 120, size.w - insets.right - left)
-      const top = 105, bottom = Math.max(top + 120, size.h - insets.bottom - 50)
+      const top = 105 + insets.top, bottom = Math.max(top + 120, size.h - insets.bottom - 50)
       const pixels = venue.polygons.flat(2).map(([lng, lat]) => map.lngLatToContainer(gcj(lat, lng)))
       // The ground footprint cannot frame a 285 m tower. Include the tops of
       // reconstructed landmarks inside this venue in the same camera fit.
@@ -767,7 +767,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       let lowest = Infinity
       for (const offset of offsets) {
         const rect = new DOMRect(baseLeft + offset[0], baseTop + offset[1] - 12, el.offsetWidth + 12, el.offsetHeight + 22)
-        if (rect.left < 8 || rect.top < 8 || rect.right > size.w - insets.right - 8 || rect.bottom > size.h - insets.bottom - 8) continue
+        if (rect.left < 8 || rect.top < insets.top + 8 || rect.right > size.w - insets.right - 8 || rect.bottom > size.h - insets.bottom - 8) continue
         const collisions = occupied.filter((area) => overlaps(rect, area)).length
         if (collisions < lowest) { choice = offset; lowest = collisions }
         if (!collisions) break
@@ -811,7 +811,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     map.setPitch(selected ? 55 : 45, instant)
     map.setRotation(0, instant)
     // avoid: [top, bottom, left, right] in pixels
-    map.setBounds(bounds, instant || reduceMotion, [150, insets.bottom + 40, 120, insets.right + 120])
+    map.setBounds(bounds, instant || reduceMotion, [150 + insets.top, insets.bottom + 40, 120, insets.right + 120])
   }
 
   map.on('click', (event: { pixel: { x: number; y: number } }) => {
@@ -907,8 +907,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       map.setZoomAndCenter(17.2, ORIENTAL_PEARL_GCJ, true)
       focusMemoryScene()
     },
-    setInsets(next: { right: number; bottom: number }) {
-      if (next.right === insets.right && next.bottom === insets.bottom) return
+    setInsets(next: { right: number; bottom: number; top: number }) {
+      if (next.right === insets.right && next.bottom === insets.bottom && next.top === insets.top) return
       insets = next
       sceneSource.style.right = `${Math.max(20, next.right + 20)}px`
       sceneSource.style.bottom = `${Math.max(138, next.bottom + 12)}px`

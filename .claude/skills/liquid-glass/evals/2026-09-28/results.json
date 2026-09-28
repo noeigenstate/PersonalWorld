@@ -1,0 +1,62 @@
+[
+  {
+    "rule": "tokens",
+    "without": false,
+    "with": true,
+    "withoutDetail": "--glass-fill --glass-fill-thick --glass-blur --glass-sheen --glass-rim --glass-shadow --glass-edge --fill --label --accent"
+  },
+  {
+    "rule": "navigation-is-glass",
+    "without": false,
+    "with": true,
+    "withoutDetail": ".app-bar .map-heading .timebar .butler .tray .map-photo-menu .import-modal .detail-panel .auth-card .privacy-modal"
+  },
+  {
+    "rule": "content-not-glass",
+    "without": true,
+    "with": true,
+    "withoutDetail": ""
+  },
+  {
+    "rule": "webkit-prefix",
+    "without": true,
+    "with": true,
+    "withoutDetail": ""
+  },
+  {
+    "rule": "reduce-transparency",
+    "without": false,
+    "with": true,
+    "withoutDetail": ".app-bar .map-heading .timebar .butler .tray .map-photo-menu .import-modal .detail-panel .auth-card .privacy-modal"
+  },
+  {
+    "rule": "increase-contrast",
+    "without": false,
+    "with": true,
+    "withoutDetail": ""
+  },
+  {
+    "rule": "no-glass-on-glass",
+    "without": true,
+    "with": true,
+    "withoutDetail": ""
+  },
+  {
+    "rule": "static-on-hover",
+    "without": true,
+    "with": true,
+    "withoutDetail": ""
+  },
+  {
+    "rule": "clear-variant-over-media",
+    "without": false,
+    "with": true,
+    "withoutDetail": ""
+  },
+  {
+    "rule": "secondary-label-contrast",
+    "without": true,
+    "with": true,
+    "withoutDetail": "#706964"
+  }
+]
