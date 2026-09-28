@@ -313,6 +313,39 @@ body{overflow:hidden}
   .timebar{padding:10px 14px 0}
 }
 
+/* 整理重复照片: similar photos stacked as a pile, then spread out to choose */
+.cull-entry b{min-width:18px;height:18px;border-radius:9px;background:var(--accent);color:#fff;font-size:11px;line-height:18px;text-align:center;padding:0 5px;font-variant-numeric:tabular-nums}
+.cull-sheet{width:min(920px,100%);max-height:calc(100vh - 40px);display:flex;flex-direction:column;border-radius:30px;padding:24px 26px}
+.cull-sheet .modal-header{margin-bottom:8px}
+.cull-sheet .back-link{padding:0;margin-bottom:4px;color:var(--accent)}
+.cull-lead{margin:0 0 16px;font-size:13px;line-height:1.7;color:var(--label-2);min-height:22px}
+.cull-error{display:block;color:#b3261e}
+.cull-stacks{list-style:none;margin:0;padding:4px 2px 8px;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:22px 18px;overflow-y:auto}
+.cull-pile{width:100%;border:0;background:none;padding:0;text-align:left;color:var(--label);display:flex;flex-direction:column;gap:12px}
+.cull-pile-photos{position:relative;display:block;aspect-ratio:4/3;margin:10px 12px 0 4px}
+.cull-pile-photos img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:16px;border:3px solid #fff;box-shadow:0 6px 16px rgba(16,24,40,.18);transform:translate(calc(var(--i) * 6px),calc(var(--i) * -6px)) rotate(calc((var(--i) - 1) * 3deg))}
+.cull-pile-photos b{position:absolute;right:-8px;top:-14px;z-index:1;min-width:28px;height:24px;border-radius:12px;background:var(--accent);color:#fff;font-size:12px;line-height:22px;text-align:center;padding:0 8px;border:1px solid #fff;font-variant-numeric:tabular-nums}
+.cull-pile:hover .cull-pile-photos img,.cull-pile:focus-visible .cull-pile-photos img{box-shadow:0 0 0 3px rgba(0,122,255,.35),0 6px 16px rgba(16,24,40,.18)}
+.cull-pile-text strong{display:block;font-size:13px;font-variant-numeric:tabular-nums}
+.cull-pile-text small{display:block;font-size:12px;color:var(--label-2);margin-top:2px}
+.cull-grid{list-style:none;margin:0;padding:2px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;overflow-y:auto;flex:1;min-height:0}
+.cull-photo{position:relative;display:block;width:100%;aspect-ratio:1;border:0;padding:0;border-radius:16px;overflow:hidden;background:var(--fill)}
+.cull-photo img{width:100%;height:100%;object-fit:cover}
+.cull-grid li.keep .cull-photo{box-shadow:0 0 0 3px var(--space)}
+.cull-grid li.marked .cull-photo img{opacity:.45}
+.cull-grid li.marked .cull-photo{box-shadow:0 0 0 3px #ff3b30}
+.cull-keep{position:absolute;left:8px;top:8px;display:flex;align-items:center;gap:3px;border-radius:999px;background:var(--space);color:#fff;font-size:11px;font-weight:600;padding:3px 8px}
+.cull-check{position:absolute;right:8px;bottom:8px;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.9);color:var(--space);box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.cull-grid li.marked .cull-check{background:#ff3b30;color:#fff}
+.cull-meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:7px}
+.cull-score{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--label);margin-right:2px}
+.cull-meta em{font-style:normal;font-size:11px;color:#a35300;background:rgba(255,149,0,.14);border-radius:999px;padding:1px 7px}
+.cull-note{margin:4px 0 0;font-size:11px;line-height:1.5;color:var(--label-2)}
+.cull-actions{display:flex;justify-content:flex-end;gap:10px;padding-top:16px;margin-top:10px;border-top:1px solid var(--line)}
+.cull-delete{background:#ff3b30;color:#fff;box-shadow:var(--glass-rim)}
+.cull-delete:hover:not(:disabled){background:#e0342b}
+@media(max-width:640px){.cull-entry span{display:none}.cull-sheet{padding:18px 16px;border-radius:24px}.cull-stacks{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}.cull-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 /* ---- Liquid Glass (.claude/skills/liquid-glass) ------------------------------------------------
    Navigation and controls float above the map as glass; the map, its labels and photos are content. */
 .app-bar,.map-heading,.timebar,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,

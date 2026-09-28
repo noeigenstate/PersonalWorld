@@ -22,4 +22,5 @@ LIVE=1 npm run test:skills      # 含真实 StepFun / 高德调用
 | [event-analysis](event-analysis/SKILL.md) | 从一组照片重建一件事：标题、摘要、类型、地点、城市、画面文字、待确认问题 | `POST /api/analyze` | [test.mjs](event-analysis/test.mjs) | — |
 | [life-butler](life-butler/SKILL.md) | 人生管家：以事件记忆回答问题，推断内容加〔〕，引用事件 | `POST /api/butler` | [test.mjs](life-butler/test.mjs) | — |
 | [photo-card](photo-card/SKILL.md) | 单张照片信息卡：事实与推断分开、地标、带依据的线索、按隐私声明处理号码 | `POST /api/photo-card` | [test.mjs](photo-card/test.mjs) | [44/45 vs 23/45](photo-card/evals/2026-09-24/README.md) |
+| [photo-cull](photo-cull/SKILL.md) | 挑照片：相似照片逐张检查闭眼、模糊、表情，推荐保留几张 | `POST /api/photo-cull` | [test.mjs](photo-cull/test.mjs) | [36/36 vs 34/36](photo-cull/evals/2026-09-28/README.md) |
 | [photo-context](photo-context/SKILL.md) | 多张照片协同判断：与有定位的参考照片比对，补全地点、时间、事件 | `POST /api/photo-context` | [test.mjs](photo-context/test.mjs) | [48/48 vs 40/48](photo-context/evals/2026-09-24/README.md) |

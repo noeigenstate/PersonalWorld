@@ -24,4 +24,5 @@ npm run test:api
 npm run test:skills  # 每个 skill 的专门测试；LIVE=1 连接真实服务
 npm run test:smoke   # 需先 npm run dev
 npm run test:vault   # 清除浏览器数据后照片恢复；需先 npm run dev
+npm run test:cull    # 整理重复照片：分组、排序、确认后删除；需先 npm run dev
 ```

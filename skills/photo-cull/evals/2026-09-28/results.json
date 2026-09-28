@@ -1,0 +1,912 @@
+{
+  "model": "step-3.7-flash",
+  "cases": [
+    {
+      "name": "blink",
+      "note": "两人合影 5 张：a 都睁眼且清晰；b 左边的人闭眼；c 右边的人闭眼；d 都睁眼但模糊；e 都睁眼但人被裁到画面边缘"
+    },
+    {
+      "name": "landscape",
+      "note": "风景 4 张，没有人：a、b 清晰；c 模糊；d 地平线倾斜"
+    },
+    {
+      "name": "all-blink",
+      "note": "合影 3 张，每张都有人闭眼：仍要选出一张，不能多选"
+    }
+  ],
+  "results": {
+    "with-skill": {
+      "blink": [
+        {
+          "read": {
+            "reviews": {
+              "blink-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 9,
+                "note": "构图居中，两人表情自然，画质清晰"
+              },
+              "blink-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "左侧闭眼"
+                ],
+                "score": 3,
+                "note": "左侧人物闭眼，右侧正常"
+              },
+              "blink-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "右侧闭眼"
+                ],
+                "score": 3,
+                "note": "右侧人物闭眼，左侧正常"
+              },
+              "blink-d": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "整体模糊"
+                ],
+                "score": 2,
+                "note": "画面整体模糊，细节不清"
+              },
+              "blink-e": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [
+                  "构图偏右",
+                  "左侧树木裁切"
+                ],
+                "score": 6,
+                "note": "画质清晰但构图偏移，左侧树木被裁切"
+              }
+            },
+            "keep": [
+              "blink-a"
+            ],
+            "summary": "P1构图居中、表情自然且清晰度最佳，其余照片分别存在闭眼、模糊或构图问题。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "blink-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 9,
+                "note": "两人均睁眼看向镜头，表情自然，画面清晰"
+              },
+              "blink-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "左侧闭眼"
+                ],
+                "score": 3,
+                "note": "左侧人物闭眼"
+              },
+              "blink-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "右侧闭眼"
+                ],
+                "score": 3,
+                "note": "右侧人物闭眼"
+              },
+              "blink-d": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "画面模糊"
+                ],
+                "score": 2,
+                "note": "整体画面模糊失焦"
+              },
+              "blink-e": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 9,
+                "note": "两人均睁眼看向镜头，表情自然"
+              }
+            },
+            "keep": [
+              "blink-a"
+            ],
+            "summary": "P1和P5画质清晰且两人均睁眼，质量最佳；P2左侧闭眼，P3右侧闭眼，P4画面模糊。建议保留P1。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "blink-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 10,
+                "note": "两人都睁眼看镜头，表情自然清晰"
+              },
+              "blink-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "左侧闭眼"
+                ],
+                "score": 3,
+                "note": "左侧人物闭眼，表情不佳"
+              },
+              "blink-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "右侧闭眼"
+                ],
+                "score": 3,
+                "note": "右侧人物闭眼，表情不佳"
+              },
+              "blink-d": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "整体模糊"
+                ],
+                "score": 2,
+                "note": "画面严重模糊，无法清晰观看"
+              },
+              "blink-e": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [
+                  "角度略高"
+                ],
+                "score": 9,
+                "note": "两人都睁眼微笑，构图角度略高"
+              }
+            },
+            "keep": [
+              "blink-a"
+            ],
+            "summary": "P1清晰且两人都睁眼，为最佳选择；P2、P3各有闭眼，P4模糊，P5角度略偏。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        }
+      ],
+      "landscape": [
+        {
+          "read": {
+            "reviews": {
+              "land-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 9,
+                "note": "画面清晰，构图端正，地平线水平"
+              },
+              "land-b": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "画面清晰，构图端正，与P1相似"
+              },
+              "land-c": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "整体模糊"
+                ],
+                "score": 2,
+                "note": "画面严重失焦，细节不清"
+              },
+              "land-d": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [
+                  "构图歪斜"
+                ],
+                "score": 6,
+                "note": "画面清晰但地平线倾斜，构图不稳"
+              }
+            },
+            "keep": [
+              "land-a"
+            ],
+            "summary": "P1和P2清晰端正，P3严重模糊，P4构图歪斜，建议保留最清晰的P1"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "land-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 9,
+                "note": "构图水平，色彩自然清晰"
+              },
+              "land-b": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 9,
+                "note": "构图水平，色彩自然清晰"
+              },
+              "land-c": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "严重模糊"
+                ],
+                "score": 2,
+                "note": "整体模糊，细节不清"
+              },
+              "land-d": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [
+                  "构图歪斜"
+                ],
+                "score": 6,
+                "note": "画面倾斜，主体仍清晰"
+              }
+            },
+            "keep": [
+              "land-a"
+            ],
+            "summary": "P3严重模糊、P4构图歪斜，P1与P2清晰且水平，保留P1即可。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "land-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "画面清晰，构图平稳，色彩自然"
+              },
+              "land-b": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "画面内容与P1相同，同样清晰"
+              },
+              "land-c": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "画面模糊"
+                ],
+                "score": 2,
+                "note": "整体严重模糊，细节丢失"
+              },
+              "land-d": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [
+                  "构图歪斜"
+                ],
+                "score": 5,
+                "note": "画面倾斜，构图失衡"
+              }
+            },
+            "keep": [
+              "land-a"
+            ],
+            "summary": "P1和P2清晰且构图平稳，P3模糊不清，P4画面倾斜，保留P1即可。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        }
+      ],
+      "all-blink": [
+        {
+          "read": {
+            "reviews": {
+              "all-a": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "左侧人物闭眼"
+                ],
+                "score": 3,
+                "note": "左侧人物闭眼，右侧人物表情自然"
+              },
+              "all-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "右侧人物闭眼"
+                ],
+                "score": 3,
+                "note": "右侧人物闭眼，左侧人物表情自然"
+              },
+              "all-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "两人均闭眼"
+                ],
+                "score": 2,
+                "note": "两人均闭眼，建议重拍"
+              }
+            },
+            "keep": [
+              "all-b"
+            ],
+            "summary": "两人合影中P3两人均闭眼，P1左侧闭眼，P2右侧闭眼，建议保留P2。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "all-a": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [],
+                "score": 4,
+                "note": "左侧人物闭眼，右侧人物睁眼看镜头"
+              },
+              "all-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [],
+                "score": 4,
+                "note": "左侧人物睁眼看镜头，右侧人物闭眼"
+              },
+              "all-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [],
+                "score": 2,
+                "note": "两人均闭眼，表情效果不佳"
+              }
+            },
+            "keep": [
+              "all-b"
+            ],
+            "summary": "这组照片构图光线相似，P3两人均闭眼效果最差，P1、P2均有一人闭眼且有一人看镜头，保留左侧人物睁眼的P2。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "all-a": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [],
+                "score": 3,
+                "note": "左侧闭眼，右侧睁眼看镜头"
+              },
+              "all-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [],
+                "score": 3,
+                "note": "左侧睁眼看镜头，右侧闭眼"
+              },
+              "all-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [],
+                "score": 2,
+                "note": "两人均闭眼"
+              }
+            },
+            "keep": [
+              "all-a"
+            ],
+            "summary": "P1与P2各有一人闭眼，P3两人均闭眼，保留P1因右侧人物睁眼表情自然。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        }
+      ]
+    },
+    "without-skill": {
+      "blink": [
+        {
+          "read": {
+            "reviews": {
+              "blink-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 9,
+                "note": ""
+              },
+              "blink-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "左侧人物闭眼"
+                ],
+                "score": 5,
+                "note": "左侧人物闭眼"
+              },
+              "blink-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "右侧人物闭眼"
+                ],
+                "score": 5,
+                "note": "右侧人物闭眼"
+              },
+              "blink-d": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "整体模糊"
+                ],
+                "score": 2,
+                "note": "整体模糊"
+              },
+              "blink-e": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 7,
+                "note": "分辨率较低"
+              }
+            },
+            "keep": [
+              "blink-a"
+            ],
+            "summary": "P1画质最佳，两人均睁眼且无模糊；P2左侧人物闭眼，P3右侧人物闭眼；P4整体模糊；P5虽无闭眼但分辨率较低，质量不及P1，故推荐保留P1。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "blink-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 9,
+                "note": "两人均睁眼，表情自然微笑，画面清晰，构图居中平衡"
+              },
+              "blink-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "左侧人物闭眼"
+                ],
+                "score": 5,
+                "note": "左侧人物眼睛闭合，疑似眨眼"
+              },
+              "blink-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "右侧人物闭眼"
+                ],
+                "score": 5,
+                "note": "右侧人物眼睛闭合，疑似眨眼"
+              },
+              "blink-d": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "画面整体模糊"
+                ],
+                "score": 1,
+                "note": "画面严重模糊，无法清晰辨识面部细节"
+              },
+              "blink-e": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "两人均睁眼，画面清晰，但构图稍偏右，人物头部位置偏上"
+              }
+            },
+            "keep": [
+              "blink-a"
+            ],
+            "summary": "P1为最佳照片，两人均睁眼、表情自然、画面清晰且构图居中；P2、P3存在闭眼问题；P4画面模糊；P5虽清晰但构图略偏，综合比较保留P1。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "blink-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "两人均睁眼，图像清晰，构图完整，表情自然"
+              },
+              "blink-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "左侧人物闭眼"
+                ],
+                "score": 6,
+                "note": "左侧人物眨眼闭眼，影响整体效果"
+              },
+              "blink-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "右侧人物闭眼"
+                ],
+                "score": 6,
+                "note": "右侧人物眨眼闭眼，影响整体效果"
+              },
+              "blink-d": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "图像整体模糊"
+                ],
+                "score": 4,
+                "note": "图像清晰度不足，细节模糊"
+              },
+              "blink-e": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 7,
+                "note": "两人均睁眼，图像清晰，但构图较近，背景裁剪较多"
+              }
+            },
+            "keep": [
+              "blink-a"
+            ],
+            "summary": "P1为最佳选择：两人均睁眼，图像清晰锐利，构图完整平衡，表情自然。P2、P3存在闭眼问题，P4图像模糊，P5虽清晰但构图较P1稍逊。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        }
+      ],
+      "landscape": [
+        {
+          "read": {
+            "reviews": {
+              "land-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "构图标准，图像清晰，色彩正常，地平线水平"
+              },
+              "land-b": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "构图标准，图像清晰，色彩正常，地平线水平"
+              },
+              "land-c": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "图像整体模糊，细节不清晰"
+                ],
+                "score": 2,
+                "note": "严重模糊，无法用于高质量展示"
+              },
+              "land-d": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [
+                  "图像整体倾斜，构图变形"
+                ],
+                "score": 3,
+                "note": "画面倾斜，地平线不水平，影响观感"
+              }
+            },
+            "keep": [
+              "land-a"
+            ],
+            "summary": "P1与P2构图清晰且水平，质量相同；P3严重模糊；P4画面倾斜。在P1和P2中任选一张保留即可，推荐保留P1。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "land-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "画面清晰，构图水平，风景元素完整"
+              },
+              "land-b": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "画面清晰，构图水平，质量与P1相近"
+              },
+              "land-c": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "画面模糊"
+                ],
+                "score": 3,
+                "note": "图像整体失焦，细节不清"
+              },
+              "land-d": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [
+                  "构图倾斜"
+                ],
+                "score": 5,
+                "note": "画面水平线倾斜，构图不稳定"
+              }
+            },
+            "keep": [
+              "land-a"
+            ],
+            "summary": "P1与P2质量最佳且构图正常；P3模糊废片；P4构图倾斜。优先保留P1。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "land-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "图像清晰，构图标准，地平线水平"
+              },
+              "land-b": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "图像清晰，构图标准，地平线水平"
+              },
+              "land-c": {
+                "eyesClosed": false,
+                "blurry": true,
+                "issues": [
+                  "严重模糊"
+                ],
+                "score": 2,
+                "note": "图像严重模糊，所有细节均不清晰"
+              },
+              "land-d": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [
+                  "构图倾斜"
+                ],
+                "score": 4,
+                "note": "画面整体倾斜，地平线不水平，构图不规范"
+              }
+            },
+            "keep": [
+              "land-a"
+            ],
+            "summary": "P1和P2为清晰且构图正确的照片，P3存在严重模糊问题，P4构图倾斜。在P1与P2质量相近的情况下，建议保留P1作为最佳代表。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        }
+      ],
+      "all-blink": [
+        {
+          "read": {
+            "reviews": {
+              "all-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "两人均睁眼，左侧人物看向左方，右侧人物看向左前方，表情自然"
+              },
+              "all-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "右侧人物闭眼"
+                ],
+                "score": 4,
+                "note": "左侧人物睁眼，右侧人物闭眼"
+              },
+              "all-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "两人均闭眼"
+                ],
+                "score": 2,
+                "note": "两人均闭眼"
+              }
+            },
+            "keep": [
+              "all-a"
+            ],
+            "summary": "P1中两人均睁眼且表情自然；P2中右侧人物闭眼；P3中两人均闭眼。P1画面质量最佳，建议保留。"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": false,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "all-a": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [],
+                "score": 8,
+                "note": "右侧人物双眼睁开，左侧人物闭眼（可能为自然眨眼），表情自然，画面清晰"
+              },
+              "all-b": {
+                "eyesClosed": false,
+                "blurry": false,
+                "issues": [
+                  "右侧人物双眼闭眼，表情不"
+                ],
+                "score": 6,
+                "note": "左侧人物睁眼，右侧人物闭眼，合影时一人闭眼影响整体观感"
+              },
+              "all-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "两人均闭眼"
+                ],
+                "score": 5,
+                "note": "两人均闭眼微笑，虽显放松但缺乏眼神交流，不适合作为肖像照"
+              }
+            },
+            "keep": [
+              "all-a"
+            ],
+            "summary": "三张照片背景和构图完全相同，主体为两位男性卡通人物。P1中右侧人物睁眼，左侧人物闭眼，整体表情自然，质量最佳；P2左侧人物睁眼但右侧人物闭眼，表情不协调；P3两"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": false,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        },
+        {
+          "read": {
+            "reviews": {
+              "all-a": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "左侧人物闭眼"
+                ],
+                "score": 8,
+                "note": "左侧人物微笑闭眼，右侧人物睁眼，表情自然生动，仅左侧眨眼影响"
+              },
+              "all-b": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "右侧人物闭眼"
+                ],
+                "score": 7,
+                "note": "右侧人物闭眼，左侧人物睁眼，表情自然，与P1相比左侧睁眼右侧闭眼"
+              },
+              "all-c": {
+                "eyesClosed": true,
+                "blurry": false,
+                "issues": [
+                  "双人均闭眼，处于眨眼瞬间"
+                ],
+                "score": 5,
+                "note": "两人同时闭眼，捕捉到眨眼瞬间，非最佳状态"
+              }
+            },
+            "keep": [
+              "all-a"
+            ],
+            "summary": "三张照片构图完全相同，背景元素一致。P3因双人同时闭眼（眨眼瞬间）效果最差，不予考虑；P1与P2各有一人闭眼一人睁眼，表情均自然。最终保留P1，因左侧人物闭眼微"
+          },
+          "grade": {
+            "coversAll": true,
+            "eyesExact": true,
+            "blurryFound": true,
+            "keepRight": true
+          }
+        }
+      ]
+    }
+  }
+}

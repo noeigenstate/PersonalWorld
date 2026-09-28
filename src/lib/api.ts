@@ -1,5 +1,6 @@
 import type { AiConfig, AnalysisResult, GeocodeResult, MemoryAsset, MemoryEvent, PhotoCard, PhotoContext, Place } from '../types'
 import type { Reference } from './peers'
+import type { CullReview } from './cull'
 import { getFile } from './storage'
 import { heicAsJpeg, isHeic } from './import'
 import { formatDate } from './memory'
@@ -97,6 +98,11 @@ export async function inferFromPeers(target: MemoryAsset, targetKnown: Reference
     target: { dataUrl: target.preview, known: targetKnown },
     refs: refs.map((r) => ({ id: r.asset.id, dataUrl: r.asset.preview, known: r.known })),
   }))
+}
+
+// Which photos of a near-duplicate stack to keep (skills/photo-cull); images are small review copies
+export async function reviewStack(photos: { id: string; dataUrl: string; time?: string; sharpness?: number }[], keep: number): Promise<{ reviews: Record<string, CullReview>; keep: string[]; summary: string }> {
+  return jsonResponse(await post('/api/photo-cull', { photos, keep }))
 }
 
 export async function geocode(points: { id: string; lat: number; lng: number }[]): Promise<GeocodeResult[]> {

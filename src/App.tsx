@@ -14,7 +14,7 @@ import { startRecording } from './lib/recorder'
 import { geocodeInBrowser } from './map/amap'
 import { visitRoutes } from './lib/storyRoutes'
 import { loadMemory, removeFile, restoredFromVault, saveMemory } from './lib/storage'
-import type { AiConfig, MemoryAsset, MemoryEvent, MemoryState, PlaceRole } from './types'
+import type { AiConfig, MemoryAsset, MemoryEvent, MemoryState, PhotoLook, PlaceRole } from './types'
 import { Butler, type ButlerMessage, type VoiceState } from './components/Butler'
 import { EventDetail, statusLabel } from './components/EventDetail'
 import { ImportDialog } from './components/ImportDialog'
@@ -24,6 +24,7 @@ import { MemoryFilms } from './components/MemoryFilms'
 import { useSceneCoverage } from './lib/useSceneCoverage'
 import { useMemoryGraph } from './lib/useMemoryGraph'
 import { MemoryLibrary } from './components/MemoryLibrary'
+import { PhotoCull } from './components/PhotoCull'
 import { SceneCoverage } from './components/SceneCoverage'
 import type { StoryChapter } from './lib/memoryGraph'
 
@@ -389,14 +390,24 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
 
   async function deleteAsset(id: string) {
     if (!window.confirm('要移除这个影像吗？浏览器缓存和服务电脑上的副本都会删除，无法撤销。')) return
-    await removeFile(id)
-    setMemory((current) => ({
-      ...current,
-      assets: current.assets.filter((a) => a.id !== id),
-      events: current.events.map((e) => ({ ...e, assetIds: e.assetIds.filter((assetId) => assetId !== id) })).filter((e) => e.assetIds.length),
-    }))
+    await deleteAssets([id])
     setNotice('影像已移除')
   }
+
+  // Removes photos everywhere: files, vault copies, and events left without photos
+  async function deleteAssets(ids: string[]) {
+    for (const id of ids) await removeFile(id)
+    const gone = new Set(ids)
+    setMemory((current) => ({
+      ...current,
+      assets: current.assets.filter((a) => !gone.has(a.id)),
+      events: current.events.map((e) => ({ ...e, assetIds: e.assetIds.filter((assetId) => !gone.has(assetId)) })).filter((e) => e.assetIds.length),
+    }))
+  }
+
+  const saveLooks = useCallback((looks: Record<string, PhotoLook>) => {
+    setMemory((current) => ({ ...current, assets: current.assets.map((a) => (looks[a.id] ? { ...a, look: looks[a.id] } : a)) }))
+  }, [])
 
   function stopSpeaking() {
     audio.current?.pause()
@@ -503,6 +514,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       <header className="app-bar">
         <span className="app-brand"><Aperture size={22} strokeWidth={2} /><span>Personal World</span></span>
         <div className="app-actions">
+          <PhotoCull assets={memory.assets} ready={ready} aiAvailable={aiConfig.available} onLooks={saveLooks} onDelete={async (ids) => { await deleteAssets(ids); setNotice(`已删除 ${ids.length} 张照片`) }} />
           <MemoryLibrary library={library} assets={memory.assets} onPhoto={openPhoto} onFilm={chapter=>setFilmChapter({chapter,at:Date.now()})} />
           <MemoryFilms assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId) || library.busy} graph={library.state} requestedChapter={filmChapter} />
           <span className={`connection-status ${aiConfig.available ? 'online' : ''}`} title={aiConfig.message}><span />{aiConfig.available ? 'StepFun 已连接' : '本地模式'}</span>

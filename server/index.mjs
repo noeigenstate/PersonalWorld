@@ -10,6 +10,7 @@ import { loadSkill } from './skills.mjs'
 import { maskDeep } from './privacy.mjs'
 import { contextMessages, readContext } from './photoContext.mjs'
 import { cardMessages, readCard } from './photoCard.mjs'
+import { MAX_PHOTOS as CULL_MAX, cullMessages, readCull } from './photoCull.mjs'
 import { mapSceneForPoint } from './mapScene.mjs'
 import { createFilmService } from './memoryFilms.mjs'
 import { filmCapability } from './memoryFilmRender.mjs'
@@ -122,6 +123,16 @@ const routes = {
     const answer = parseJsonAnswer(await chat(stepfun, contextMessages({ system: loadSkill('photo-context'), target, refs, consented }), { json: true }))
     const reveal = consented ? (value) => value : maskDeep
     return [200, reveal(readContext(answer, refs))]
+  },
+
+  // Near-duplicate photos: which to keep (skills/photo-cull)
+  async 'POST /api/photo-cull'(body) {
+    const isImage = (v) => typeof v === 'string' && /^data:image\/(jpeg|png|webp);base64,/i.test(v)
+    const photos = (Array.isArray(body.photos) ? body.photos : []).filter((p) => typeof p?.id === 'string' && isImage(p.dataUrl)).slice(0, CULL_MAX)
+    if (photos.length < 2) return [400, { error: '至少需要两张相似的照片' }]
+    const keep = Math.max(1, Math.min(photos.length - 1, Number(body.keep) || 1))
+    const answer = parseJsonAnswer(await chat(stepfun, cullMessages({ system: loadSkill('photo-cull'), photos, keep }), { json: true }))
+    return [200, readCull(answer, photos)]
   },
 
   async 'POST /api/geocode'(body) {

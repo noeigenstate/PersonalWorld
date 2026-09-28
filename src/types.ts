@@ -30,8 +30,20 @@ export interface MemoryAsset {
   hash: string
   // 4×4 colour layout of the preview, used to rank similar photos
   signature?: number[]
+  // Pixel statistics of the preview for finding near-duplicates (src/lib/cull.ts)
+  look?: PhotoLook
   card?: PhotoCard
   context?: PhotoContext
+}
+
+export interface PhotoLook {
+  // 64-bit difference hash as 16 hex digits; empty when the preview could not be measured
+  dhash: string
+  // Variance of the Laplacian on a 320 px copy: higher is sharper
+  sharpness: number
+  // Mean luminance 0–255 and the share of clipped pixels
+  brightness: number
+  clipped: number
 }
 
 export interface PhotoLocation {

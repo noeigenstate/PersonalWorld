@@ -15,6 +15,7 @@
     "test:smoke": "node tests/smoke.mjs",
     "test:api": "node tests/api.mjs",
     "test:vault": "node tests/vault-restore.mjs",
+    "test:cull": "node --experimental-strip-types --test tests/photo-cull-logic.mjs && node tests/photo-cull.mjs",
     "test:amap": "node tests/amap.mjs",
     "test:card": "node tests/photo-card.mjs",
     "test:context": "node tests/photo-context.mjs",
