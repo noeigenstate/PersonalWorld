@@ -9,7 +9,11 @@ Verified against the live API on 2026-09-24. Docs index: https://platform.stepfu
 
 ## Rules that apply to every call
 
-- Base URL `https://api.stepfun.com/v1`, header `Authorization: Bearer $STEPFUN_API_KEY`.
+- **Step Plan first**: base URL `https://api.stepfun.com/step_plan/v1` bills the subscription credit
+  (Step Plan · 消耗套餐 Credit). `https://api.stepfun.com/v1` bills the account balance — the same key
+  works on both, so a wrong base URL silently spends the balance. Header `Authorization: Bearer $STEPFUN_API_KEY`.
+- Step Plan models (2026-09-28): step-3.7-flash, step-router-v1, stepaudio-2.5-chat / -tts / -asr / -realtime,
+  step-image-edit-2, step-3.5-flash(-2603), step-5-preview.
 - Keep the key on the server. Browsers call your own backend, which calls StepFun.
 - The API is OpenAI-compatible for chat, but audio endpoints have their own model names (below). Do not reuse the chat model for audio.
 
@@ -30,7 +34,22 @@ Verified against the live API on 2026-09-24. Docs index: https://platform.stepfu
 - Check `choices[0].finish_reason === 'length'` and report truncation instead of parsing half a JSON.
 - Typical latency: 3–4 s for a short JSON answer.
 
-## Speech to text — `POST /v1/audio/transcriptions`
+## Speech to text on Step Plan — `POST /step_plan/v1/audio/asr/sse`
+
+Step Plan has **no** `/audio/transcriptions` (404). Send JSON with base64 audio; the answer is server-sent events:
+
+```js
+fetch(`${base}/audio/asr/sse`, { method: 'POST',
+  headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+  body: JSON.stringify({ audio: { data: wavBase64,
+    input: { transcription: { model: 'stepaudio-2.5-asr', language: 'zh' }, format: { type: 'wav' } } } }) })
+// data: {"type":"transcript.text.delta","delta":"今天天气很好。",…}
+// data: {"type":"transcript.text.done","text":"今天天气很好。",…}   ← use this text
+```
+
+Multipart to `/audio/asr/sse` gives `400 invalid request format`. Chat and TTS paths are the same as below.
+
+## Speech to text on the balance endpoint — `POST /v1/audio/transcriptions`
 
 multipart/form-data fields:
 

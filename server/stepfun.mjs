@@ -1,8 +1,10 @@
 // StepFun OpenAI-compatible API. Docs: https://platform.stepfun.com/docs/llms.txt
+// Default is the Step Plan (subscription credit) endpoint; https://api.stepfun.com/v1 bills the balance.
+export const STEP_PLAN_URL = 'https://api.stepfun.com/step_plan/v1'
 
 export function stepfunConfig(env = process.env) {
   return {
-    baseUrl: (env.STEPFUN_BASE_URL || 'https://api.stepfun.com/v1').replace(/\/$/, ''),
+    baseUrl: (env.STEPFUN_BASE_URL?.trim() || STEP_PLAN_URL).replace(/\/$/, ''),
     apiKey: env.STEPFUN_API_KEY?.trim(),
     model: env.STEPFUN_MODEL?.trim(),
     asrModel: env.STEPFUN_ASR_MODEL?.trim() || 'stepaudio-2.5-asr',
@@ -65,9 +67,41 @@ export function parseJsonAnswer(value) {
   }
 }
 
-// POST /v1/audio/transcriptions, multipart: model, response_format, file (mp3/pcm/ogg/wav)
+// Step Plan has no /audio/transcriptions: speech goes to POST /audio/asr/sse as base64 JSON and the
+// transcript comes back as server-sent events (transcript.text.delta …, then transcript.text.done)
+export const usesStepPlan = (config) => /\/step_plan(\/|$)/.test(config.baseUrl)
+
+export function readAsrEvents(stream) {
+  let done = '', deltas = ''
+  // One event per line; trim() also drops a CR
+  for (const line of stream.split(String.fromCharCode(10)).map((l) => l.trim())) {
+    if (!line.startsWith('data:')) continue
+    const payload = line.slice(5).trim()
+    if (!payload || payload === '[DONE]') continue
+    let event
+    try { event = JSON.parse(payload) } catch { continue }
+    if (event.type === 'transcript.text.done' && typeof event.text === 'string') done = event.text
+    else if (event.type === 'transcript.text.delta' && typeof event.delta === 'string') deltas += event.delta
+    else if (event.type === 'error' || event.error) throw new Error(`StepFun 语音识别失败：${event.error?.message || event.message || '未知错误'}`)
+  }
+  return (done || deltas).trim()
+}
+
+// Step Plan: POST /audio/asr/sse; balance: POST /v1/audio/transcriptions, multipart (mp3/pcm/ogg/wav)
 export async function transcribe(config, wav) {
   requireKey(config)
+  if (usesStepPlan(config)) {
+    return withTimeout(60_000, async (signal) => {
+      const response = await fetch(`${config.baseUrl}/audio/asr/sse`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({ audio: { data: Buffer.from(wav).toString('base64'), input: { transcription: { model: config.asrModel, language: 'zh' }, format: { type: 'wav' } } } }),
+        signal,
+      })
+      if (!response.ok) throw await failure(response)
+      return readAsrEvents(await response.text())
+    })
+  }
   return withTimeout(60_000, async (signal) => {
     const form = new FormData()
     form.append('model', config.asrModel)
