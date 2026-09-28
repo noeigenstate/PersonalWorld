@@ -23,6 +23,8 @@ page.on('pageerror', (error) => errors.push(error.message))
 await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'globe-zoom-test', username: '测试', createdAt: '2026-09-28T00:00:00Z', privacyAccepted: true } } }))
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '测试', geocode: false, amapJsKey: key } }))
 await page.route('**/api/photo-card', (route) => route.fulfill({ status: 503, json: { error: '测试中不生成信息卡' } }))
+// Events analyze themselves; a real 401 here (mocked session) would sign the test out
+await page.route('**/api/analyze', (route) => route.fulfill({ status: 503, json: { error: '测试中不分析事件' } }))
 await page.route('**/api/vault/**', (route) => route.request().method() === 'GET' && route.request().url().endsWith('/assets') ? route.fulfill({ json: { previews: [], originals: [] } }) : route.request().method() === 'GET' ? route.fulfill({ json: { memory: null, extras: {} } }) : route.fulfill({ json: { ok: true } }))
 // Same mapping as server/amap.mjs, done here so the test needs no signed-in session
 await page.route('**/_AMapService/**', async (route) => {
@@ -90,7 +92,7 @@ try {
   const [glng, glat] = await center(globe)
   const [alng, alat] = await center(amap)
   assert.ok(Math.abs(glng - alng) < 3 && Math.abs(glat - alat) < 3, `地球回到地图所在处（地图 ${alng},${alat}，地球 ${glng},${glat}）`)
-  assert.ok(Number(await globe.getAttribute('data-altitude')) > 1.3, '回到地球时高度高于交接点，不会立刻又切走')
+  assert.ok(Number(await globe.getAttribute('data-altitude')) > 0.5, '回到地球时高度高于交接点（HANDOFF_ALTITUDE），不会立刻又切走')
   await page.locator('.app-shell.globe-mode').waitFor()
 
   // Time bar: scrubbing back hides photos taken later

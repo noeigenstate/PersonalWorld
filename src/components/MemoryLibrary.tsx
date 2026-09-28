@@ -6,8 +6,10 @@ import type { StoryChapter } from '../lib/memoryGraph'
 import type { useMemoryGraph } from '../lib/useMemoryGraph'
 import './memoryLibrary.css'
 
-export function MemoryLibrary({library,assets,onPhoto,onFilm}:{library:ReturnType<typeof useMemoryGraph>;assets:MemoryAsset[];onPhoto:(id:string)=>void;onFilm:(chapter:StoryChapter)=>void}){
+// No entry button of its own: the life butler opens it (`openRequest` changes) when asked about people or stories
+export function MemoryLibrary({library,assets,onPhoto,onFilm,openRequest,entry=false}:{library:ReturnType<typeof useMemoryGraph>;assets:MemoryAsset[];onPhoto:(id:string)=>void;onFilm:(chapter:StoryChapter)=>void;openRequest?:{tab?:'people'|'stories';at:number}|null;entry?:boolean}){
   const [open,setOpen]=useState(false),[tab,setTab]=useState<'people'|'stories'>('people'),[personId,setPersonId]=useState('')
+  useEffect(()=>{if(openRequest){setOpen(true);if(openRequest.tab)setTab(openRequest.tab)}},[openRequest])
   const [selected,setSelected]=useState<string[]>([]),[name,setName]=useState(''),[relationship,setRelationship]=useState(''),[target,setTarget]=useState(''),[note,setNote]=useState('')
   const [error,setError]=useState(''),[saving,setSaving]=useState(false)
   const state=library.state,person=state?.people.find(p=>p.id===personId),faces=state?.faces.filter(f=>f.personId===personId&&f.status!=='ignored')||[]
@@ -19,7 +21,7 @@ export function MemoryLibrary({library,assets,onPhoto,onFilm}:{library:ReturnTyp
   const correct=(action:string,extra={})=>act('/correct',{action,personId,faceIds:selected,...extra})
   const label=(id:string)=>{const p=state?.people.find(v=>v.id===id);return p?.name||p?.relationship||'待确认人物'}
   return <>
-    <button className="button" onClick={()=>setOpen(true)}><BookOpen size={16}/><span>人物与故事</span>{library.busy&&<small>整理中</small>}</button>
+    {entry&&<button className="button" onClick={()=>setOpen(true)}><BookOpen size={16}/><span>人物与故事</span>{library.busy&&<small>整理中</small>}</button>}
     {open&&createPortal(<div className="modal-backdrop" onClick={()=>setOpen(false)}><section className="memory-library" role="dialog" aria-modal="true" aria-labelledby="library-heading" onClick={e=>e.stopPropagation()}>
       <header className="modal-header"><div><span className="section-kicker">把分散的片刻，慢慢连起来</span><h2 id="library-heading">人物与故事</h2></div><button className="icon-button" aria-label="关闭人物与故事" onClick={()=>setOpen(false)}><X/></button></header>
       <div className="library-status"><span>{library.busy?`本机正在整理人物 ${library.progress.done}/${library.progress.total}`:state?`已处理 ${state.runs.filter(r=>r.status!=='failed').length} 张 · ${state.people.filter(p=>p.confirmed).length} 位已确认人物 · ${state.graph.chapters.length} 个故事章节`:'正在读取相册…'}</span><button className="button button-subtle" onClick={()=>library.setPaused(!library.paused)}>{library.paused?'开启自动整理':'暂停自动整理'}</button></div>

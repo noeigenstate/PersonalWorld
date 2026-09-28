@@ -8,9 +8,14 @@ import { nextFilmUpdate } from '../lib/filmUpdates'
 import { loadFilmSettings, saveFilmSettings } from '../lib/storage'
 import type { MemoryGraphState, StoryChapter } from '../lib/memoryGraph'
 
-// `entry` shows the button; the component stays mounted without it so films keep being made in the background
-export function MemoryFilms({ assets, events, ready, analyzing, graph, requestedChapter, entry = true }: { assets: MemoryAsset[]; events: MemoryEvent[]; ready: boolean; analyzing: boolean; graph:MemoryGraphState|null; requestedChapter:{chapter:StoryChapter;at:number}|null; entry?: boolean }) {
+export interface FilmSummary { id: string; title: string; assetIds: string[] }
+
+// The component stays mounted without an entry button so films keep being made in the background;
+// the life butler plays them (`requestedPlay`), asks for new ones (`requestedFilm`) and learns
+// which exist and whether this computer can render (`onFilms`)
+export function MemoryFilms({ assets, events, ready, analyzing, graph, requestedChapter, requestedPlay, requestedFilm, onFilms, entry = false }: { assets: MemoryAsset[]; events: MemoryEvent[]; ready: boolean; analyzing: boolean; graph:MemoryGraphState|null; requestedChapter:{chapter:StoryChapter;at:number}|null; requestedPlay?:{id?:string;at:number}|null; requestedFilm?:{assetIds?:string[];at:number}|null; onFilms?:(films:FilmSummary[],capable:boolean)=>void; entry?: boolean }) {
   const [open, setOpen] = useState(false)
+  const [autoplay, setAutoplay] = useState(false)
   const [jobs, setJobs] = useState<FilmJob[]>([])
   const [settings, setSettings] = useState<{ enabled: boolean; attempted: string[] } | null>(null)
   const [capable, setCapable] = useState<boolean | null>(null)
@@ -92,6 +97,34 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
     } catch (e) { if (alive.current) setError(e instanceof Error ? e.message : '生成失败') }
     finally { lock.current = false; if (alive.current) setStarting(false) }
   }
+
+  // Completed films, for the butler to offer and play by name
+  const completed: FilmSummary[] = jobs.filter((j) => j.status === 'complete').map((j) => ({ id: j.id, title: j.plan?.title || '回忆短片', assetIds: j.plan?.shots.map((s) => s.assetId) || [] }))
+  const completedKey = completed.map((f) => `${f.id}:${f.title}`).join('|')
+  const reportFilms = useRef(onFilms); reportFilms.current = onFilms
+  useEffect(() => { reportFilms.current?.(completed, capable === true) }, [completedKey, capable]) // eslint-disable-line react-hooks/exhaustive-deps
+  // The butler asked for a film of these photos: open the window and start cutting (the window
+  // explains itself when the renderer is missing or already busy)
+  const filmHandled = useRef(0)
+  useEffect(() => {
+    if (!requestedFilm || filmHandled.current === requestedFilm.at || !loaded) return
+    filmHandled.current = requestedFilm.at
+    setOpen(true)
+    if (!capable || !batch || current || starting) return
+    const wanted = requestedFilm.assetIds?.length ? sources.filter((s) => requestedFilm.assetIds!.includes(s.id)) : sources
+    const candidates = wanted.length >= 2 ? wanted : sources
+    if (candidates.length >= 2) void start(true, undefined, `manual-v3:voice:${requestedFilm.at}`, candidates)
+  }, [requestedFilm, loaded, capable, batch, current, starting, sources]) // eslint-disable-line react-hooks/exhaustive-deps
+  const playHandled = useRef(0)
+  useEffect(() => {
+    if (!requestedPlay || playHandled.current === requestedPlay.at) return
+    playHandled.current = requestedPlay.at
+    const film = jobs.find((j) => j.id === requestedPlay.id && j.status === 'complete') || jobs.find((j) => j.status === 'complete')
+    if (film) setSelected(film.id)
+    setAutoplay(Boolean(film))
+    setOpen(true)
+  }, [requestedPlay, jobs])
+  useEffect(() => { if (!open) setAutoplay(false) }, [open])
 
   const chapterHandled=useRef(0)
   useEffect(()=>{
@@ -240,7 +273,7 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
         <div className="modal-header"><div><span className="section-kicker">留住平常的小日子</span><h2 id="film-heading">你的回忆，自己成片</h2></div><button className="icon-button" onClick={() => setOpen(false)} aria-label="关闭回忆短片"><X size={21} /></button></div>
         <div className="film-layout">
           <div className="film-screen">
-            {displayed?.status === 'complete' ? <video key={displayed.id} controls playsInline preload="metadata" poster={`/api/memory-films/${displayed.id}/poster`} src={displayed.url} /> : <div className="film-placeholder">
+            {displayed?.status === 'complete' ? <video key={displayed.id} controls playsInline autoPlay={autoplay} preload="metadata" poster={`/api/memory-films/${displayed.id}/poster`} src={displayed.url} /> : <div className="film-placeholder">
               <div className="film-photo-stack">{assets.filter((a) => a.kind === 'image' && a.preview).slice(-3).map((a) => <img key={a.id} src={a.preview} alt="回忆照片" />)}</div>
               <Film size={30} /><h3>{current ? '正在把片段串成回忆' : '让照片慢慢讲一个故事'}</h3><p>{status}</p>
               {current && <progress value={current.progress} max={100} />}

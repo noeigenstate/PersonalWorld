@@ -21,7 +21,7 @@
     "world:pull": "node scripts/world-data.mjs pull",
     "test:world": "node tests/cartoon-world.mjs",
     "test:spacetime": "node tests/spacetime-scene.mjs",
-    "test:unit": "node --experimental-strip-types --test tests/time-ticks.mjs tests/photo-cull-logic.mjs",
+    "test:unit": "node --experimental-strip-types --test tests/time-ticks.mjs tests/photo-cull-logic.mjs tests/firsts-lasts.mjs",
     "test:cull": "node --experimental-strip-types --test tests/photo-cull-logic.mjs && node tests/photo-cull.mjs",
     "test:amap": "node tests/amap.mjs",
     "test:terrain": "node tests/terrain.mjs",

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, ArrowRight, CalendarDays, Check, CircleHelp, Clock3, FileImage, MapPin, Pencil, Play, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CalendarDays, Check, CircleHelp, Clock3, FileImage, LoaderCircle, MapPin, Pencil, Play, Sparkles, Trash2, X } from 'lucide-react'
 import type { MemoryAsset, MemoryEvent } from '../types'
 import { cityLabel, eventCover, formatDate } from '../lib/memory'
 import type { PhotoFacts } from '../lib/photoFacts'
@@ -31,10 +31,12 @@ interface Props {
   event: MemoryEvent
   assets: MemoryAsset[]
   firsts: string[]
+  // "Last time" facts the record can stand behind (src/lib/firstsLasts.ts)
+  lasts?: string[]
   aiAvailable: boolean
+  // The automatic analysis is working on this event right now
   busy: boolean
   onClose: () => void
-  onAnalyze: () => void
   onSave: (event: MemoryEvent) => void
   onDeleteAsset: (id: string) => void
   cardBusyIds: string[]
@@ -45,7 +47,7 @@ interface Props {
   identities?:Record<string,string[]>
 }
 
-export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose, onAnalyze, onSave, onDeleteAsset, cardBusyIds, onGenerateCard, peers, initialAssetId, identities }: Props) {
+export function EventDetail({ event, assets, firsts, lasts = [], aiAvailable, busy, onClose, onSave, onDeleteAsset, cardBusyIds, onGenerateCard, peers, initialAssetId, identities }: Props) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(event)
   const [activeAssetId, setActiveAssetId] = useState<string | null>(initialAssetId ?? null)
@@ -121,7 +123,7 @@ export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose,
                     {event.understanding.insights.map((insight, index) => <p key={index}>{insight.text}</p>)}
                     <small>结合照片线索与已确认人物关系更新。你确认的事件内容会保留。</small>
                   </section>}
-                  {firsts.length > 0 && <div className="first-tags">{firsts.map((first) => <span key={first}>{first}</span>)}</div>}
+                  {(firsts.length > 0 || lasts.length > 0) && <div className="first-tags">{firsts.map((first) => <span key={first}>{first}</span>)}{lasts.map((last) => <span className="last" key={last}>{last}</span>)}</div>}
                   <div className="detail-fields">
                     <div><span>地点</span><strong>{where || '尚未确认'}</strong>{event.city && event.citySource && <small className={event.citySource === 'ai' ? 'unsure' : ''}>{sourceNote[event.citySource]}</small>}</div>
                     <div><span>事件类型</span><strong>{event.type}</strong></div>
@@ -155,9 +157,16 @@ export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose,
               </div>
             </div>
           </div>
+          {/* Analysis runs by itself (App); the person only corrects and confirms */}
           <div className="detail-footer">
-            <button className="button button-subtle" onClick={() => setEditing(true)}><Pencil size={17} />手动完善</button>
-            <button className="button button-primary" onClick={onAnalyze} disabled={busy || !aiAvailable}><Sparkles size={17} />{busy ? '正在分析…' : '用 StepFun 分析'}</button>
+            <span className="detail-auto" role="status">
+              {busy ? <LoaderCircle size={15} className="film-spin" /> : <Sparkles size={15} />}
+              {busy ? '正在自动分析这件事…' : event.status === 'draft' ? (aiAvailable ? '等待自动分析' : '接入 StepFun 后会自动分析') : event.status === 'analyzed' ? '已自动分析，请核对' : '你已确认'}
+            </span>
+            <div>
+              <button className="button button-subtle" onClick={() => setEditing(true)}><Pencil size={17} />手动完善</button>
+              {event.status === 'analyzed' && !editing && <button className="button button-primary" onClick={() => onSave({ ...event, status: 'confirmed', questions: [] })}><Check size={17} />确认无误</button>}
+            </div>
           </div>
         </section>
       </div>

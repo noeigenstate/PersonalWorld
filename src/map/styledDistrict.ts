@@ -78,14 +78,62 @@ function polygonGeometry(rings: Point[][], z: number) {
   return geometry
 }
 
+// Footprints as mapped: consecutive points a few centimetres apart and corners that are nearly
+// straight lines. Dropped before building on them, or the bevel below throws long spikes.
+function cleanRing(ring: Point[], minEdge = .8): Point[] {
+  const open = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring.slice()
+  let points = open.filter((point, i) => i === 0 || Math.hypot(point[0] - open[i - 1][0], point[1] - open[i - 1][1]) >= minEdge)
+  if (points.length > 1 && Math.hypot(points[0][0] - points[points.length - 1][0], points[0][1] - points[points.length - 1][1]) < minEdge) points = points.slice(0, -1)
+  // Nearly collinear corners add nothing but a place for the bevel to go wrong
+  points = points.filter((point, i) => {
+    const prev = points[(i - 1 + points.length) % points.length], next = points[(i + 1) % points.length]
+    const a = Math.atan2(point[1] - prev[1], point[0] - prev[0]), b = Math.atan2(next[1] - point[1], next[0] - point[0])
+    return Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a))) > .06
+  })
+  return points.length >= 3 ? [...points, points[0]] : []
+}
+
+// Sharpest interior corner of a ring, in radians (π = straight)
+function sharpestCorner(ring: Point[]) {
+  const points = ring.slice(0, -1)
+  let sharpest = Math.PI
+  for (let i = 0; i < points.length; i++) {
+    const prev = points[(i - 1 + points.length) % points.length], point = points[i], next = points[(i + 1) % points.length]
+    const ax = prev[0] - point[0], ay = prev[1] - point[1], bx = next[0] - point[0], by = next[1] - point[1]
+    const angle = Math.acos(THREE.MathUtils.clamp((ax * bx + ay * by) / (Math.hypot(ax, ay) * Math.hypot(bx, by) || 1), -1, 1))
+    sharpest = Math.min(sharpest, angle)
+  }
+  return sharpest
+}
+
+// Any two non-adjacent edges crossing: earcut and the bevel both turn such a ring into shards
+function selfIntersects(ring: Point[]) {
+  const n = ring.length - 1
+  const cross = (o: Point, a: Point, b: Point) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
+    if (i === 0 && j === n - 1) continue
+    const a = ring[i], b = ring[i + 1], c = ring[j], d = ring[j + 1]
+    if (cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0) return true
+  }
+  return false
+}
+
+const shortestEdge = (ring: Point[]) => Math.min(...ring.slice(1).map((point, i) => Math.hypot(point[0] - ring[i][0], point[1] - ring[i][1])))
+
+// The soft, bevelled roof cap. ExtrudeGeometry offsets corners along their bisector, so an acute
+// corner or a short edge throws a spike many metres long; those roofs stay flat instead.
 function softenedRoofGeometry(rings: Point[][], z: number, size: number) {
+  const outer = rings[0]
+  if (!outer || outer.length < 4 || sharpestCorner(outer) < .5 || selfIntersects(outer)) return null
+  const bevel = Math.min(size * .55, shortestEdge(outer) * .3)
+  if (bevel < .3) return null
   const shape = ringShape(rings)
   if (!shape) return null
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: size * .7,
     bevelEnabled: true,
-    bevelThickness: size * .42,
-    bevelSize: size * .55,
+    bevelThickness: Math.min(size * .42, bevel * .8),
+    bevelSize: bevel,
     bevelSegments: 2,
     curveSegments: 2,
     steps: 1,
@@ -619,9 +667,9 @@ export function createStyledDistrict(convert: Convert, clearAt: Point = ORIENTAL
   }
   const anchor = convert([clearAt])[0]
   for (const item of data.buildings) {
-    const rings = item.rings.map(transform)
+    const rings = item.rings.map(transform).map(cleanRing).filter((ring) => ring.length >= 4)
     const outer = rings[0]
-    if (outer.length < 4) continue
+    if (!outer || outer.length < 4 || selfIntersects(outer)) continue
     const center: Point = [outer.reduce((sum, point) => sum + point[0], 0) / outer.length, outer.reduce((sum, point) => sum + point[1], 0) / outer.length]
     occupied.push(outer)
     if (Math.hypot(center[0] - anchor[0], center[1] - anchor[1]) < clearRadius) continue

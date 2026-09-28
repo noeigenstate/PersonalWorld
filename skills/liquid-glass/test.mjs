@@ -18,8 +18,8 @@ test('SKILL.md 格式完整，记录了 HIG 的关键规则', () => {
 test('审查器能识别违规样例', () => {
   const bad = `:root{--muted:#aaaaaa}
 .map-label{background:var(--glass-sheen),#fff;box-shadow:var(--glass-rim)}
-.butler{backdrop-filter:blur(8px)}
-.butler .bubble{backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
+.tray{backdrop-filter:blur(8px)}
+.tray .chip{backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
 .map-photo:hover{transform:scale(1.04)}
 .map-photo-menu{background:var(--glass-sheen)}`
   const failed = audit(bad).filter((r) => !r.ok).map((r) => r.rule)

@@ -31,7 +31,7 @@ export function parseCss(text) {
   return rules
 }
 
-export const NAVIGATION = ['.app-bar', '.map-heading', '.butler', '.tray', '.map-photo-menu', '.import-modal', '.detail-panel', '.auth-card', '.privacy-modal']
+export const NAVIGATION = ['.app-bar', '.map-heading', '.tray', '.map-photo-menu', '.import-modal', '.detail-panel', '.auth-card', '.privacy-modal']
 export const CONTENT = ['.map-label', '.map-photo']
 const TOKENS = ['--glass-fill', '--glass-fill-thick', '--glass-blur', '--glass-sheen', '--glass-rim', '--glass-shadow', '--glass-edge', '--fill', '--label', '--accent']
 

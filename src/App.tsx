@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Aperture, ChevronLeft, CircleHelp, LogOut, Plus, Upload, UserRound, X } from 'lucide-react'
-import { analyzeEvent, askButler, fetchAiConfig, generatePhotoCard, geocode, inferFromPeers, speak, transcribe, type Account, type ButlerFocus, type ButlerTurn } from './lib/api'
+import { ChevronLeft, CircleHelp, LogOut, Plus, Upload, UserRound, X } from 'lucide-react'
+import { CakeLogo } from './components/CakeLogo'
+import { analyzeEvent, askButler, fetchAiConfig, generatePhotoCard, geocode, inferFromPeers, speak, transcribe, type Account, type ButlerAction, type ButlerFocus, type ButlerMemoryPhoto, type ButlerState, type ButlerTurn } from './lib/api'
 import { colorSignature, knownAbout, pickReferences } from './lib/peers'
 import { better, inheritFromEvent } from './lib/location'
 import { gcj02ToWgs84, wgs84ToGcj02 } from './lib/geo'
@@ -9,18 +10,20 @@ import type { MapPhoto } from './map/scene'
 import { detailedAddresses, locateAddress, searchPlace } from './map/amap'
 import type { PhotoFacts } from './lib/photoFacts'
 import { importFiles } from './lib/import'
-import { baseAt, cityLabel, derivePlaces, firstsOf, formatYearMonth, regroupDrafts, roleLabels, spaceLine, storyLine } from './lib/memory'
-import { startRecording } from './lib/recorder'
+import { baseAt, cityLabel, derivePlaces, firstsOf, formatYearMonth, lastsOf, movesForButler, regroupDrafts, roleLabels, spaceLine, storyLine } from './lib/memory'
+import { startRecording, type Recording } from './lib/recorder'
 import { geocodeInBrowser } from './map/amap'
 import { visitRoutes } from './lib/storyRoutes'
 import { loadMemory, removeFile, restoredFromVault, saveMemory } from './lib/storage'
+import { scenePhotos } from './lib/spacetime'
 import type { AiConfig, MemoryAsset, MemoryEvent, MemoryState, PhotoLook, PlaceRole } from './types'
-import { Butler, type ButlerMessage, type VoiceState } from './components/Butler'
+import { VoiceButler, type Subtitle, type VoiceState } from './components/VoiceButler'
+import { Showcase, type ShowcaseState } from './components/Showcase'
 import { EventDetail, statusLabel } from './components/EventDetail'
 import { ImportDialog } from './components/ImportDialog'
 import { LifeMapView } from './components/LifeMapView'
 import { TimelineBar } from './components/TimelineBar'
-import { MemoryFilms } from './components/MemoryFilms'
+import { MemoryFilms, type FilmSummary } from './components/MemoryFilms'
 import { SpacetimeScene } from './components/SpacetimeScene'
 import { useSceneCoverage } from './lib/useSceneCoverage'
 import { useMemoryGraph } from './lib/useMemoryGraph'
@@ -31,12 +34,38 @@ import { SceneCoverage } from './components/SceneCoverage'
 import type { StoryChapter } from './lib/memoryGraph'
 
 const initialMemory: MemoryState = { assets: [], events: [], placeRoles: {}, autoPhotoCards: true }
-const BUTLER_WIDTH = 432
+// The photo stage the butler opens on the right (520 px panel + margins)
+const SHOWCASE_WIDTH = 560
 const TIMEBAR_HEIGHT = 88
 // The glass top bar covers the top 52 px of the map
 const CHROME_TOP = 52
+// Live subtitles: what has been said so far is recognised again this often while the button is held
+const LIVE_ASR_INTERVAL = 1500
+const SLIDE_MS = 4500
 const uid = () => crypto.randomUUID()
 const years = (from: string, to: string) => Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / (365.25 * 86400000)))
+const localDay = (value: string) => new Date(value).toLocaleDateString('sv-SE')
+
+// Sentences for speech, none much longer than 40 characters, so the first clip comes back fast;
+// fragments of a few characters ride along with the sentence before them
+export function speechChunks(text: string, max = 40): string[] {
+  const sentences = text.match(/[^。！？!?；;\n]+[。！？!?；;\n]*/g) || [text]
+  const out: string[] = []
+  for (const sentence of sentences) {
+    const pieces = sentence.length > max ? sentence.match(/[^，,、]+[，,、]*/g) || [sentence] : [sentence]
+    let current = ''
+    for (const piece of pieces) {
+      if (current && current.length + piece.length > max) { out.push(current); current = '' }
+      current += piece
+    }
+    if (current) out.push(current)
+  }
+  return out.reduce<string[]>((list, part) => {
+    if (list.length && part.trim().length < 4) list[list.length - 1] += part
+    else list.push(part)
+    return list
+  }, []).filter((part) => part.trim())
+}
 
 export default function App({ account, onSignOut }: { account: Account; onSignOut: () => void }) {
   const [memory, setMemory] = useState<MemoryState>(initialMemory)
@@ -66,13 +95,35 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [contextBusyId, setContextBusyId] = useState<string | null>(null)
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(null)
   const [notice, setNotice] = useState('')
-  const [messages, setMessages] = useState<ButlerMessage[]>([])
+  // The life butler: subtitles over the map instead of a chat window
+  const [subtitle, setSubtitle] = useState<Subtitle | null>(null)
   const [focus, setFocus] = useState<ButlerFocus | null>(null)
   const [asking, setAsking] = useState(false)
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
-  const [speakingId, setSpeakingId] = useState<string | null>(null)
-  const recording = useRef<Awaited<ReturnType<typeof startRecording>> | null>(null)
+  const [speaking, setSpeaking] = useState(false)
+  const [showcase, setShowcase] = useState<ShowcaseState | null>(null)
+  const [pendingRoleCity, setPendingRoleCity] = useState<string | null>(null)
+  const [libraryOpen, setLibraryOpen] = useState<{ tab?: 'people' | 'stories'; at: number } | null>(null)
+  const [spacetimeOpen, setSpacetimeOpen] = useState<{ at: number } | null>(null)
+  const [filmPlay, setFilmPlay] = useState<{ id?: string; at: number } | null>(null)
+  const [filmMake, setFilmMake] = useState<{ assetIds?: string[]; at: number } | null>(null)
+  const [films, setFilms] = useState<FilmSummary[]>([])
+  // This computer has FFmpeg + Python + Pillow, so new films can be cut
+  const [filmCapable, setFilmCapable] = useState(false)
+  const history = useRef<ButlerTurn[]>([])
+  const recording = useRef<Recording | null>(null)
+  const liveTimer = useRef(0)
+  const hideTimer = useRef(0)
+  // The person has spoken to the butler in this session, so it may speak too
+  const voiceUsed = useRef(false)
   const audio = useRef<HTMLAudioElement | null>(null)
+  const speechDone = useRef<(() => void) | null>(null)
+  // Bumped to interrupt the sentence-by-sentence speech loop
+  const speechToken = useRef(0)
+  // Bumped to end a guided story (a `story` action) when the person takes over
+  const tourToken = useRef(0)
+  const aiRef = useRef(aiConfig); aiRef.current = aiConfig
+  const showcaseRef = useRef(showcase); showcaseRef.current = showcase
   const geocoded = useRef(new Set<string>())
 
   useEffect(() => {
@@ -160,12 +211,16 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const bases = useMemo(() => spaceLine(places), [places])
   const story = useMemo(() => (selectedCity ? storyLine(selectedCity, events, places) : []), [selectedCity, events, places])
   const storyIds = useMemo(() => new Set(story.map((e) => e.id)), [story])
+  const storyAssetIds = useMemo(() => new Set(story.flatMap((e) => e.assetIds)), [story])
   const routes = useMemo(() => visitRoutes(story), [story])
   const routeEventIds = useMemo(() => routes.find((route) => route.id === routeId)?.eventIds || [], [routes, routeId])
   const firsts = useMemo(() => firstsOf(events), [events])
+  const lasts = useMemo(() => lastsOf(events, places), [events, places])
   const needsWork = events.filter((e) => !e.city || e.status === 'draft')
   const analyzablePhotos = memory.assets.filter((a) => a.preview && a.kind !== 'video')
   const pendingPhotoCards = analyzablePhotos.filter((a) => !a.card?.scene?.trim()).length
+  const hasImages = (event: MemoryEvent) => event.assetIds.some((id) => { const a = memory.assets.find((x) => x.id === id); return Boolean(a?.preview && a.kind !== 'video') })
+  const pendingAnalysis = memory.events.filter((e) => e.status === 'draft' && hasImages(e)).length
   const activeEvent = events.find((e) => e.id === activeEventId)
   const eventCovers = useMemo(() => {
     const assets = new Map(memory.assets.map((asset) => [asset.id, asset]))
@@ -192,6 +247,21 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     return mapPhotos.filter((photo) => (captured.get(photo.id) ?? Infinity) <= timelineAt + 86400000)
   }, [mapPhotos, memory.assets, timelineAt])
   const sceneCoverage = useSceneCoverage(memory.assets, mapPhotos, ready && !locating)
+  // The photos' information cards without pictures: what the butler searches by meaning
+  const photoIndex = useMemo<ButlerMemoryPhoto[]>(() => {
+    const people = library.state?.people || []
+    const memberships = library.state?.graph.memberships || {}
+    return memory.assets.flatMap((a) => {
+      if (!a.preview || a.kind === 'video') return []
+      const event = memory.events.find((e) => e.assetIds.includes(a.id))
+      const names = (memberships[a.id] || []).map((pid) => { const p = people.find((x) => x.id === pid); return p?.name || p?.relationship || '' }).filter(Boolean)
+      return [{
+        id: a.id, eventId: event?.id || '', date: localDay(a.capturedAt),
+        city: a.location?.city || event?.city || '', place: a.location?.aoi || a.location?.poi?.name || a.location?.label || event?.place || '',
+        title: a.card?.title || '', caption: a.card?.caption || '', scene: a.card?.scene || '', tags: a.card?.tags || [], people: names,
+      }]
+    })
+  }, [memory.assets, memory.events, library.state?.graph.revision, library.state?.revision])
 
   function openPhoto(assetId: string) {
     const event = memory.events.find((e) => e.assetIds.includes(assetId))
@@ -262,15 +332,97 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       setNotice(error instanceof Error ? `自动分析已暂停：${error.message}` : '自动分析已暂停')
     })
   }, [memory.assets, memory.events, memory.autoPhotoCards, ready, aiConfig.available, aiConfig.amapJsKey])
+
+  // Events analyze themselves, one at a time, after the photo cards; the person only corrects and
+  // confirms. A failure pauses the queue together with the cards (the chip on the map resumes it).
+  const analysed = useRef(new Set<string>())
+  useEffect(() => {
+    // autoRun: the card queue above claims the same render before `locating` is set
+    if (!ready || !aiConfig.available || memory.autoPhotoCards === false || importing || busyEventId || locating || autoRun.current) return
+    const next = memory.events.find((e) => e.status === 'draft' && !analysed.current.has(e.id) && hasImages(e))
+    if (!next) return
+    analysed.current.add(next.id)
+    void runAnalysis(next)
+  }, [memory.events, memory.assets, memory.autoPhotoCards, ready, aiConfig.available, importing, busyEventId, locating]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const selectedPlace = places.find((p) => p.city === selectedCity)
-  // The life butler opens by itself when a place is chosen on the map; there is no separate entry
-  const panelOpen = Boolean(selectedCity)
 
   const updateEvent = useCallback((next: MemoryEvent) => {
     const { understanding: _interpretation, ...source } = next
     setMemory((current) => ({ ...current, events: current.events.map((e) => (e.id === next.id ? source : e)) }))
   }, [])
 
+  // ---- The life butler's voice: subtitles and speech --------------------------------------
+  const stopSpeaking = useCallback(() => {
+    speechToken.current++
+    audio.current?.pause()
+    audio.current = null
+    speechDone.current?.()
+    speechDone.current = null
+    setSpeaking(false)
+  }, [])
+
+  const playClip = (url: string) => new Promise<void>((resolve) => {
+    const player = new Audio(url)
+    audio.current = player
+    speechDone.current = resolve
+    player.onended = () => resolve()
+    player.onerror = () => resolve()
+    player.play().catch(() => resolve())
+  })
+
+  // Reads text aloud sentence by sentence: every sentence is requested at once, the short first
+  // one is ready in about a second while the rest load, and `onSentence` gets the text heard so
+  // far as each starts — so the subtitle keeps pace with the voice. Resolves when done or
+  // interrupted; true if anything was heard.
+  const say = useCallback(async (text: string, onSentence?: (heardSoFar: string) => void) => {
+    stopSpeaking()
+    if (!aiRef.current.available || !text.trim()) return false
+    const token = speechToken.current
+    const parts = speechChunks(text)
+    const clips = parts.map((part) => speak(part).then((blob) => URL.createObjectURL(blob)).catch(() => null))
+    setSpeaking(true)
+    let heard = false
+    try {
+      for (let i = 0; i < parts.length; i++) {
+        const url = await clips[i]
+        if (speechToken.current !== token) break
+        onSentence?.(parts.slice(0, i + 1).join(''))
+        if (!url) continue
+        heard = true
+        await playClip(url)
+      }
+    } finally {
+      void Promise.all(clips).then((urls) => urls.forEach((url) => { if (url) URL.revokeObjectURL(url) }))
+      if (speechToken.current === token) { audio.current = null; speechDone.current = null; setSpeaking(false) }
+    }
+    return heard
+  }, [stopSpeaking])
+
+  const scheduleHide = useCallback((ms: number) => {
+    window.clearTimeout(hideTimer.current)
+    hideTimer.current = window.setTimeout(() => setSubtitle(null), ms)
+  }, [])
+  const showSubtitle = useCallback((next: Omit<Subtitle, 'id'>, hideAfter = 0) => {
+    window.clearTimeout(hideTimer.current)
+    setSubtitle({ id: uid(), ...next })
+    if (hideAfter) scheduleHide(hideAfter)
+  }, [scheduleHide])
+  const dismissSubtitle = () => { window.clearTimeout(hideTimer.current); setSubtitle(null) }
+
+  // The butler's answer: subtitle and voice together, sentence by sentence. If the first clip
+  // takes longer than 1.5 s (or speech is unavailable) the whole text shows and the voice catches up.
+  const narrate = useCallback(async (text: string) => {
+    if (!aiRef.current.available) { showSubtitle({ role: 'assistant', text }); return }
+    let shownAll = false, revealed = false
+    const fallback = window.setTimeout(() => { if (!revealed) { shownAll = true; showSubtitle({ role: 'assistant', text }) } }, 1500)
+    const heard = await say(text, (heardSoFar) => { revealed = true; window.clearTimeout(fallback); if (!shownAll) showSubtitle({ role: 'assistant', text: heardSoFar }) })
+    window.clearTimeout(fallback)
+    if (!heard && !shownAll) showSubtitle({ role: 'assistant', text })
+  }, [say, showSubtitle])
+
+  // Choosing a place on the map makes the butler speak first (as a subtitle; aloud once the
+  // person has used their voice). There is no separate entry.
   const selectCity = useCallback((city: string | null, announce = true) => {
     setSelectedCity(city)
     setGlobeOverview(!city)
@@ -283,13 +435,17 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     if (!announce) return
     const name = cityLabel(city)
     const count = storyLine(city, events, places).length
-    const text = place.isBase
+    let text = place.isBase
       ? `你在${name}生活了 ${years(place.firstAt, place.lastAt)} 年，我记得这里的 ${count} 件事。可以沿时间线看看这些回忆，想聊哪一段？`
       : `你在${formatYearMonth(place.firstAt)}来过${name}，我记得这里的 ${place.eventIds.length} 件事，想聊哪一次？`
-    const intro: ButlerMessage[] = [{ id: uid(), role: 'assistant', text }]
-    if (place.isBase && !place.roleConfirmed) intro.push({ id: uid(), role: 'assistant', text: `${name}对你来说是哪一种地方？`, roleFor: city })
-    setMessages((current) => [...current, ...intro])
-  }, [events, places])
+    // Films cut from this place's photos are offered, so the capability has a way in
+    const here = new Set(storyLine(city, events, places).flatMap((e) => e.assetIds))
+    const filmsHere = films.filter((f) => f.assetIds.some((id) => here.has(id))).length
+    if (filmsHere) text += ` 这里还有 ${filmsHere} 段回忆短片，想看就说"放短片"。`
+    if (place.isBase && !place.roleConfirmed) { text += ` ${name}对你来说是老家、求学、工作还是居住的地方？`; setPendingRoleCity(city) }
+    if (voiceUsed.current) void narrate(text).then(() => scheduleHide(8000))
+    else showSubtitle({ role: 'assistant', text }, 14000)
+  }, [events, places, films, showSubtitle, narrate, scheduleHide])
 
   async function handleFiles(files: File[]) {
     if (!files.length || importing) return
@@ -311,31 +467,37 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     }
   }
 
+  // Automatic: the result is merged into the event as it is by then, never over a confirmation
   async function runAnalysis(event: MemoryEvent) {
-    if (!aiConfig.available) { setNotice('请先在 .env 中配置 StepFun API Key，重启服务后再分析'); return }
     setBusyEventId(event.id)
     try {
       const result = await analyzeEvent(event, memory.assets)
       const aiCity = result.city?.trim()
-      const keepCity = Boolean(event.city && event.citySource !== 'ai')
-      updateEvent({
-        ...event,
-        title: result.title || event.title,
-        summary: result.summary || event.summary,
-        type: result.type || event.type,
-        place: result.place || event.place,
-        city: keepCity ? event.city : aiCity || event.city,
-        citySource: keepCity ? event.citySource : aiCity ? 'ai' : event.citySource,
-        people: result.people || [],
-        visibleText: result.visibleText || '',
-        tags: result.tags || [],
-        questions: result.questions || [],
-        confidence: result.confidence,
-        status: 'analyzed',
-      })
-      setNotice('分析完成，请核对事件内容')
+      setMemory((current) => ({
+        ...current,
+        events: current.events.map((e) => {
+          if (e.id !== event.id || e.status === 'confirmed') return e
+          const keepCity = Boolean(e.city && e.citySource !== 'ai')
+          return {
+            ...e,
+            title: result.title || e.title,
+            summary: result.summary || e.summary,
+            type: result.type || e.type,
+            place: result.place || e.place,
+            city: keepCity ? e.city : aiCity || e.city,
+            citySource: keepCity ? e.citySource : aiCity ? 'ai' : e.citySource,
+            people: result.people || [],
+            visibleText: result.visibleText || '',
+            tags: result.tags || [],
+            questions: result.questions || [],
+            confidence: result.confidence,
+            status: 'analyzed',
+          }
+        }),
+      }))
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : '分析失败，请重试')
+      setMemory((current) => ({ ...current, autoPhotoCards: false }))
+      setNotice(error instanceof Error ? `自动分析已暂停：${error.message}` : '自动分析已暂停')
     } finally {
       setBusyEventId(null)
     }
@@ -437,32 +599,119 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     setMemory((current) => ({ ...current, assets: current.assets.map((a) => (looks[a.id] ? { ...a, look: looks[a.id] } : a)) }))
   }, [])
 
-  function stopSpeaking() {
-    audio.current?.pause()
-    audio.current = null
-    setSpeakingId(null)
+  // ---- What the butler can do on the map --------------------------------------------------
+  function focusPhoto(id: string) {
+    const photo = mapPhotos.find((p) => p.id === id)
+    if (!photo) return false
+    setGlobeOverview(false)
+    setMapFocus({ photo, at: Date.now() })
+    return true
   }
 
-  async function speakMessage(message: ButlerMessage) {
-    if (speakingId === message.id) { stopSpeaking(); return }
-    stopSpeaking()
-    setSpeakingId(message.id)
-    try {
-      const url = URL.createObjectURL(await speak(message.text))
-      const player = new Audio(url)
-      audio.current = player
-      player.onended = () => { URL.revokeObjectURL(url); setSpeakingId((id) => (id === message.id ? null : id)) }
-      await player.play()
-    } catch (error) {
-      setSpeakingId(null)
-      setNotice(error instanceof Error ? error.message : '朗读失败')
+  // The story line an event belongs on: its city if that is a life base, else the base lived in then
+  function contextCityFor(event: MemoryEvent) {
+    if (!event.city) return null
+    return places.find((p) => p.city === event.city)?.isBase ? event.city : baseAt(places, event.occurredAt)?.city || event.city
+  }
+  // Move to another story line only when the event is not already on the one being looked at
+  function showContextOf(event: MemoryEvent | undefined) {
+    if (!event || storyIds.has(event.id)) return
+    const city = contextCityFor(event)
+    if (city && city !== selectedCity && places.some((p) => p.city === city)) selectCity(city, false)
+  }
+
+  function openShowcase(ids: string[], mode: ShowcaseState['mode']) {
+    setActiveEventId(null)
+    setOpenPhotoId(null)
+    setShowcase({ ids, mode, index: 0, playing: mode === 'slideshow' && ids.length > 1 })
+    showContextOf(memory.events.find((e) => e.assetIds.includes(ids[0])))
+    focusPhoto(ids[0])
+  }
+
+  function scrubTo(at: number) {
+    setTimelineAt(at)
+    const candidates = selectedCity ? story : events
+    const nearest = candidates.reduce<MemoryEvent | null>((best, event) => !best || Math.abs(Date.parse(event.occurredAt) - at) < Math.abs(Date.parse(best.occurredAt) - at) ? event : best, null)
+    setHighlightedEventId(nearest?.id || null)
+  }
+
+  // A guided story: for each step the map moves to the photo, the photo comes on stage and the
+  // sentence is spoken; the person taking over (mic, stage controls) ends it
+  async function runStory(steps: { assetId: string; text: string }[]) {
+    const token = ++tourToken.current
+    const ids = steps.map((s) => s.assetId)
+    setActiveEventId(null)
+    setOpenPhotoId(null)
+    setShowcase({ ids, mode: 'slideshow', index: 0, playing: false })
+    showContextOf(memory.events.find((e) => e.assetIds.includes(ids[0])))
+    for (let i = 0; i < steps.length; i++) {
+      if (tourToken.current !== token) return
+      setShowcase((s) => (s ? { ...s, index: i, playing: false } : s))
+      // Let the map start moving before the words
+      await new Promise<void>((resolve) => window.setTimeout(resolve, i === 0 ? 400 : 700))
+      if (tourToken.current !== token) return
+      await narrate(steps[i].text)
     }
   }
 
-  async function ask(question: string, voice = false) {
-    if (!aiConfig.available) { setNotice('人生管家需要 StepFun：请在 .env 中配置后重启服务'); return }
-    const history: ButlerTurn[] = messages.filter((m) => !m.error && !m.roleFor).slice(-8).map((m) => ({ role: m.role, content: m.text }))
-    setMessages((current) => [...current, { id: uid(), role: 'user', text: question, voice }])
+  function runActions(actions: ButlerAction[]) {
+    const done = new Set<ButlerAction['type']>()
+    let story: { assetId: string; text: string }[] | undefined
+    for (const action of actions) {
+      done.add(action.type)
+      switch (action.type) {
+        case 'focus_city': selectCity(action.city, false); break
+        case 'overview': setShowcase(null); selectCity(null); break
+        case 'focus_photo': focusPhoto(action.assetId); break
+        case 'show_photos': openShowcase(action.assetIds, 'gallery'); break
+        case 'slideshow': openShowcase(action.assetIds, 'slideshow'); break
+        case 'story': story = action.steps; break
+        case 'open_event': setOpenPhotoId(null); setActiveEventId(action.eventId); break
+        case 'set_place_role': confirmRole(action.city, action.role, false); break
+        case 'timeline': { const at = Date.parse(action.date); if (!Number.isNaN(at)) scrubTo(at); break }
+        case 'open_stories': setLibraryOpen({ at: Date.now() }); break
+        case 'open_spacetime': if (selectedCity) setSpacetimeOpen({ at: Date.now() }); break
+        case 'play_film': setFilmPlay({ id: action.filmId, at: Date.now() }); break
+        case 'make_film': setFilmMake({ assetIds: action.assetIds, at: Date.now() }); break
+        case 'close': tourToken.current++; setShowcase(null); setActiveEventId(null); setOpenPhotoId(null); break
+      }
+    }
+    return { done, story }
+  }
+
+  // A slideshow moves on by itself; the map follows the photo on stage
+  useEffect(() => {
+    if (!showcase?.playing || showcase.ids.length < 2) return
+    const timer = window.setTimeout(() => setShowcase((s) => (s && s.playing ? (s.index + 1 >= s.ids.length ? { ...s, playing: false } : { ...s, index: s.index + 1 }) : s)), SLIDE_MS)
+    return () => window.clearTimeout(timer)
+  }, [showcase?.playing, showcase?.index, showcase?.ids])
+  useEffect(() => {
+    if (!showcase) return
+    focusPhoto(showcase.ids[Math.min(showcase.index, showcase.ids.length - 1)])
+  }, [showcase?.index, showcase?.ids]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (showcase?.mode === 'slideshow' && !showcase.playing && !speaking && subtitle?.role === 'assistant') scheduleHide(8000)
+  }, [showcase?.playing, showcase?.mode, speaking]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const uiState = (): ButlerState => ({
+    view: globeOverview && !selectedCity ? 'globe' : mapFocus ? 'street' : 'city',
+    city: selectedCity || '',
+    openEventId: activeEventId || '',
+    focusedPhotoId: mapFocus?.photo.id || '',
+    showing: showcase?.ids || [],
+    pendingRoleCity: pendingRoleCity || '',
+    features: {
+      people: (library.state?.people || []).filter((p) => p.confirmed).length,
+      stories: library.state?.graph.chapters.length || 0,
+      spacetime: Boolean(selectedCity && scenePhotos(memory.assets, memory.events, selectedCity).length >= 2),
+      // Films about the story line being looked at come first
+      films: [...films].sort((a, b) => Number(b.assetIds.some((id) => storyAssetIds.has(id))) - Number(a.assetIds.some((id) => storyAssetIds.has(id)))).map(({ id, title }) => ({ id, title })),
+      filmCapable,
+    },
+  })
+
+  async function ask(question: string) {
+    if (!aiRef.current.available) { setNotice('人生管家需要 StepFun：请在 .env 中配置后重启服务'); return }
     setAsking(true)
     try {
       const memoryForButler = {
@@ -470,32 +719,61 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           id: e.id, title: e.title, summary: e.summary, type: e.type,
           start: e.occurredAt.slice(0, 10), end: (e.endedAt || e.occurredAt).slice(0, 10),
           city: e.city || '', place: e.place, people: e.people, tags: e.tags, status: e.status,
-          visibleText: e.visibleText, firsts: firsts.get(e.id) || [], photoCount: e.assetIds.length,
+          visibleText: e.visibleText, firsts: firsts.get(e.id) || [], lasts: lasts.get(e.id) || [], photoCount: e.assetIds.length,
         })),
         places: places.map((p) => ({ city: p.city, role: p.role, roleConfirmed: p.roleConfirmed, firstAt: p.firstAt.slice(0, 10), lastAt: p.lastAt.slice(0, 10), eventCount: p.eventIds.length })),
+        moves: movesForButler(places),
+        photos: photoIndex,
       }
-      const reply = await askButler(question, history, memoryForButler, focus || undefined)
-      const message: ButlerMessage = { id: uid(), role: 'assistant', text: reply.answer, eventIds: reply.eventIds }
-      setMessages((current) => [...current, message])
+      const reply = await askButler(question, history.current.slice(-8), memoryForButler, focus || undefined, uiState())
+      const turns: ButlerTurn[] = [{ role: 'user', content: question }, { role: 'assistant', content: reply.answer }]
+      history.current = [...history.current, ...turns].slice(-16)
+      const { done: acted, story } = runActions(reply.actions)
+      const staged = acted.has('show_photos') || acted.has('slideshow') || acted.has('story')
+      // Photos it talked about but did not put on stage are shown anyway
+      if (reply.assetIds.length && !staged && !acted.has('focus_photo')) openShowcase(reply.assetIds, 'gallery')
+      // Without an explicit move, the first cited event guides the map
       const first = events.find((e) => e.id === reply.eventIds[0])
       if (first) {
-        const home = first.city && places.find((p) => p.city === first.city)?.isBase ? first.city : baseAt(places, first.occurredAt)?.city || first.city
-        if (home && home !== selectedCity && !storyIds.has(first.id)) selectCity(home, false)
+        if (!acted.has('focus_city') && !acted.has('overview') && !staged) showContextOf(first)
         setHighlightedEventId(first.id)
       }
-      if (voice) void speakMessage(message)
+      setAsking(false)
+      await narrate(reply.answer)
+      if (story) await runStory(story)
+      if (!showcaseRef.current?.playing) scheduleHide(8000)
     } catch (error) {
-      setMessages((current) => [...current, { id: uid(), role: 'assistant', text: error instanceof Error ? error.message : '没能回答，请重试', error: true }])
+      showSubtitle({ role: 'assistant', text: error instanceof Error ? error.message : '没能回答，请重试', error: true }, 8000)
     } finally {
       setAsking(false)
     }
   }
 
+  // Hold to talk. While the button is held, what has been said so far is recognised every
+  // 1.5 s and shown as a live subtitle; on release the whole recording becomes the question.
   async function voiceStart() {
+    tourToken.current++
     stopSpeaking()
+    window.clearTimeout(hideTimer.current)
     try {
-      recording.current = await startRecording()
+      const session = await startRecording()
+      recording.current = session
+      voiceUsed.current = true
       setVoiceState('recording')
+      setSubtitle({ id: 'live', role: 'user', text: '', live: true })
+      let sequence = 0, applied = 0, inFlight = false
+      window.clearInterval(liveTimer.current)
+      liveTimer.current = window.setInterval(() => {
+        if (inFlight || recording.current !== session) return
+        const wav = session.snapshot()
+        if (!wav) return
+        const mine = ++sequence
+        inFlight = true
+        transcribe(wav)
+          .then((text) => { if (recording.current === session && mine > applied && text) { applied = mine; setSubtitle({ id: 'live', role: 'user', text, live: true }) } })
+          .catch(() => {})
+          .finally(() => { inFlight = false })
+      }, LIVE_ASR_INTERVAL)
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '无法开始录音')
     }
@@ -504,43 +782,36 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   async function voiceEnd() {
     const session = recording.current
     recording.current = null
+    window.clearInterval(liveTimer.current)
     if (!session) return
     setVoiceState('transcribing')
     try {
       const wav = await session.stop()
-      if (!wav) { setNotice('说话时间太短，请按住按钮再说'); return }
+      if (!wav) { setSubtitle(null); setNotice('说话时间太短，请按住按钮再说'); return }
       const text = await transcribe(wav)
-      if (!text) { setNotice('没有听清，请再说一次'); return }
-      await ask(text, true)
+      if (!text) { setSubtitle(null); setNotice('没有听清，请再说一次'); return }
+      showSubtitle({ role: 'user', text })
+      setVoiceState('idle')
+      await ask(text)
     } catch (error) {
+      setSubtitle(null)
       setNotice(error instanceof Error ? error.message : '语音识别失败')
     } finally {
       setVoiceState('idle')
     }
   }
 
-  function confirmRole(city: string, role: PlaceRole) {
+  function confirmRole(city: string, role: PlaceRole, announce = true) {
     setMemory((current) => ({ ...current, placeRoles: { ...current.placeRoles, [city]: role } }))
+    setPendingRoleCity((pending) => (pending === city ? null : pending))
     const kind = role === 'home' ? '的老家' : role === 'study' ? '求学的地方' : role === 'work' ? '工作的地方' : '生活过的地方'
-    setMessages((current) => [
-      ...current.filter((m) => m.roleFor !== city),
-      { id: uid(), role: 'user', text: roleLabels[role] },
-      { id: uid(), role: 'assistant', text: `记下了，${cityLabel(city)}是你${kind}。` },
-    ])
+    if (announce) showSubtitle({ role: 'assistant', text: `记下了，${cityLabel(city)}是你${kind}（${roleLabels[role]}）。` }, 8000)
   }
-
-  function closeButler() {
-    selectCity(null)
-  }
-
-  const focusLabel = selectedCity && selectedPlace
-    ? `正在聊：${cityLabel(selectedCity)} · ${formatYearMonth(selectedPlace.firstAt)}${selectedPlace.isBase ? ' 至今' : ''}`
-    : '可以问我人生中的任何一段'
 
   return (
     <div className={`app-shell${globeOverview && !selectedCity ? ' globe-mode' : ''}`}>
       <header className="app-bar">
-        <span className="app-brand"><Aperture size={22} strokeWidth={2} /><span>Personal World</span></span>
+        <span className="app-brand"><CakeLogo size={26} /><span>Personal World</span></span>
         <div className="app-actions">
           <PhotoCull assets={memory.assets} ready={ready} aiAvailable={aiConfig.available} onLooks={saveLooks} onDelete={async (ids) => { await deleteAssets(ids); setNotice(`已删除 ${ids.length} 张照片`) }} />
           <span className={`connection-status ${aiConfig.available ? 'online' : ''}`} title={aiConfig.message}><span />{aiConfig.available ? 'AI 模型已接入' : 'AI 模型未接入'}</span>
@@ -563,7 +834,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           routeEventIds={routeEventIds}
           selectedCity={selectedCity}
           highlightedEventId={highlightedEventId}
-          insetRight={panelOpen ? BUTLER_WIDTH : 0}
+          insetRight={showcase ? SHOWCASE_WIDTH : 0}
           insetBottom={events.length ? TIMEBAR_HEIGHT : 0}
           insetTop={CHROME_TOP}
           onSelectCity={(city) => selectCity(city)}
@@ -584,11 +855,6 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                 <button className="crumb" onClick={() => selectCity(null)}><ChevronLeft size={14} />人生地图</button>
                 <h1>{cityLabel(selectedCity)}的故事线<b>.</b></h1>
                 <p>{formatYearMonth(selectedPlace.firstAt)}{selectedPlace.isBase ? ' 至今' : ''} · {story.length} 件事</p>
-                {/* People and films belong to a story line, not to the top bar */}
-                <div className="story-apps">
-                  <MemoryLibrary library={library} assets={memory.assets} onPhoto={openPhoto} onFilm={chapter=>setFilmChapter({chapter,at:Date.now()})} />
-                  <SpacetimeScene assets={memory.assets} events={memory.events} city={selectedCity} onPhoto={openPhoto} />
-                </div>
               </>
             ) : (
               <>
@@ -603,11 +869,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
               </select>
               {routeEventIds.length > 0 && <small>按拍摄先后连接，仅表示这次回忆的地点顺序。</small>}
             </div>}
-            {/* Always mounted so films keep being made; its button shows on a story line */}
-            <div className={selectedCity ? 'story-apps' : 'story-apps-hidden'}>
-              <MemoryFilms entry={Boolean(selectedCity)} assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId) || library.busy || Boolean(library.state?.understanding?.busy)} graph={library.state} requestedChapter={filmChapter} />
-            </div>
-            {aiConfig.amapJsKey && (<>
+            {/* Scene controls, then what is going on in the background: one row of same-sized chips */}
+            {aiConfig.amapJsKey && (mapPhotos.length > 0 || !globeOverview) && <div className="heading-chips">
               {!globeOverview && <button
                 className={`building-toggle ${sceneEnabled ? 'active' : ''}`}
                 type="button"
@@ -616,30 +879,40 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                 onClick={() => setSceneEnabled((enabled) => !enabled)}
               >
                 3D 记忆场景 {sceneEnabled ? '开' : '关'}
-                <small>{sceneCoverage.total ? sceneCoverage.done < sceneCoverage.total ? `检查街区 ${sceneCoverage.done}/${sceneCoverage.total}` : `${sceneCoverage.total} 处街区资料${sceneCoverage.partial + sceneCoverage.failed ? ` · ${sceneCoverage.partial + sceneCoverage.failed} 处待补` : ''}` : '真实照片地点'}</small>
+                <small>{sceneCoverage.total ? sceneCoverage.done < sceneCoverage.total ? `检查街区 ${sceneCoverage.done}/${sceneCoverage.total}` : `${sceneCoverage.total} 处街区${sceneCoverage.partial + sceneCoverage.failed ? ` · ${sceneCoverage.partial + sceneCoverage.failed} 处待补` : ''}` : '真实照片地点'}</small>
               </button>}
               {mapPhotos.length>0&&<SceneCoverage coverage={sceneCoverage} onFocus={id=>{const photo=mapPhotos.find(p=>p.id===id);if(photo){setGlobeOverview(false);setMapFocus({photo,at:Date.now()})}}}/>}
               {!mapPhotos.length && <button className="scene-preview" type="button" onClick={() => { selectCity(null, false); setGlobeOverview(false); setLandmarkPreviewAt((value) => value + 1) }}>查看上海地标样例</button>}
-            </>)}
-            {aiConfig.available && analyzablePhotos.length > 0 && (
-              <div className="locating-chip" role="status" aria-label="照片自动分析状态">
-                <span>{locating ? `StepFun 正在分析真实照片 ${locating.done}/${locating.total}` : pendingPhotoCards ? `${memory.autoPhotoCards === false ? '已暂停' : '待分析'} ${pendingPhotoCards} 张照片` : `已生成 ${analyzablePhotos.length} 张照片信息卡`}</span>
-                {locating
-                  ? <button onClick={() => { stopLocating.current = true; setMemory((current) => ({ ...current, autoPhotoCards: false })) }}>暂停</button>
-                  : pendingPhotoCards > 0 && memory.autoPhotoCards === false ? <button onClick={() => { stopLocating.current = false; setMemory((current) => ({ ...current, autoPhotoCards: true })) }}>继续分析</button> : null}
-              </div>
-            )}
-            {library.state?.understanding?.busy && <div className="locating-chip" role="status" aria-label="回忆更新状态">
-              <span>{library.state.understanding.phase === 'stories' ? '正在串联这些回忆' : `正在更新回忆 ${library.state.understanding.completed}/${library.state.understanding.total}`}</span>
             </div>}
-            {needsWork.length > 0 && <button className="tray-chip" onClick={() => setTrayOpen((open) => !open)}><CircleHelp size={14} />{needsWork.length} 件事待整理</button>}
+            {(aiConfig.available && analyzablePhotos.length > 0 || library.state?.understanding?.busy || needsWork.length > 0) && <div className="heading-chips status">
+              {aiConfig.available && analyzablePhotos.length > 0 && (
+                <div className={`locating-chip${locating || busyEventId ? ' working' : ''}`} role="status" aria-label="自动分析状态">
+                  <span>{locating ? `正在分析照片 ${locating.done}/${locating.total}` : busyEventId ? `正在分析事件，还有 ${pendingAnalysis} 件` : pendingPhotoCards || pendingAnalysis ? `${memory.autoPhotoCards === false ? '已暂停' : '待分析'}${pendingPhotoCards ? ` ${pendingPhotoCards} 张照片` : ''}${pendingAnalysis ? ` ${pendingAnalysis} 件事` : ''}` : `${analyzablePhotos.length} 张照片信息卡 · 事件已自动分析`}</span>
+                  {locating || busyEventId
+                    ? <button onClick={() => { stopLocating.current = true; setMemory((current) => ({ ...current, autoPhotoCards: false })) }}>暂停</button>
+                    : (pendingPhotoCards > 0 || pendingAnalysis > 0) && memory.autoPhotoCards === false ? <button onClick={() => { stopLocating.current = false; setMemory((current) => ({ ...current, autoPhotoCards: true })) }}>继续分析</button> : null}
+                </div>
+              )}
+              {library.state?.understanding?.busy && <div className="locating-chip working" role="status" aria-label="回忆更新状态">
+                <span>{library.state.understanding.phase === 'stories' ? '正在串联这些回忆' : `正在更新回忆 ${library.state.understanding.completed}/${library.state.understanding.total}`}</span>
+              </div>}
+              {needsWork.length > 0 && <button className="tray-chip" onClick={() => setTrayOpen((open) => !open)}><CircleHelp size={14} />{needsWork.length} 件事待整理</button>}
+            </div>}
           </div>
         )}
+
+        {/* People & stories, spacetime scenes and memory films have no buttons: the butler opens
+            them when asked, and films keep being made in the background */}
+        <div className="story-apps-hidden">
+          <MemoryLibrary library={library} assets={memory.assets} onPhoto={openPhoto} onFilm={chapter=>setFilmChapter({chapter,at:Date.now()})} openRequest={libraryOpen} />
+          {selectedCity && <SpacetimeScene assets={memory.assets} events={memory.events} city={selectedCity} onPhoto={openPhoto} openRequest={spacetimeOpen} />}
+          <MemoryFilms assets={memory.assets} events={memory.events} ready={ready} analyzing={importing || autoBusyIds.length > 0 || Boolean(cardBusyId) || library.busy || Boolean(library.state?.understanding?.busy)} graph={library.state} requestedChapter={filmChapter} requestedPlay={filmPlay} requestedFilm={filmMake} onFilms={(list, capable) => { setFilms(list); setFilmCapable(capable) }} />
+        </div>
 
         {trayOpen && needsWork.length > 0 && (
           <div className="tray" role="dialog" aria-label="待整理的事件">
             <div className="tray-head"><b>待整理的事件</b><button className="icon-button" onClick={() => setTrayOpen(false)} aria-label="关闭"><X size={17} /></button></div>
-            <p>没有城市的事件还不能放上地图。可以从其他带定位的照片补全，也可以打开事件用 StepFun 分析或手动填写。</p>
+            <p>没有城市的事件还不能放上地图。接入 StepFun 后事件会自动分析；也可以从其他带定位的照片补全，或打开事件手动填写。</p>
             {needsWork.some((e) => !e.city) && (
               <button className="button button-primary tray-batch" onClick={() => void completeFromPeers()} disabled={Boolean(batch)}>
                 {batch ? `正在对比 ${batch.done}/${batch.total}…` : `用其他照片补全位置（${needsWork.filter((e) => !e.city).length} 件）`}
@@ -665,38 +938,40 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         {ready && events.length > 0 && !places.length && (
           <div className="map-empty compact">
             <h2>还没有可以放上地图的事件</h2>
-            <p>{aiConfig.geocode || aiConfig.amapJsKey ? '这些照片没有定位信息。' : '填写高德 Key 后，带定位的照片会自动识别城市。'}也可以打开事件，用 StepFun 分析或手动填写城市。</p>
+            <p>{aiConfig.geocode || aiConfig.amapJsKey ? '这些照片没有定位信息。' : '填写高德 Key 后，带定位的照片会自动识别城市。'}{aiConfig.available ? '事件正在自动分析，认出的城市会放上地图；' : '接入 StepFun 后事件会自动分析；'}也可以打开事件手动填写城市。</p>
             <button className="button button-subtle" onClick={() => setTrayOpen(true)}>查看待整理的事件</button>
           </div>
         )}
 
+        {showcase && ready && (
+          <Showcase
+            showcase={showcase}
+            assets={memory.assets}
+            events={events}
+            onChange={(next) => { tourToken.current++; setShowcase(next) }}
+            onClose={() => { tourToken.current++; setShowcase(null) }}
+            onOpen={(id) => { tourToken.current++; setShowcase((s) => (s ? { ...s, playing: false } : s)); openPhoto(id) }}
+          />
+        )}
+
         {events.length > 0 && (
-          <div className="timebar-wrap" style={{ right: panelOpen ? BUTLER_WIDTH + 24 : 24 }}>
-            <TimelineBar events={events} bases={bases} storyIds={storyIds} selectedCity={selectedCity} highlightedEventId={highlightedEventId} scrubAt={timelineAt} onScrub={(at) => {
-              setTimelineAt(at)
-              const candidates = selectedCity ? story : events
-              const nearest = candidates.reduce<MemoryEvent | null>((best, event) => !best || Math.abs(Date.parse(event.occurredAt) - at) < Math.abs(Date.parse(best.occurredAt) - at) ? event : best, null)
-              setHighlightedEventId(nearest?.id || null)
-            }} onOpenEvent={setActiveEventId} />
+          // Full width even with the photo stage open: the stage ends above the microphone, so nothing overlaps
+          <div className="timebar-wrap" style={{ right: 24 }}>
+            <TimelineBar events={events} bases={bases} storyIds={storyIds} selectedCity={selectedCity} highlightedEventId={highlightedEventId} scrubAt={timelineAt} onScrub={scrubTo} onOpenEvent={setActiveEventId} />
           </div>
         )}
 
-        {panelOpen && (
-          <Butler
-            messages={messages.length ? messages : [{ id: 'hello', role: 'assistant', text: events.length ? '我是你的人生管家。点地图上的一个地方，或者直接问我，比如「我这几年搬过几次家？」' : '我是你的人生管家。先导入一些照片，我才会有可以回想的事。' }]}
-            busy={asking}
+        {ready && events.length > 0 && (
+          <VoiceButler
             voiceState={voiceState}
-            focusLabel={focusLabel}
-            events={events}
-            assets={memory.assets}
-            speakingId={speakingId}
-            onAsk={(text) => void ask(text)}
+            busy={asking}
+            disabled={!aiConfig.available}
+            subtitle={subtitle}
+            speaking={speaking}
             onVoiceStart={() => void voiceStart()}
             onVoiceEnd={() => void voiceEnd()}
-            onSpeak={(m) => void speakMessage(m)}
-            onConfirmRole={confirmRole}
-            onOpenEvent={setActiveEventId}
-            onClose={closeButler}
+            onStopSpeaking={() => { tourToken.current++; stopSpeaking() }}
+            onDismiss={dismissSubtitle}
           />
         )}
       </main>
@@ -707,12 +982,12 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           event={activeEvent}
           assets={memory.assets}
           firsts={firsts.get(activeEvent.id) || []}
+          lasts={lasts.get(activeEvent.id) || []}
           aiAvailable={aiConfig.available}
           busy={busyEventId === activeEvent.id}
           onClose={() => { setActiveEventId(null); setOpenPhotoId(null) }}
           initialAssetId={openPhotoId}
           identities={Object.fromEntries(Object.entries(library.state?.graph.memberships||{}).map(([id,people])=>[id,people.map(pid=>{const p=library.state?.people.find(p=>p.id===pid);return p?.name||p?.relationship||'已确认人物'})]))}
-          onAnalyze={() => void runAnalysis(activeEvent)}
           onSave={(next) => { updateEvent(next); setNotice('事件已确认并保存') }}
           onDeleteAsset={(id) => void deleteAsset(id)}
           cardBusyIds={[...(cardBusyId ? [cardBusyId] : []), ...autoBusyIds]}
@@ -724,12 +999,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
             apply: applyToEvent,
             assetById: (id) => memory.assets.find((a) => a.id === id),
             showOnMap: (asset) => {
-              const photo = mapPhotos.find((p) => p.id === asset.id)
-              if (!photo) return
               setActiveEventId(null)
               setOpenPhotoId(null)
-              setGlobeOverview(false)
-              setMapFocus({ photo, at: Date.now() })
+              focusPhoto(asset.id)
             },
           }}
         />

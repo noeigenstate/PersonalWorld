@@ -132,9 +132,9 @@ try {
   assert.equal((await state()).sceneBuildings, hangzhou.sceneBuildings, '缩放返回恢复全部楼体')
   const restoredBuilds = (await state()).sceneBuilds
   await page.evaluate(() => regionTest.api.setSceneEnabled(false))
-  assert.equal(await page.locator('#region-test .map-scene-source').isVisible(), false)
+  assert.equal(await page.locator('#region-test').getAttribute('data-scene-credit'), 'none')
   await page.evaluate(() => regionTest.api.setSceneEnabled(true))
-  assert.equal(await page.locator('#region-test .map-scene-source').isVisible(), true)
+  assert.equal(await page.locator('#region-test').getAttribute('data-scene-credit'), 'osm')
   assert.equal((await state()).sceneBuilds, restoredBuilds, '开关只改变可见性')
 
   holdNext = true
@@ -201,7 +201,7 @@ try {
   await page.evaluate(() => regionTest.api.focusPhoto(regionTest.park[0]))
   await page.waitForTimeout(1200)
   assert.equal((await state()).sceneBuilds, gongshu.sceneBuilds, '窄屏进入公园仍复用同一场景')
-  assert.equal(await page.locator('#region-test .map-scene-source').isVisible(), true, `完整园区取景在窄屏也显示材质: ${JSON.stringify({ state: await state(), frame: await frameBounds() })}`)
+  assert.equal(await page.locator('#region-test').getAttribute('data-scene-credit'), 'osm', `完整园区取景在窄屏也显示材质: ${JSON.stringify({ state: await state(), frame: await frameBounds() })}`)
   const mobileFrame = await frameBounds()
   assert.ok(mobileFrame.bounds[0] >= -2 && mobileFrame.bounds[2] <= 432 && mobileFrame.bounds[1] >= -2 && mobileFrame.bounds[3] <= 902, `窄屏不能裁掉半个公园: ${JSON.stringify(mobileFrame)}`)
   await page.screenshot({ path: join(temporary, 'gongshu-shared-park-mobile.png') })
@@ -211,7 +211,7 @@ try {
     await page.waitForTimeout(1000)
     const fit = await frameBounds()
     assert.ok(fit.bounds[0] >= -2 && fit.bounds[2] <= width + 2, `反复缩放窗口仍需完整取景: ${JSON.stringify(fit)}`)
-    assert.equal(await page.locator('#region-test .map-scene-source').isVisible(), true)
+    assert.equal(await page.locator('#region-test').getAttribute('data-scene-credit'), 'osm')
   }
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.evaluate(() => {

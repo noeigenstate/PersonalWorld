@@ -11,8 +11,10 @@ import './spacetimeScene.css'
 // A place's story line, seen in 4D: the same spot at each time it was photographed. The
 // spacetime-scene skill splits the photos into dated epochs with evidence per layer; the epoch's
 // key photo can be reconstructed into a relief model on the service computer and looked around.
-export function SpacetimeScene({ assets, events, city, onPhoto }: { assets: MemoryAsset[]; events: MemoryEvent[]; city: string; onPhoto: (id: string) => void }) {
+// No entry button of its own: the life butler opens it (`openRequest` changes) when asked how a place looked over time
+export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, entry = false }: { assets: MemoryAsset[]; events: MemoryEvent[]; city: string; onPhoto: (id: string) => void; openRequest?: { at: number } | null; entry?: boolean }) {
   const [open, setOpen] = useState(false)
+  useEffect(() => { if (openRequest) setOpen(true) }, [openRequest])
   const [plan, setPlan] = useState<ScenePlan | null>(null)
   const [capability, setCapability] = useState<ReliefCapability | null>(null)
   const [scenes, setScenes] = useState<string[]>([])
@@ -55,7 +57,7 @@ export function SpacetimeScene({ assets, events, city, onPhoto }: { assets: Memo
   }
 
   return <>
-    <button className="button" onClick={() => setOpen(true)} title="同一个地方在不同时候的样子" aria-label="时空场景"><Box size={16} /><span>时空场景</span></button>
+    {entry && <button className="button" onClick={() => setOpen(true)} title="同一个地方在不同时候的样子" aria-label="时空场景"><Box size={16} /><span>时空场景</span></button>}
     {open && createPortal(<div className="modal-backdrop spacetime-backdrop" onClick={() => setOpen(false)}>
       <section className="spacetime-modal" role="dialog" aria-modal="true" aria-labelledby="spacetime-heading" onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">

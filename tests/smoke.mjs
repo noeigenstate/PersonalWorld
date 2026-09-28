@@ -53,18 +53,52 @@ async function register(name, password) {
 
 const butlerCalls = []
 let asrBytes = 0
+// What StepFun "hears" for the next hold-to-talk
+let asrText = ''
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟 StepFun', geocode: true } }))
 await page.route('**/api/geocode', (route) => route.fulfill({ json: { results: route.request().postDataJSON().points.map(fakeGeocode) } }))
+// Events analyze themselves after import; every event gets this answer (GPS cities are kept)
 await page.route('**/api/analyze', (route) => route.fulfill({ json: { title: '加班的夜晚', summary: '在办公室加班。', type: '工作', place: '', city: '上海市', people: [], visibleText: '', tags: [], questions: ['这是在公司吗？'], confidence: 0.6 } }))
 await page.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '测试照片', caption: '', scene: '测试画面', visibleText: '', clues: [], landmark: null, placeQuery: null, eventGuess: { type: '', reason: '' }, tags: [], questions: [] } }))
-await page.route('**/api/asr', (route) => { asrBytes = route.request().postDataBuffer()?.length || 0; return route.fulfill({ json: { text: '2019 年国庆那会儿发生了什么？' } }) })
+await page.route('**/api/asr', (route) => { asrBytes = route.request().postDataBuffer()?.length || 0; return route.fulfill({ json: { text: asrText } }) })
 await page.route('**/api/tts', (route) => route.fulfill({ contentType: 'audio/wav', body: silentWav }))
+// The butler answers with actions that drive the map: a role, a narrated slideshow, a photo search
 await page.route('**/api/butler', (route) => {
   const body = route.request().postDataJSON()
   butlerCalls.push(body)
+  const question = body.question
+  if (question === '工作') return route.fulfill({ json: { answer: '记下了，上海是你工作的地方。', eventIds: [], assetIds: [], actions: [{ type: 'set_place_role', city: body.state.pendingRoleCity, role: 'work' }] } })
+  if (question.includes('杭州')) {
+    const ids = body.memory.photos.filter((p) => p.city === '杭州市').map((p) => p.id)
+    return route.fulfill({ json: { answer: `找到 ${ids.length} 张杭州的照片。`, eventIds: [], assetIds: [], actions: [{ type: 'show_photos', assetIds: ids }] } })
+  }
   const event = body.memory.events.find((e) => e.start === '2019-10-02')
-  return route.fulfill({ json: { answer: '那是爸妈照片记录中第一次来上海看你，你们去了〔外滩〕。', eventIds: [event.id] } })
+  const ids = body.memory.photos.filter((p) => p.eventId === event.id).map((p) => p.id)
+  if (question.includes('短片')) return route.fulfill({ json: { answer: '好，我把这次的照片剪成一段短片，需要一两分钟。', eventIds: [event.id], assetIds: [], actions: [{ type: 'make_film', assetIds: ids }] } })
+  if (question.includes('第一次')) {
+    // A guided story from the record's firsts, lasts and moves: first time in Shanghai, last time in Wuhan
+    const firstShanghai = body.memory.events.find((e) => e.start === '2018-07-02')
+    const lastWuhan = body.memory.events.find((e) => e.start === '2018-06-20')
+    const photoOf = (e) => body.memory.photos.find((p) => p.eventId === e.id).id
+    return route.fulfill({ json: { answer: '这段要从 2018 年夏天说起。', eventIds: [firstShanghai.id, lastWuhan.id], assetIds: [], actions: [{ type: 'story', steps: [
+      { assetId: photoOf(firstShanghai), text: `2018 年 7 月，${firstShanghai.firsts[0]}。` },
+      { assetId: photoOf(lastWuhan), text: `那之前，${lastWuhan.lasts[0]}，〔毕业〕后你就去了上海。` },
+    ] }] } })
+  }
+  return route.fulfill({ json: { answer: '那是爸妈照片记录中第一次来上海看你，你们去了〔外滩〕。', eventIds: [event.id], assetIds: [], actions: [{ type: 'slideshow', assetIds: ids }] } })
 })
+// Hold the microphone, say `text`, release
+async function holdToTalk(text) {
+  asrText = text
+  const hold = page.locator('.hold')
+  const box = await hold.boundingBox()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.locator('.hold.recording').waitFor()
+  await page.locator('.subtitle.me.live').waitFor()
+  await page.waitForTimeout(1200)
+  await page.mouse.up()
+}
 
 // Globe and street map are both mounted; only the one on screen counts
 const placeLabel = (name) => page.locator('.map-label.place:visible').filter({ hasText: name })
@@ -96,12 +130,15 @@ try {
   // The empty map appears once the account vault has been checked for photos to restore
   await page.getByRole('heading', { name: '从照片开始，画出你的人生地图' }).waitFor()
   assert.equal(await page.locator('.app-bar nav').count(), 0, '顶栏不放导航：人生管家随地点自动弹出')
-  // The globe's drawing loads asynchronously; compare only once it is on screen
+  // The globe's drawing loads asynchronously; compare only once it is on screen. The sky behind
+  // the globe (shooting stars, a saucer, a space station) is the one layer meant to move.
   await page.locator('.life-globe[data-texture]').waitFor()
+  await page.addStyleTag({ content: '.globe-sky{visibility:hidden}' })
   await page.waitForTimeout(300)
   const still = await page.screenshot()
   await page.waitForTimeout(900)
   assert.ok(still.equals(await page.screenshot()), '页面不应自行漂浮或抖动')
+  assert.equal(await page.locator('.globe-sky').count(), 1, '星空有自己的一层动画')
 
   // Import a whole life
   const files = await makeLifeFixtures(page, mkdtempSync(join(tmpdir(), 'pw-life-')))
@@ -151,40 +188,75 @@ try {
   assert.equal(await overview.getAttribute('data-orientation'), beforeRotation, '归位后照片地点应回到正面')
   assert.equal(await overview.getAttribute('data-zoom'), '1.000', '归位后恢复初始缩放')
 
-  // Click a place: story line + butler
+  // Analysis is automatic: photo cards first, then every event, without a button
+  assert.equal(await page.locator('.voice-butler .hold').count(), 1, '话筒按钮始终在地图上')
+  assert.equal(await page.locator('.subtitle').count(), 0, '没选地点、没说话时没有字幕')
+  await page.locator('.locating-chip').filter({ hasText: '事件已自动分析' }).waitFor({ timeout: 40_000 })
+  assert.equal(await page.locator('.tray-chip').count(), 0, '分析后没有待整理的事件')
+
+  // Click a place: story line + the butler speaks first, as a subtitle over the map
   await chooseGlobeCity('上海')
-  await page.locator('.butler').waitFor()
+  await page.locator('.subtitle.bot').waitFor()
   await page.waitForTimeout(900)
   assert.match(await page.locator('.map-heading h1').innerText(), /上海的故事线/)
-  assert.equal(await page.locator('.map-label.event').count(), 6, '上海 5 件事加上从上海出发的杭州旅行')
-  assert.equal(await page.locator('.map-label.event.has-photo').count(), 6, '备用卡通地图也把封面与日期放在同一张事件卡片里')
-  assert.match(await page.locator('.bubble.bot').first().innerText(), /我记得这里的 6 件事/)
-  await page.locator('.role-choices').getByRole('button', { name: '工作' }).click()
-  assert.match(await page.locator('.bubble.bot').last().innerText(), /上海是你工作的地方/)
+  assert.equal(await page.locator('.map-label.event').count(), 7, '上海 5 件事、从上海出发的杭州旅行，和自动分析认到上海的那张截图')
+  assert.equal(await page.locator('.map-label.event.has-photo').count(), 7, '备用卡通地图也把封面与日期放在同一张事件卡片里')
+  assert.equal(await page.locator('.map-label.event.unsure').count(), 1, 'AI 推断的地点用虚线')
+  assert.equal(await page.locator('.map-heading .button').count(), 0, '人物与故事、时空场景、回忆短片不做按钮，由管家在对话中打开')
+  assert.match(await page.locator('.subtitle.bot').innerText(), /我记得这里的 7 件事/)
+  assert.match(await page.locator('.subtitle.bot').innerText(), /老家、求学、工作还是居住/, '据点角色由管家用语音问')
+
+  // Answer the role by voice
+  await holdToTalk('工作')
+  await page.locator('.subtitle.bot').filter({ hasText: '上海是你工作的地方' }).waitFor()
+  assert.equal(butlerCalls.at(-1).state.pendingRoleCity, '上海市', '管家知道自己刚问过哪个城市')
   assert.match(await placeLabel('上海').innerText(), /上海 · 工作/)
 
-  // Hold to talk
-  const hold = page.locator('.hold')
-  const box = await hold.boundingBox()
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-  await page.mouse.down()
-  await page.locator('.hold.recording').waitFor()
-  await page.waitForTimeout(1200)
-  await page.mouse.up()
-  await page.locator('.bubble.me').filter({ hasText: '2019 年国庆' }).waitFor()
-  await page.locator('.bubble.bot .inferred').waitFor()
+  // Ask about a time: the answer is narrated over a slideshow of that event's photos
+  await holdToTalk('2019 年国庆那会儿发生了什么？')
+  await page.locator('.subtitle.bot .inferred').waitFor()
   assert.ok(asrBytes > 1000, `录音应以 WAV 上传，实际 ${asrBytes} 字节`)
-  assert.equal(await page.locator('.bubble.me .voice-tag').count(), 1)
-  assert.equal(await page.locator('.bubble.bot .inferred').innerText(), '外滩', '推断内容应标出')
-  assert.match(await page.locator('.bubble.bot').last().innerText(), /依据：1 个事件 · 3 张照片/)
+  assert.equal(await page.locator('.subtitle.bot .inferred').innerText(), '外滩', '推断内容应标出')
+  await page.locator('.showcase.slideshow[data-count="3"]').waitFor()
+  assert.equal(await page.locator('.showcase-strip button').count(), 3, '这件事的 3 张照片进入幻灯片')
   const call = butlerCalls.at(-1)
   assert.equal(call.focus.city, '上海市')
+  assert.equal(call.state.city, '上海市')
   assert.equal(call.memory.events.length, 16)
+  assert.equal(call.memory.photos.length, 35, '每张照片的信息卡都给管家做语义搜索')
   assert.ok(!JSON.stringify(call).includes('data:image'), '管家请求不应包含图片')
   assert.equal(await page.locator('.timebar .dot.now').count(), 1, '时间线定位到被提到的事件')
   assert.match(await page.locator('.map-label.event.now').innerText(), /2019\.10/, '故事线上的事件高亮')
   await page.waitForTimeout(300)
   await page.screenshot({ path: join(shots, 'pw-2-story.png') })
+
+  // Find photos by meaning: the butler picks them and puts them on the stage
+  await holdToTalk('找找杭州的照片')
+  await page.locator('.subtitle.bot').filter({ hasText: '找到 3 张杭州的照片' }).waitFor()
+  await page.locator('.showcase.gallery[data-count="3"]').waitFor()
+  await page.getByRole('button', { name: '收起照片' }).click()
+  assert.equal(await page.locator('.showcase').count(), 0)
+
+  // Ask for a memory film: the butler opens the film window and starts cutting (here the window
+  // explains that this test browser has no film service behind it)
+  await holdToTalk('把国庆那次剪成回忆短片')
+  await page.getByRole('dialog', { name: '你的回忆，自己成片' }).waitFor()
+  assert.equal(await page.locator('.map-heading .film-entry').count(), 0, '回忆短片没有按钮，靠管家打开')
+  await page.getByRole('button', { name: '关闭回忆短片' }).click()
+
+  // First time, last time: a guided story — one photo and one spoken sentence per step
+  await holdToTalk('我第一次来上海是什么时候？')
+  await page.locator('.showcase.slideshow[data-count="2"]').waitFor()
+  await page.locator('.subtitle.bot').filter({ hasText: '第一次在上海' }).waitFor()
+  await page.locator('.subtitle.bot').filter({ hasText: '最后一次在武汉' }).waitFor({ timeout: 15_000 })
+  assert.equal(await page.locator('.showcase-strip button.on').getAttribute('aria-label'), '第 2 张', '故事讲到第二步，舞台也翻到第二张')
+  assert.equal(await page.locator('.subtitle.bot .inferred').innerText(), '毕业', '离开的原因是推断，标出来')
+  const storyCall = butlerCalls.at(-1)
+  assert.deepEqual(storyCall.memory.moves.map((m) => `${m.from}→${m.to}`), ['湘潭市→武汉市', '武汉市→上海市'], '据点迁徙给管家')
+  assert.match(storyCall.memory.events.find((e) => e.start === '2018-06-20').lasts[0], /^照片记录中最后一次在武汉，之后你去了上海$/, '没再回过武汉：照片记录中的最后一次')
+  assert.match(storyCall.memory.events.find((e) => e.start === '2014-08-30').lasts[0], /^离开湘潭去武汉前，照片记录中最后一次在湘潭$/, '后来又回过湘潭：只是离开前的最后一次')
+  await page.getByRole('button', { name: '收起照片' }).click()
+  await page.getByRole('button', { name: '收起字幕' }).click()
 
   // Story node opens the event
   await page.locator('.map-label.event').filter({ hasText: '2018.07' }).locator('.map-event-cover').click()
@@ -193,14 +265,13 @@ try {
   assert.match(await page.locator('.detail-fields').innerText(), /由照片定位得出/)
   await page.getByRole('button', { name: '关闭事件详情' }).click()
 
-  // The photo without GPS gets a city from the AI and shows as unconfirmed
-  await page.locator('.tray-chip').click()
-  await page.locator('.tray li').filter({ hasText: '未定位' }).click()
-  await page.getByRole('button', { name: '用 StepFun 分析' }).click()
+  // The photo without GPS got its city from the automatic analysis and shows as unconfirmed
+  await page.locator('.map-label.event.unsure .map-event-cover').click()
+  await page.locator('.detail-panel').waitFor()
   await page.locator('.detail-fields').getByText('AI 推断，待你确认').waitFor()
+  assert.match(await page.locator('.detail-auto').innerText(), /已自动分析/)
+  assert.equal(await page.getByRole('button', { name: '用 StepFun 分析' }).count(), 0, '分析是自动的，没有手动按钮')
   await page.getByRole('button', { name: '关闭事件详情' }).click()
-  assert.equal(await page.locator('.map-label.event').count(), 7)
-  assert.equal(await page.locator('.map-label.event.unsure').count(), 1, 'AI 推断的地点用虚线')
 
   // Persistence and duplicates
   await page.reload({ waitUntil: 'networkidle' })
@@ -247,10 +318,10 @@ try {
   await page.locator('.life-globe[data-place-count="4"]').waitFor()
   assert.equal(await page.locator('.timebar .dot').count(), 16, '登录回来数据还在')
 
-  // Choosing a place opens the life butler by itself
-  assert.equal(await page.locator('.butler').count(), 0, '没选地点时不显示对话框')
+  // Choosing a place makes the life butler speak by itself
+  assert.equal(await page.locator('.subtitle').count(), 0, '没选地点时没有字幕')
   await chooseGlobeCity('上海')
-  await page.locator('.butler').waitFor()
+  await page.locator('.subtitle.bot').waitFor()
 
   for (const width of [320, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 844 })
@@ -259,11 +330,11 @@ try {
     assert.ok(overflow <= 1, `${width}px 布局不应横向溢出，实际溢出 ${overflow}px`)
   }
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.getByRole('button', { name: '关闭人生管家' }).click()
+  if (await page.locator('.subtitle').count()) await page.getByRole('button', { name: '收起字幕' }).click()
   await page.waitForTimeout(1000)
   await page.screenshot({ path: join(shots, 'pw-3-mobile.png') })
   assert.equal(errors.length, 0, `浏览器运行时不应报错：${errors.join('; ')}`)
-  console.log('Smoke test passed: register/login, per-account data, import → places, story line, butler (voice), inferred marks, AI city, persistence, layout.')
+  console.log('Smoke test passed: register/login, per-account data, import → places, automatic analysis, story line, voice butler (subtitles, role, slideshow, photo search), inferred marks, AI city, persistence, layout.')
 } finally {
   await browser.close()
 }

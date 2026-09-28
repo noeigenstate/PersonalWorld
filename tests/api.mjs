@@ -37,7 +37,8 @@ const mock = http.createServer(async (req, res) => {
     : system.includes('照片信息卡助手')
     ? { title: '新居装修', caption: '〔可能在杭州〕', scene: '天花板上的灯', visibleText: '恒彩家装 0571-5670 0000', clues: [{ kind: '地点', evidence: '区号 0571', inference: '装修公司在杭州', confidence: 0.6 }, { kind: '事件', evidence: '', inference: '无依据的线索应被丢弃', confidence: 0.9 }], eventGuess: { type: '搬家装修', reason: '保护膜' }, tags: ['装修'], questions: ['这是你家吗？', '哪一年？', '第三个问题应被截掉'] }
     : system.includes('人生管家')
-    ? { answer: '那是爸妈第一次来〔上海〕看你。', eventIds: ['e2', 'not-a-real-id'] }
+    // Actions on things that do not exist (a city, a photo, a film, a scene) must be dropped by the server
+    ? { answer: '那是爸妈第一次来〔上海〕看你。', eventIds: ['e2', 'not-a-real-id'], assetIds: ['p1', 'nope'], actions: [{ type: 'story', steps: [{ assetId: 'p1', text: '2019 年国庆，爸妈第一次来上海看你。' }, { assetId: 'nope', text: '不存在的照片' }, { assetId: 'p1', text: '同一张照片不再用' }] }, { type: 'focus_city', city: '火星市' }, { type: 'set_place_role', city: '上海市', role: 'work' }, { type: 'open_spacetime' }, { type: 'teleport' }, { type: 'play_film', filmId: 'f9' }, { type: 'make_film', assetIds: ['nope', 'p1'] }] }
     : { title: '海边旅行', summary: '画面显示海边风景。', type: '旅行', place: '', city: '三亚市', people: [], visibleText: '海边', tags: ['海边'], questions: ['同行的人是谁？'], confidence: 0.7 }
   json({ choices: [{ message: { content: JSON.stringify(output) }, finish_reason: 'stop' }] })
 })
@@ -142,26 +143,40 @@ try {
   const [lng, lat] = regeo.searchParams.get('location').split('|')[0].split(',').map(Number)
   assert.ok(lng > 121.504 && lng < 121.506 && lat > 31.237 && lat < 31.239, `坐标应转换为 GCJ-02，实际 ${lng},${lat}`)
 
-  // Life butler: grounded in memory, unknown event ids are dropped
+  // Life butler: grounded in memory; unknown event, photo and action targets are dropped
   const butler = await post('/api/butler', {
     question: '2019 年国庆发生了什么？',
     history: [{ role: 'assistant', content: '你在上海生活了 8 年。' }],
     focus: { city: '上海市', from: '2018-07-01', to: '2026-09-24' },
+    state: { view: 'city', city: '上海市', openEventId: '', focusedPhotoId: '', showing: [], pendingRoleCity: '上海市', features: { people: 1, stories: 0, spacetime: false, films: [{ id: 'f1', title: '国庆的外滩' }], filmCapable: true } },
     memory: {
       places: [{ city: '上海市', role: 'work', roleConfirmed: true, firstAt: '2018-07-02', lastAt: '2026-09-23', eventCount: 2 }],
+      moves: [{ from: '武汉市', fromRole: 'study', to: '上海市', toRole: 'work', at: '2018-07-02' }, { from: '', to: '上海市' }],
       events: [
         { id: 'e1', title: '入职第一天', start: '2018-07-02', city: '上海市', status: 'confirmed', firsts: ['照片记录中第一次在上海'], photoCount: 4 },
-        { id: 'e2', title: '父母来沪', start: '2019-10-02', city: '上海市', status: 'analyzed', photoCount: 26, dataUrl: 'data:image/jpeg;base64,AAAA' },
+        { id: 'e2', title: '父母来沪', start: '2019-10-02', city: '上海市', status: 'analyzed', photoCount: 26, dataUrl: 'data:image/jpeg;base64,AAAA', lasts: ['照片记录中最后一次在武汉，之后你去了上海'] },
       ],
+      photos: [{ id: 'p1', eventId: 'e2', date: '2019-10-02', city: '上海市', place: '外滩', title: '外滩夜景', caption: '', scene: '江边灯光', tags: ['夜景'], people: ['妈妈'], preview: 'data:image/jpeg;base64,AAAA' }],
     },
   })
   assert.equal(butler.status, 200)
   const reply = await butler.json()
   assert.match(reply.answer, /第一次/)
   assert.deepEqual(reply.eventIds, ['e2'])
+  assert.deepEqual(reply.assetIds, ['p1'], '不存在的照片 id 被过滤')
+  assert.deepEqual(reply.actions, [
+    { type: 'story', steps: [{ assetId: 'p1', text: '2019 年国庆，爸妈第一次来上海看你。' }] },
+    { type: 'set_place_role', city: '上海市', role: 'work' },
+    { type: 'play_film' },
+    { type: 'make_film', assetIds: ['p1'] },
+  ], '故事只保留存在且不重复的照片；未知城市、未知动作和没有时空场景时的 open_spacetime 被丢弃；未知短片退回到最相关的一部；剪短片只用存在的照片')
   const butlerCall = last('/v1/chat/completions').payload
   assert.match(butlerCall.messages[0].content, /人生管家/)
   assert.match(butlerCall.messages[0].content, /"focus":\{"city":"上海市"/)
+  assert.match(butlerCall.messages[0].content, /"moves":\[\{"from":"武汉市","fromRole":"study","to":"上海市","toRole":"work","at":"2018-07-02"\}\]/, '迁徙给模型，残缺的一条被丢弃')
+  assert.match(butlerCall.messages[0].content, /"lasts":\["照片记录中最后一次在武汉，之后你去了上海"\]/)
+  assert.match(butlerCall.messages[0].content, /"state":\{"view":"city","city":"上海市"/, '界面状态随记忆一起给模型')
+  assert.match(butlerCall.messages[0].content, /"photos":\[\{"id":"p1","eventId":"e2"/, '照片信息卡供语义搜索')
   assert.equal(butlerCall.messages[0].content.includes('data:image'), false, '管家对话不应发送图片')
   assert.equal(butlerCall.messages.at(-1).content, '2019 年国庆发生了什么？')
   assert.equal(butlerCall.messages[1].role, 'assistant')

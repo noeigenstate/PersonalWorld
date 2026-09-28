@@ -122,7 +122,7 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, inset
   function measuredInsets() {
     const insets = latest.current.insets
     const el = host.current
-    // The mobile butler is a bottom sheet, not a 432 px sidebar.
+    // On phones the butler's photo stage is a bottom sheet, not a sidebar.
     if (!el || el.clientWidth > 900 || !insets.right) return insets
     return { ...insets, right: 0, bottom: Math.max(insets.bottom, Math.min(el.clientHeight * .42, 360) + 12) }
   }

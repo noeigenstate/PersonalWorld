@@ -19,6 +19,7 @@ import { createFilmService } from './memoryFilms.mjs'
 import { filmCapability } from './memoryFilmRender.mjs'
 import { createMemoryReview } from './memoryReview.mjs'
 import { createMemoryGraph } from './memoryGraph.mjs'
+import { compactPhoto, compactState, pickPhotos, readActions } from './butler.mjs'
 
 loadEnv({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
@@ -67,9 +68,14 @@ function compactEvent(event) {
     status: String(event.status || 'draft'),
     visibleText: String(event.visibleText || '').slice(0, 120),
     firsts: strings(event.firsts, 4),
+    // "Last time" facts the record can stand behind (src/lib/firstsLasts.ts)
+    lasts: strings(event.lasts, 4),
     photoCount: Number(event.photoCount) || 0,
   }
 }
+
+// Moves between life bases, so the butler can say what came before and after a first or last time
+const compactMove = (move) => ({ from: String(move.from || ''), fromRole: String(move.fromRole || ''), to: String(move.to || ''), toRole: String(move.toRole || ''), at: String(move.at || '').slice(0, 10) })
 
 const routes = {
   async 'POST /api/map-scene'(body) {
@@ -187,19 +193,32 @@ const routes = {
     const focus = body.focus && typeof body.focus === 'object'
       ? { city: String(body.focus.city || ''), from: String(body.focus.from || ''), to: String(body.focus.to || '') }
       : null
+    // Photo information cards (no pictures) so the butler can find photos by meaning, and what the page shows now
+    const photos = pickPhotos(question, (Array.isArray(body.memory?.photos) ? body.memory.photos : []).slice(0, 3000).map(compactPhoto).filter((p) => p.id))
+    const state = compactState(body.state)
     const history = (Array.isArray(body.history) ? body.history : []).slice(-8)
       .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string')
       .map((m) => ({ role: m.role, content: m.content.slice(0, 600) }))
-    const memory = JSON.stringify({ today: new Date().toISOString().slice(0, 10), focus, places, events,storyGraph:graph.context(user) })
+    const moves = (Array.isArray(body.memory?.moves) ? body.memory.moves : []).slice(0, 30).map(compactMove).filter((m) => m.from && m.to)
+    const memory = JSON.stringify({ today: new Date().toISOString().slice(0, 10), focus, state, places, moves, events, photos, storyGraph: graph.context(user) })
     const answer = parseJsonAnswer(await chat(stepfun, [
       { role: 'system', content: `${loadSkill('life-butler')}\n\n记忆：${memory}` },
       ...history,
       { role: 'user', content: question },
     ], { json: true }))
-    const known = new Set(events.map((event) => event.id))
+    const known = {
+      events: new Set(events.map((event) => event.id)),
+      photos: new Set(photos.map((photo) => photo.id)),
+      cities: new Set(places.map((place) => place.city)),
+      films: new Set((state?.features.films || []).map((film) => film.id)),
+      filmCapable: Boolean(state?.features.filmCapable),
+      spacetime: Boolean(state?.features.spacetime),
+    }
     return [200, {
       answer: typeof answer.answer === 'string' ? answer.answer : '我没能整理出回答，请换个问法再试一次。',
-      eventIds: strings(answer.eventIds, 12).filter((id) => known.has(id)),
+      eventIds: strings(answer.eventIds, 12).filter((id) => known.events.has(id)),
+      assetIds: strings(answer.assetIds, 12).filter((id) => known.photos.has(id)),
+      actions: readActions(answer.actions, known),
     }]
   },
 

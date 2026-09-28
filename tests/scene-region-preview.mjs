@@ -69,7 +69,7 @@ try {
       await page.screenshot({path:join(tmpdir(),`pw-gongshu-${name}-close.png`)})
     }
   }
-  const sceneSource = await page.locator('.map-scene-source').last().isVisible()
+  const sceneSource = (await page.locator('#region-preview').getAttribute('data-scene-credit')) === 'osm'
   const sceneInfo = await page.locator('#region-preview').evaluate(el => ({ ...el.dataset }))
   if (process.env.SCENE_EXPECT_LANDMARK) assert.ok(sceneInfo.sceneLandmarks?.includes(process.env.SCENE_EXPECT_LANDMARK), 'registered landmark must exist in the actual map scene')
   assert.equal(sceneSource, true, '普通照片区域应加载场景数据')

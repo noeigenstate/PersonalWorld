@@ -64,7 +64,7 @@ try {
 
   // A city
   await page.locator('.map-label.place:visible').filter({ hasText: '杭州' }).first().click()
-  await page.locator('.butler').waitFor()
+  await page.locator('.subtitle.bot').waitFor()
   const city = await settle((s) => s.zoom >= 10 && s.tiles >= 20)
   await page.screenshot({ path: join(shots, 'pw-cartoon-2-city.png') })
   // Close-up of the story's event marker

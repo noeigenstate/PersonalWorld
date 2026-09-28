@@ -24,7 +24,8 @@ async function setup(context) {
   if (!process.env.REAL_MAP) await context.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟', geocode: true } }))
   await context.route('**/api/geocode', (route) => route.fulfill({ json: { results: route.request().postDataJSON().points.map(fakeGeocode) } }))
   await context.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '外滩的傍晚', caption: '江边的灯刚亮起来。', scene: '江边步道', visibleText: '', clues: [{ kind: '地标', evidence: '东方明珠', inference: '上海外滩', confidence: 0.8 }], landmark: null, placeQuery: null, eventGuess: { type: '旅行', reason: '' }, tags: ['夜景', '江边'], questions: ['那天和谁一起？'] } }))
-  await context.route('**/api/butler', (route) => route.fulfill({ json: { answer: '那是你第一次来上海，你们去了〔外滩〕。', eventIds: [] } }))
+  await context.route('**/api/butler', (route) => route.fulfill({ json: { answer: '那是你第一次来上海，你们去了〔外滩〕。', eventIds: [], assetIds: [], actions: [] } }))
+  await context.route('**/api/analyze', (route) => route.fulfill({ json: { title: '', summary: '', type: '', place: '', city: '', people: [], visibleText: '', tags: [], questions: [], confidence: 0.5 } }))
 }
 const width = Number(process.env.W || 1440), height = Number(process.env.H || 900)
 const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 })
@@ -69,7 +70,7 @@ for (const level of ['brief', 'name']) {
 }
 await page.evaluate(() => document.querySelectorAll('.map-label.place').forEach((el) => { el.dataset.detail = 'full' }))
 await chooseGlobeCity('上海')
-await page.locator('.butler').waitFor()
+await page.locator('.subtitle.bot').waitFor()
 await page.waitForTimeout(4000)
 await page.screenshot({ path: join(out, '4-butler.png') })
 const photo = page.locator('.map-photo').first()

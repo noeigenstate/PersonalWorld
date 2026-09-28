@@ -151,17 +151,9 @@ export function eventCover(event: MemoryEvent, assets: MemoryAsset[]): MemoryAss
 /** A country name is what AMap returns for points at sea; it is not a place */
 export const isCountryName = (name?: string) => /^(中华人民共和国|中国)$/.test(name || '')
 
-export function cityLabel(city: string) {
-  return city.replace(/(市|特别行政区)$/, '')
-}
-
-export const roleLabels: Record<PlaceRole, string> = {
-  home: '老家',
-  study: '求学',
-  work: '工作',
-  residence: '居住',
-  travel: '旅行',
-}
+export { cityLabel, roleLabels } from './labels'
+// "First time" / "last time" facts live in firstsLasts.ts (dependency-free, unit-tested from Node)
+export { firstsOf, lastsOf, movesOf, movesForButler } from './firstsLasts'
 
 export function derivePlaces(events: MemoryEvent[], roles: Record<string, PlaceRole>): Place[] {
   const byCity = new Map<string, MemoryEvent[]>()
@@ -215,21 +207,3 @@ export function storyLine(city: string, events: MemoryEvent[], places: Place[]):
     .sort((a, b) => time(a.occurredAt) - time(b.occurredAt))
 }
 
-// "First time" facts as far as the photo record goes
-export function firstsOf(events: MemoryEvent[]): Map<string, string[]> {
-  const sorted = [...events].sort((a, b) => time(a.occurredAt) - time(b.occurredAt))
-  const seenCity = new Set<string>()
-  const seenPerson = new Set<string>()
-  const result = new Map<string, string[]>()
-  for (const event of sorted) {
-    const firsts: string[] = []
-    if (event.city && !seenCity.has(event.city)) { seenCity.add(event.city); firsts.push(`照片记录中第一次在${cityLabel(event.city)}`) }
-    for (const person of event.status === 'confirmed' ? event.people : []) {
-      if (person === '我' || seenPerson.has(person)) continue
-      seenPerson.add(person)
-      firsts.push(`照片记录中第一次和${person}同框`)
-    }
-    if (firsts.length) result.set(event.id, firsts)
-  }
-  return result
-}

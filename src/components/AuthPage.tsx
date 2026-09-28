@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Aperture, ArrowRight, ShieldCheck, X } from 'lucide-react'
+import { ArrowRight, ShieldCheck, X } from 'lucide-react'
+import { CakeLogo } from './CakeLogo'
 import { signIn, signUp, type Account } from '../lib/api'
 import { PrivacyStatement } from './PrivacyStatement'
 
@@ -44,7 +45,7 @@ export function AuthPage({ onSignedIn, notice }: { onSignedIn: (account: Account
   return (
     <main className="auth">
       <section className="auth-card" aria-labelledby="auth-title">
-        <span className="auth-brand"><Aperture size={22} strokeWidth={2} />Personal World</span>
+        <span className="auth-brand"><CakeLogo size={24} />Personal World</span>
         <h1 id="auth-title">{registering ? '创建你的账户' : '欢迎回来'}</h1>
         <p className="auth-sub">{registering ? '用户名和密码就够了。' : '登录后继续整理你的人生地图。'}</p>
         {notice && <p className="auth-notice" role="status">{notice}</p>}

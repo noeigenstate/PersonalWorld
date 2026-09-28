@@ -8,33 +8,18 @@ import type { Place } from '../types'
 const RADIUS = 1.6
 // Globe units: RADIUS is the Earth's 6371 km. Below this camera altitude the street map takes over.
 export const GLOBE_KM_PER_UNIT = 6371 / RADIUS
-export const HANDOFF_ALTITUDE = 1.3
-const CLOSEST_ALTITUDE = 1.2
+// The globe stays a sphere all the way in (it used to unroll into the flat map, which read as a
+// deformed Earth). The street map takes over this close, where the patch on screen is about
+// 1500 km high and the two can cross-fade without the curve showing.
+export const HANDOFF_ALTITUDE = 0.5
+const CLOSEST_ALTITUDE = 0.46
 const DEG = Math.PI / 180
-// Below this altitude the globe unrolls into the street map's flat Web Mercator projection (as a
-// Mapbox globe does), and over the last part it fades to the street map kept on the same view
-// underneath: at the hand-over there is nothing left to change.
-const UNROLL_FROM = 2.6
+// From this altitude down, the street map is kept on the same view underneath and fades in over
+// the last part of the approach: at the hand-over there is nothing left to change.
+const APPROACH_FROM = 1.4
 const smooth = (x: number) => { const t = THREE.MathUtils.clamp(x, 0, 1); return t * t * (3 - 2 * t) }
-export const unrolledAt = (altitude: number) => smooth(Math.log(UNROLL_FROM / altitude) / Math.log(UNROLL_FROM / HANDOFF_ALTITUDE))
-export const fadeAt = (altitude: number) => smooth((unrolledAt(altitude) - 0.5) / 0.45)
-const mercator = (lat: number) => Math.log(Math.tan(Math.PI / 4 + THREE.MathUtils.clamp(lat, -85, 85) * DEG / 2))
-
-// A point on the globe, or on the globe partly unrolled towards the plane touching it at `center`
-// (the same sums as the sphere's vertex shader below)
-function onSurface(lng: number, lat: number, radius: number, center: { lng: number; lat: number }, unrolled: number) {
-  const round = onGlobe(lng, lat, radius)
-  if (unrolled <= 0) return round
-  const l0 = center.lng * DEG, p0 = center.lat * DEG
-  const dLng = ((lng - center.lng + 540) % 360 - 180) * DEG
-  const k = RADIUS * Math.cos(p0)
-  const x = k * dLng, y = k * (mercator(lat) - mercator(center.lat))
-  const up = new THREE.Vector3(Math.cos(p0) * Math.cos(l0), Math.sin(p0), -Math.cos(p0) * Math.sin(l0))
-  const east = new THREE.Vector3(-Math.sin(l0), 0, -Math.cos(l0))
-  const north = new THREE.Vector3(-Math.sin(p0) * Math.cos(l0), Math.cos(p0), Math.sin(p0) * Math.sin(l0))
-  const plane = up.multiplyScalar(radius).addScaledVector(east, x).addScaledVector(north, y)
-  return round.lerp(plane, unrolled)
-}
+export const approachAt = (altitude: number) => smooth(Math.log(APPROACH_FROM / altitude) / Math.log(APPROACH_FROM / HANDOFF_ALTITUDE))
+export const fadeAt = (altitude: number) => smooth((approachAt(altitude) - 0.5) / 0.45)
 
 function onGlobe(lng: number, lat: number, radius = RADIUS) {
   const phi = lng * DEG
@@ -53,6 +38,9 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
   host.className = 'life-globe'
   const stars = document.createElement('canvas')
   stars.className = 'globe-stars'
+  // Over the still stars: shooting stars, a passing saucer, a drifting space station (behind the globe)
+  const sky = document.createElement('canvas')
+  sky.className = 'globe-sky'
   const canvas = document.createElement('canvas')
   canvas.className = 'life-globe-canvas'
   canvas.tabIndex = 0
@@ -80,7 +68,7 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
   credit.target = '_blank'
   credit.rel = 'noopener noreferrer'
   credit.textContent = '地球轮廓：Natural Earth'
-  host.append(stars, canvas, labelsLayer, photoLayer, menu, placeMenu, controls, credit)
+  host.append(stars, sky, canvas, labelsLayer, photoLayer, menu, placeMenu, controls, credit)
   container.append(host)
 
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true })
@@ -98,47 +86,11 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
   scene.add(globe)
   const sphereGeometry = new THREE.SphereGeometry(RADIUS, 96, 64)
   const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0x83b6c7, roughness: 1 })
-  // Unrolling: each vertex moves towards its place on the plane touching the globe at the view's
-  // centre (Web Mercator, true scale at the centre), and the light evens out to the flat map's
-  const unroll = { uUnroll: { value: 0 }, uLng0: { value: 0 }, uLat0: { value: 0 }, uRadius: { value: RADIUS } }
-  sphereMaterial.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, unroll)
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>
-uniform float uUnroll; uniform float uLng0; uniform float uLat0; uniform float uRadius;
-varying float vFarSide;
-float mercatorY(float lat) { return log(tan(0.78539816 + clamp(lat, -1.4835, 1.4835) * 0.5)); }`)
-      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
-vec3 unrollUp = vec3(cos(uLat0) * cos(uLng0), sin(uLat0), -cos(uLat0) * sin(uLng0));
-objectNormal = normalize(mix(objectNormal, unrollUp, uUnroll));`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-// three's sphere: u runs from longitude -180 to 180, v from the south pole to the north
-float lngV = uv.x * 6.28318531 - 3.14159265;
-float latV = (uv.y - 0.5) * 3.14159265;
-float dLng = mod(lngV - uLng0 + 3.14159265, 6.28318531) - 3.14159265;
-// The far side would stretch across the plane where it wraps: it is left out
-vFarSide = uUnroll > 0.0 && abs(dLng) > 2.6 ? 1.0 : 0.0;
-float scaleK = uRadius * cos(uLat0);
-vec3 unrollEast = vec3(-sin(uLng0), 0.0, -cos(uLng0));
-vec3 unrollNorth = vec3(-sin(uLat0) * cos(uLng0), cos(uLat0), sin(uLat0) * sin(uLng0));
-vec3 onPlane = uRadius * unrollUp + scaleK * dLng * unrollEast + scaleK * (mercatorY(latV) - mercatorY(uLat0)) * unrollNorth;
-transformed = mix(transformed, onPlane, uUnroll);`)
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>
-uniform float uUnroll;
-varying float vFarSide;`)
-      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-if (vFarSide > 0.5) discard;`)
-      .replace('#include <opaque_fragment>', `outgoingLight = mix(outgoingLight, diffuseColor.rgb, uUnroll);
-#include <opaque_fragment>`)
-  }
   // Shown once its drawing is ready: a plain blue ball first and continents popping in later looked broken
   const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial)
   sphere.visible = false
   globe.add(sphere)
-  const atmosphereGeometry = new THREE.SphereGeometry(RADIUS * 1.018, 64, 48)
-  const atmosphereMaterial = new THREE.MeshBasicMaterial({ color: 0x91cfeb, side: THREE.BackSide, transparent: true, opacity: 0.38, depthWrite: false })
-  globe.add(new THREE.Mesh(atmosphereGeometry, atmosphereMaterial))
+  // (No atmosphere halo: the user found the grey ring around the Earth distracting.)
   let texture: THREE.Texture | undefined
   // The texture is a vector drawing: rasterise it large so coasts stay crisp until the street map takes over
   const art = new Image()
@@ -240,6 +192,128 @@ if (vFarSide > 0.5) discard;`)
     }
   }
 
+  // ---- The animated sky: the one thing on the page allowed to move on its own ----------------
+  // Shooting stars now and then, a saucer with a small green pilot crossing every so often, and a
+  // space station drifting across the top over a couple of minutes. Behind the globe, at ~30 fps,
+  // only while this layer is on screen; none of it when the person prefers reduced motion.
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  const skyState = {
+    meteors: [] as { x: number; y: number; vx: number; vy: number; born: number; life: number }[],
+    nextMeteor: 2500,
+    saucer: null as { start: number; y: number; dir: number; span: number } | null,
+    nextSaucer: 9000,
+    stationStart: 0,
+    last: 0,
+  }
+  let skyFrame = 0
+  const skyRandom = () => Math.random()
+  function drawSky(now: number) {
+    const ratio = Math.min(window.devicePixelRatio, 2)
+    if (sky.width !== Math.round(width * ratio) || sky.height !== Math.round(height * ratio)) { sky.width = Math.round(width * ratio); sky.height = Math.round(height * ratio) }
+    const g = sky.getContext('2d')
+    if (!g) return
+    g.setTransform(ratio, 0, 0, ratio, 0, 0)
+    g.clearRect(0, 0, width, height)
+    // Space station: a slow arc across the upper sky, 150 s per crossing
+    if (!skyState.stationStart) skyState.stationStart = now - 30000
+    const stationT = ((now - skyState.stationStart) % 150000) / 150000
+    const sx = -60 + (width + 120) * stationT, sy = height * 0.14 - Math.sin(stationT * Math.PI) * height * 0.05
+    g.save()
+    g.translate(sx, sy)
+    g.rotate(Math.sin(stationT * Math.PI * 2) * 0.12 - 0.15)
+    g.fillStyle = '#3f6fd8'
+    for (const side of [-1, 1]) {
+      g.fillRect(side > 0 ? 16 : -16 - 26, -5, 26, 10)
+      g.strokeStyle = 'rgba(255,255,255,.45)'
+      g.lineWidth = 0.8
+      for (let i = 1; i < 4; i++) { const x = (side > 0 ? 16 : -42) + i * 6.5; g.beginPath(); g.moveTo(x, -5); g.lineTo(x, 5); g.stroke() }
+      g.beginPath(); g.moveTo((side > 0 ? 16 : -42), 0); g.lineTo((side > 0 ? 42 : -16), 0); g.stroke()
+    }
+    g.fillStyle = '#e4ebf7'
+    g.beginPath(); g.roundRect(-16, -6, 32, 12, 4); g.fill()
+    g.fillStyle = '#b8c6dc'
+    g.fillRect(-16, 2, 32, 3)
+    g.fillStyle = '#ffd166'
+    g.beginPath(); g.arc(9, -1, 2, 0, Math.PI * 2); g.fill()
+    g.strokeStyle = '#e4ebf7'; g.lineWidth = 1.2
+    g.beginPath(); g.moveTo(0, -6); g.lineTo(0, -14); g.stroke()
+    g.fillStyle = `rgba(255,90,90,${0.5 + 0.5 * Math.sin(now / 400)})`
+    g.beginPath(); g.arc(0, -15, 1.6, 0, Math.PI * 2); g.fill()
+    g.restore()
+    // Saucer with its pilot, crossing in about 8 s along a gentle wave
+    if (!skyState.saucer && now > skyState.nextSaucer) skyState.saucer = { start: now, y: height * (0.18 + skyRandom() * 0.5), dir: skyRandom() > 0.5 ? 1 : -1, span: 8000 + skyRandom() * 3000 }
+    if (skyState.saucer) {
+      const s = skyState.saucer
+      const t = (now - s.start) / s.span
+      if (t > 1) { skyState.saucer = null; skyState.nextSaucer = now + 18000 + skyRandom() * 22000 }
+      else {
+        const x = s.dir > 0 ? -50 + (width + 100) * t : width + 50 - (width + 100) * t
+        const y = s.y + Math.sin(t * Math.PI * 3) * 14
+        g.save()
+        g.translate(x, y)
+        g.scale(s.dir, 1)
+        // trail
+        const trail = g.createLinearGradient(-22, 0, -90, 0)
+        trail.addColorStop(0, 'rgba(160,220,255,.35)'); trail.addColorStop(1, 'rgba(160,220,255,0)')
+        g.fillStyle = trail
+        g.fillRect(-90, -2, 70, 4)
+        // dome with the alien
+        g.fillStyle = 'rgba(205,240,255,.85)'
+        g.beginPath(); g.ellipse(0, -6, 11, 9, 0, Math.PI, 0); g.fill()
+        g.fillStyle = '#8fe388'
+        g.beginPath(); g.arc(0, -7, 4.2, 0, Math.PI * 2); g.fill()
+        g.fillStyle = '#1d1d1f'
+        g.beginPath(); g.arc(-1.6, -7.5, 0.9, 0, Math.PI * 2); g.arc(1.6, -7.5, 0.9, 0, Math.PI * 2); g.fill()
+        g.strokeStyle = '#8fe388'; g.lineWidth = 1
+        g.beginPath(); g.moveTo(-2, -10.5); g.lineTo(-3.5, -14); g.moveTo(2, -10.5); g.lineTo(3.5, -14); g.stroke()
+        // body
+        const body = g.createLinearGradient(0, -6, 0, 6)
+        body.addColorStop(0, '#d8e3f3'); body.addColorStop(1, '#8fa5c6')
+        g.fillStyle = body
+        g.beginPath(); g.ellipse(0, 0, 24, 7, 0, 0, Math.PI * 2); g.fill()
+        // lights
+        for (const [i, color] of ['#ff7b7b', '#ffd166', '#7ee8fa', '#ffd166', '#ff7b7b'].entries()) {
+          g.fillStyle = (Math.floor(now / 250) + i) % 3 === 0 ? color : 'rgba(255,255,255,.35)'
+          g.beginPath(); g.arc(-16 + i * 8, 3, 1.6, 0, Math.PI * 2); g.fill()
+        }
+        g.restore()
+      }
+    }
+    // Shooting stars: short bright streaks, gone in under a second
+    if (now > skyState.nextMeteor) {
+      const fromLeft = skyRandom() > 0.5
+      const angle = (fromLeft ? 1 : -1) * (0.45 + skyRandom() * 0.3)
+      const speed = 620 + skyRandom() * 380
+      skyState.meteors.push({ x: skyRandom() * width, y: skyRandom() * height * 0.55, vx: Math.cos(angle) * speed * (fromLeft ? 1 : 1), vy: Math.abs(Math.sin(angle)) * speed, born: now, life: 550 + skyRandom() * 350 })
+      skyState.nextMeteor = now + 3500 + skyRandom() * 6500
+    }
+    skyState.meteors = skyState.meteors.filter((m) => now - m.born < m.life)
+    for (const m of skyState.meteors) {
+      const age = (now - m.born) / 1000
+      const fade = 1 - (now - m.born) / m.life
+      const hx = m.x + m.vx * age, hy = m.y + m.vy * age
+      const tail = 0.12
+      const streak = g.createLinearGradient(hx, hy, hx - m.vx * tail, hy - m.vy * tail)
+      streak.addColorStop(0, `rgba(255,255,255,${0.95 * fade})`)
+      streak.addColorStop(1, 'rgba(255,255,255,0)')
+      g.strokeStyle = streak
+      g.lineWidth = 1.8
+      g.lineCap = 'round'
+      g.beginPath(); g.moveTo(hx, hy); g.lineTo(hx - m.vx * tail, hy - m.vy * tail); g.stroke()
+      g.fillStyle = `rgba(255,255,255,${fade})`
+      g.beginPath(); g.arc(hx, hy, 1.6, 0, Math.PI * 2); g.fill()
+    }
+  }
+  function animateSky(now: number) {
+    if (disposed) return
+    skyFrame = requestAnimationFrame(animateSky)
+    if (now - skyState.last < 33) return
+    if (document.visibilityState !== 'visible' || host.closest('.away')) return
+    skyState.last = now
+    drawSky(now)
+  }
+  if (!reduceMotion) skyFrame = requestAnimationFrame(animateSky)
+
   function fitDistance() {
     const tangent = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
     const usable = Math.max(0.45, (height - insets.top - insets.bottom) / height)
@@ -304,18 +378,15 @@ if (vFarSide > 0.5) discard;`)
     setZoom(1)
     zoomTargetPhoto = null
   }
-  function surface(lng: number, lat: number, radius: number) {
-    const unrolled = unrolledAt(altitude())
-    // Unrolled, the far side is left out (as in the shader)
-    if (unrolled > 0 && Math.abs((lng - view.lng + 540) % 360 - 180) > 2.6 / DEG) return null
-    return onSurface(lng, lat, radius, view, unrolled)
+  function surface(lng: number, lat: number, radius: number): THREE.Vector3 | null {
+    return onGlobe(lng, lat, radius)
   }
   function projected(at: THREE.Vector3 | null) {
     if (!at) return { front: false, x: 0, y: 0, z: 1 }
     const world = at.clone().applyMatrix4(globe.matrixWorld)
     const ndc = world.clone().project(camera)
     const x = (ndc.x + 1) * width / 2, y = (1 - ndc.y) * height / 2
-    // On the unrolled plane nothing is hidden behind the globe, but a lot is off screen
+    // Facing the camera, and not too far off screen
     const front = world.z > 0.06 && x > -width * 0.25 && x < width * 1.25 && y > -height * 0.25 && y < height * 1.25
     return { front, x, y, z: ndc.z }
   }
@@ -530,19 +601,15 @@ if (vFarSide > 0.5) discard;`)
     const center = centerLngLat()
     host.dataset.center = `${center.lng.toFixed(2)},${center.lat.toFixed(2)}`
     host.dataset.orientation = globe.quaternion.toArray().map((value) => value.toFixed(3)).join(',')
-    const unrolled = unrolledAt(altitude())
-    unroll.uUnroll.value = unrolled
-    unroll.uLng0.value = center.lng * DEG
-    unroll.uLat0.value = center.lat * DEG
-    atmosphereMaterial.opacity = 0.38 * (1 - unrolled)
+    const approach = approachAt(altitude())
     for (const dot of dots.children) {
       const at = surface(dot.userData.lng, dot.userData.lat, RADIUS * 1.012)
       dot.visible = Boolean(at)
       if (at) dot.position.copy(at)
     }
-    host.dataset.unrolled = unrolled.toFixed(3)
-    // The globe's own controls go as it turns into the map
-    controls.style.opacity = credit.style.opacity = unrolled > 0 ? String(1 - unrolled) : ''
+    host.dataset.approach = approach.toFixed(3)
+    // The globe's own controls go as the street map comes through
+    controls.style.opacity = credit.style.opacity = approach > 0 ? String(1 - approach) : ''
     renderer.render(scene, camera)
     if (!enteringScene) callbacks.onApproachMap?.({ ...center, altitude: altitude(), fade: fadeAt(altitude()) })
     const taken = placePhotos()
@@ -659,10 +726,10 @@ if (vFarSide > 0.5) discard;`)
       setZoom(THREE.MathUtils.clamp(fitDistance() / (RADIUS + Math.max(height, CLOSEST_ALTITUDE)), 0.55, fitDistance() / (RADIUS + CLOSEST_ALTITUDE)))
       draw()
     },
-    // Shown again without a hand-over (e.g. "返回地球"): a round globe, which can be zoomed in again
+    // Shown again without a hand-over (e.g. "返回地球"): back above the approach, so it can be zoomed in again
     resume() {
       enteringScene = false
-      if (altitude() < UNROLL_FROM) setZoom(fitDistance() / (RADIUS + UNROLL_FROM))
+      if (altitude() < APPROACH_FROM) setZoom(fitDistance() / (RADIUS + APPROACH_FROM))
       draw()
     },
     dispose() {
@@ -672,11 +739,10 @@ if (vFarSide > 0.5) discard;`)
       window.removeEventListener('keydown', onEscape)
       shown.clear()
       placeButtons.clear()
+      cancelAnimationFrame(skyFrame)
       texture?.dispose()
       sphereGeometry.dispose()
       sphereMaterial.dispose()
-      atmosphereGeometry.dispose()
-      atmosphereMaterial.dispose()
       dotGeometry.dispose()
       dotMaterial.dispose()
       renderer.dispose()

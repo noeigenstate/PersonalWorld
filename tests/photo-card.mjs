@@ -32,6 +32,8 @@ let cardCalls = 0
 await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'card-test', username: '测试', createdAt: '2026-09-24T00:00:00Z', privacyAccepted: true } } }))
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟', geocode: false } }))
 await page.route('**/api/photo-card', (route) => { cardCalls++; cardRequest = route.request().postDataJSON(); return route.fulfill({ json: card }) })
+// Events analyze themselves after the cards; keep the event as it is (a real 401 here would sign the mocked session out)
+await page.route('**/api/analyze', (route) => route.fulfill({ json: { title: '', summary: '', type: '', place: '', city: '', people: [], visibleText: '', tags: [], questions: [], confidence: 0.5 } }))
 
 try {
   await page.goto(BASE, { waitUntil: 'networkidle' })

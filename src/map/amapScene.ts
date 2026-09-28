@@ -50,22 +50,10 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   const labelLayer = document.createElement('div')
   labelLayer.className = 'life-map-labels'
   container.append(mapEl, colorWash, canvas, atmosphere, photoLayer, labelLayer)
-  const sceneSource = document.createElement('div')
-  sceneSource.className = 'map-scene-source'
-  const osmCredit = document.createElement('a')
-  osmCredit.href = 'https://www.openstreetmap.org/copyright'
-  osmCredit.target = '_blank'
-  osmCredit.rel = 'noopener noreferrer'
-  osmCredit.textContent = '© OpenStreetMap contributors · ODbL'
-  const tileCredit = document.createElement('a')
-  tileCredit.href = 'https://openmaptiles.org/'
-  tileCredit.target = '_blank'
-  tileCredit.rel = 'noopener noreferrer'
-  tileCredit.textContent = '© OpenMapTiles'
-  tileCredit.hidden = true
-  sceneSource.append(osmCredit, tileCredit)
-  sceneSource.hidden = true
-  container.append(sceneSource)
+  // Whether OSM-derived street scenery is on screen. The credit line itself was removed from the
+  // map at the user's request; the attribution (© OpenStreetMap contributors, ODbL) lives in README.
+  const setSceneCredit = (on: boolean) => { container.dataset.sceneCredit = on ? 'osm' : 'none' }
+  setSceneCredit(false)
   const sceneCaption = document.createElement('div')
   sceneCaption.className = 'map-scene-caption'
   sceneCaption.hidden = true
@@ -424,8 +412,9 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     memoryWorld.visible = sceneEnabled && map.getZoom() >= (activeVenue ? VENUE_MIN_ZOOM : 16.7)
     if (memoryWorld.visible && !shadowSceneWasVisible) renderer.shadowMap.needsUpdate = true
     shadowSceneWasVisible = memoryWorld.visible
-    sceneSource.hidden = !(memoryWorld.visible && hasStyledDistrict)
-    atmosphere.hidden = sceneSource.hidden
+    const sceneryShown = memoryWorld.visible && hasStyledDistrict
+    setSceneCredit(sceneryShown)
+    atmosphere.hidden = !sceneryShown
     for (const { object } of scaled) object.scale.setScalar(unit)
     for (const material of lines) material.resolution.set(size.w, size.h)
     const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit + ground(groundOf.get(anchor)))
@@ -643,7 +632,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     hasStyledDistrict = false
     sceneAreas = []
     sceneCaption.hidden = true
-    sceneSource.hidden = true
+    setSceneCredit(false)
     applyBuildingAreas([])
     container.dataset.sceneBuildings = '0'
     container.dataset.sceneVenue = ''
@@ -790,7 +779,6 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       activeSceneKey = photo ? sceneKey(photo) : key
       requestedSceneKey = activeSceneKey
       hasStyledDistrict = true
-      tileCredit.hidden = !data.provider
       const count = resolved?.photoIds.length || region?.photoIds.length || 0
       title.textContent = pearl ? '东方明珠 · 风格化地标' : `${activeVenue?.name || `照片地点 · 风格化${district.kind}`}${count > 1 ? ` · ${count} 张照片` : ''}`
       const coverage = sceneCoverage(data)
@@ -1145,8 +1133,6 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     setInsets(next: { right: number; bottom: number; top: number }) {
       if (next.right === insets.right && next.bottom === insets.bottom && next.top === insets.top) return
       insets = next
-      sceneSource.style.right = `${Math.max(20, next.right + 20)}px`
-      sceneSource.style.bottom = `${Math.max(138, next.bottom + 12)}px`
       if (current && ready) {
         if (activeVenue) frameVenue(activeVenue)
         else frame(current, false)
@@ -1171,7 +1157,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       photoLayer.remove()
       photoMenu.remove()
       labelLayer.remove()
-      sceneSource.remove()
+      delete container.dataset.sceneCredit
     },
   }
   return api

@@ -7,8 +7,9 @@
   --story:#e2703a;--space:#248a5a;--warn:#b86a1f;
   --role-home:#f5b98b;--role-study:#8fb8ea;--role-work:#8fd3a8;--role-residence:#c9b8ea;
   /* Liquid Glass (see skills/liquid-glass) */
-  --glass-fill:rgba(255,255,255,.26);--glass-fill-thick:rgba(250,250,252,.68);--glass-clear:rgba(255,255,255,.14);
-  --glass-blur:blur(12px) saturate(160%) brightness(1.04);--glass-blur-thick:blur(22px) saturate(180%);
+  /* Highly transparent, as the user asked: thin fills, heavier blur so text stays crisp on top */
+  --glass-fill:rgba(255,255,255,.2);--glass-fill-thick:rgba(250,250,252,.46);--glass-clear:rgba(255,255,255,.12);
+  --glass-blur:blur(16px) saturate(160%) brightness(1.04);--glass-blur-thick:blur(28px) saturate(170%);
   --glass-sheen:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,.06) 40%,rgba(255,255,255,0) 60%,rgba(255,255,255,.1));
   --glass-rim:inset 0 1px 0 rgba(255,255,255,.85),inset 0 -1px 0 rgba(255,255,255,.28),inset 0 0 18px rgba(255,255,255,.22),inset 0 -12px 22px -16px rgba(20,30,60,.2);
   --glass-shadow:0 12px 36px rgba(16,24,40,.14),0 2px 6px rgba(16,24,40,.06);
@@ -38,7 +39,7 @@ body{overflow:hidden}
 @media(prefers-reduced-motion:reduce){.life-map-globe{transition:none}}
 .life-globe{position:absolute;inset:0;overflow:hidden;background:radial-gradient(ellipse at 50% 44%,#243976 0%,#111d4c 48%,#070d29 100%)}
 .life-globe:before{content:'';position:absolute;inset:7% 12%;background:radial-gradient(circle,rgba(95,185,214,.18),rgba(99,103,214,.09) 47%,transparent 73%);pointer-events:none}
-.globe-stars{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
+.globe-stars,.globe-sky{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none}
 .life-globe-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 .life-globe-canvas:active{cursor:grabbing}
 .life-globe-canvas:focus-visible{outline:3px solid var(--accent);outline-offset:-4px}
@@ -109,10 +110,6 @@ body{overflow:hidden}
 .map-scene-caption strong{font-size:12px}
 .map-scene-caption small{font-size:10px;line-height:1.4;color:var(--muted)}
 .map-scene-caption button{pointer-events:auto;border:0;border-radius:999px;padding:6px;background:var(--fill);color:var(--accent);cursor:pointer}
-.map-scene-source{position:absolute;right:20px;bottom:138px;z-index:4;padding:4px 9px;border-radius:999px;background:#ffffffd9;color:var(--label-2);font-size:10px;text-decoration:none;box-shadow:0 1px 5px rgba(16,24,40,.12)}
-.map-scene-source a{color:inherit;text-decoration:none;margin-left:6px}
-.map-scene-source a:first-child{margin-left:0}
-.map-scene-source[hidden]{display:none}
 .map-label.small{padding:4px 9px 5px;border-width:1.5px;border-radius:9px}
 .map-label.small strong{font-size:12px}
 .map-label.place.selected{border-color:var(--space);box-shadow:0 0 0 4px rgba(36,138,90,.2),0 6px 18px rgba(16,24,40,.14)}
@@ -193,21 +190,29 @@ body{overflow:hidden}
 .map-heading h1 b{color:var(--story)}
 .story-apps{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 8px}
 .story-apps-hidden{display:contents}
-.map-heading p{margin:4px 0 10px;font-size:13px;color:var(--label-2)}
+.map-heading p{margin:4px 0 0;font-size:13px;color:var(--label-2)}
 .crumb{display:inline-flex;align-items:center;gap:2px;border:0;background:none;padding:0;margin-bottom:4px;font-size:12px;color:var(--accent)}
-.building-toggle{display:flex;align-items:center;gap:8px;margin-top:9px;border:0;border-radius:999px;background:var(--fill);color:var(--label);padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
+/* Under the title: rows of same-sized capsules — scene controls first, then background work.
+   Every chip is 28 px tall with 12 px text, so the rows read as one system. */
+.heading-chips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px}
+.heading-chips.status{margin-top:8px}
+.heading-chips .button,.building-toggle,.scene-preview,.locating-chip,.tray-chip{min-height:28px;margin:0;border:0;border-radius:999px;padding:0 11px;font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;gap:7px;box-shadow:none;background:var(--fill);color:var(--label);white-space:nowrap}
+.heading-chips .button:hover,.building-toggle:hover,.scene-preview:hover{background:var(--fill-2)}
+.building-toggle{cursor:pointer}
 .building-toggle.active{background:rgba(0,122,255,.14);color:var(--accent)}
-.building-toggle small{font-size:10px;font-weight:400;opacity:.8}
-.building-toggle:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
-.memory-route-control{margin:9px 0;max-width:260px}
+.building-toggle small{font-size:11px;font-weight:400;opacity:.8}
+.building-toggle:focus-visible,.scene-preview:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.heading-chips .coverage-new{margin-left:0;padding:1px 7px;font-size:10px}
+.memory-route-control{margin:10px 0 0;max-width:260px}
 .memory-route-control select{max-width:100%;border:0;border-radius:12px;padding:7px 10px;background:var(--fill);color:var(--label);font:inherit;font-size:12px}
 .memory-route-control small{display:block;margin-top:5px;color:var(--label-2);font-size:10px;line-height:1.5}
-.scene-preview{display:inline-flex;align-items:center;margin-top:6px;padding:4px 10px;border:0;border-radius:999px;background:var(--fill);color:var(--accent);font-size:11px;font-weight:600;cursor:pointer}
-.scene-preview:hover{background:var(--fill-2)}
-.scene-preview:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
-.locating-chip{margin-top:10px;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--label);background:var(--fill);border-radius:999px;padding:5px 6px 5px 12px;width:max-content;max-width:100%}
-.locating-chip button{border:0;background:#fff;border-radius:999px;padding:2px 10px;font-size:12px;color:var(--accent)}
-.tray-chip{margin-top:10px;display:inline-flex;align-items:center;gap:6px;border:0;border-radius:999px;background:rgba(255,149,0,.14);color:#a35300;font-size:12px;font-weight:600;padding:5px 11px}
+.scene-preview{color:var(--accent);cursor:pointer}
+.locating-chip{font-weight:500;color:var(--label-2);padding-right:4px;max-width:100%}
+.locating-chip.working{color:var(--label)}
+.locating-chip span{overflow:hidden;text-overflow:ellipsis}
+.locating-chip button{border:0;background:#fff;border-radius:999px;padding:3px 10px;font-size:12px;color:var(--accent);line-height:1.2}
+.locating-chip:not(:has(button)){padding-right:11px}
+.tray-chip{background:rgba(255,149,0,.14);color:#a35300}
 
 .tray{position:absolute;top:var(--chrome-top);left:calc(min(420px,100% - 40px) + 34px);z-index:6;width:320px;max-height:calc(100% - 200px);display:flex;flex-direction:column;border-radius:28px;padding:16px 18px}
 .tray-head{display:flex;align-items:center;justify-content:space-between}
@@ -250,40 +255,55 @@ body{overflow:hidden}
 .years{position:relative;height:16px;font:500 11px -apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang SC',sans-serif;font-variant-numeric:tabular-nums;color:var(--label-2)}
 .years span{position:absolute;transform:translateX(-50%);white-space:nowrap}
 
-.butler{position:absolute;top:var(--chrome-top);right:20px;bottom:20px;width:392px;z-index:8;border-radius:32px;display:flex;flex-direction:column;overflow:hidden}
-.butler-head{display:flex;align-items:center;gap:12px;padding:16px 16px 12px 18px;border-bottom:1px solid var(--line)}
-.butler-head .icon-button{margin-left:auto}
-.avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#ffcf8a,#f08a24);display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px;flex:none}
-.butler-head b{display:block;font-size:15px}
-.butler-head small{display:block;font-size:12px;color:var(--muted)}
-.msgs{flex:1;min-height:0;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
-.bubble{max-width:90%;font-size:14px;line-height:1.65;padding:10px 14px;border-radius:20px;overflow-wrap:anywhere}
-.bubble.bot{align-self:flex-start;background:rgba(255,255,255,.72);border-bottom-left-radius:6px;box-shadow:0 1px 2px rgba(16,24,40,.06)}
-.bubble.bot.error{background:#fdecea;color:#9b2c1f}
-.bubble.bot.pending{color:var(--muted)}
-.bubble.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:6px}
-.voice-tag{display:inline-flex;align-items:center;gap:3px;font-size:11px;opacity:.85;margin-right:6px;vertical-align:1px}
+/* The life butler: one microphone over the map, subtitles above it. No chat window. */
+.voice-butler{position:absolute;left:50%;bottom:108px;z-index:9;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:12px;width:min(720px,calc(100% - 32px));pointer-events:none}
+.voice-butler>*{pointer-events:auto}
 .inferred{color:#a35300;border-bottom:1.5px dashed var(--warn)}
-.thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:10px 0 4px}
-.thumbs button{border:0;padding:0;border-radius:12px;overflow:hidden;aspect-ratio:1;background:var(--fill)}
-.thumbs img,.thumbs .asset-fallback{width:100%;height:100%;object-fit:cover}
-.role-choices{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.role-choices button{border:0;background:var(--fill);border-radius:999px;padding:6px 13px;font-size:13px;color:var(--label)}
-.role-choices button:hover{background:rgba(0,122,255,.14);color:var(--accent)}
-.bubble-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px}
-.basis{font-size:11px;color:var(--muted)}
-.speak{margin-left:auto;border:0;background:none;color:#8b8f98;width:26px;height:26px;border-radius:50%;display:grid;place-items:center}
-.speak:hover,.speak.on{color:var(--accent);background:rgba(0,122,255,.12)}
-.composer{display:flex;align-items:center;gap:12px;padding:12px 16px 16px;border-top:1px solid var(--line)}
-.kbd,.send{width:40px;height:40px;flex:none;border:0;border-radius:50%;background:var(--fill);display:grid;place-items:center;color:var(--label)}
-.send{background:var(--glass-sheen),var(--accent);color:#fff;box-shadow:var(--glass-rim)}
-.composer input{flex:1;min-width:0;height:44px;border:0;border-radius:22px;padding:0 16px;font-size:14px;background:var(--fill);color:var(--label)}
-.hold{flex:1;height:50px;border:0;border-radius:25px;background:var(--glass-sheen),var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px;font-weight:600;box-shadow:var(--glass-rim),0 8px 22px rgba(0,122,255,.3);user-select:none;-webkit-user-select:none;touch-action:none}
-.hold.recording{background:var(--glass-sheen),#ff3b30;box-shadow:var(--glass-rim),0 0 0 4px rgba(255,59,48,.22)}
-.hold.transcribing{background:var(--glass-sheen),#8e8e93}
+/* Subtitles: a dark glass capsule, like notices, so they read over the map and over photos */
+.subtitle{display:flex;align-items:flex-start;gap:10px;max-width:100%;padding:12px 14px 12px 14px;border-radius:22px;color:#fff;font-size:17px;line-height:1.55;background:var(--glass-sheen),rgba(28,28,30,.74);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);box-shadow:inset 0 1px 1px rgba(255,255,255,.22),var(--glass-shadow);text-shadow:0 1px 2px rgba(0,0,0,.35)}
+.subtitle p{margin:0;flex:1;min-width:0;overflow-wrap:anywhere;text-wrap:balance}
+.subtitle.me{color:#dfe9ff;font-size:16px}
+.subtitle.me.live{color:#eef4ff}
+.subtitle.pending{color:rgba(255,255,255,.72)}
+.subtitle.error{background:var(--glass-sheen),rgba(120,30,25,.8)}
+.subtitle .inferred{color:#ffd28a;border-bottom-color:#ffd28a}
+.subtitle>svg{flex:none;margin-top:5px;opacity:.85}
+.subtitle-live{opacity:.7}
+.subtitle-avatar{flex:none;width:26px;height:26px;margin-top:1px;border-radius:50%;background:linear-gradient(135deg,#ffcf8a,#f08a24);display:grid;place-items:center;color:#fff;font-weight:700;font-size:12px;text-shadow:none}
+.subtitle button{flex:none;border:0;background:rgba(255,255,255,.14);color:#fff;width:28px;height:28px;border-radius:50%;display:grid;place-items:center}
+.subtitle button:hover{background:rgba(255,255,255,.26)}
+/* The microphone: tinted glass, red while listening */
+.hold{width:64px;height:64px;border:0;border-radius:50%;background:var(--glass-sheen),var(--accent);color:#fff;display:grid;place-items:center;box-shadow:var(--glass-rim),0 10px 26px rgba(0,122,255,.34);user-select:none;-webkit-user-select:none;touch-action:none;cursor:pointer}
+.hold.recording{background:var(--glass-sheen),#ff3b30;box-shadow:var(--glass-rim),0 0 0 6px rgba(255,59,48,.22),0 10px 26px rgba(255,59,48,.3)}
+.hold.transcribing{background:var(--glass-sheen),#8e8e93;box-shadow:var(--glass-rim)}
+.hold:disabled{opacity:.72}
+.hold-hint{font-size:12px;font-weight:600;color:#17303d;text-shadow:0 1px 1px #fff,0 0 6px #fff}
+.app-shell.globe-mode .hold-hint{color:#f6f9ff;text-shadow:0 1px 4px #071229,0 0 8px #071229}
+
+/* Photos the butler brings up: a stage on the right, clear glass over media with a 35 % dim.
+   The map underneath keeps the space to its left (insetRight) and moves to each photo's place. */
+.showcase{position:absolute;top:var(--chrome-top);right:20px;bottom:236px;z-index:8;width:min(520px,calc(100% - 40px));display:flex;flex-direction:column;border-radius:28px;overflow:hidden;background:var(--glass-sheen),rgba(0,0,0,.35);backdrop-filter:blur(30px) saturate(140%);-webkit-backdrop-filter:blur(30px) saturate(140%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.28),var(--glass-shadow);color:#fff}
+.showcase-stage{position:relative;flex:1;min-height:0;display:grid;place-items:center;padding:14px}
+.showcase-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.showcase-nav,.showcase-tools button{border:0;color:#fff;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;background:var(--glass-sheen),var(--glass-clear);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);box-shadow:inset 0 1px 1px rgba(255,255,255,.35),inset 0 0 0 .5px rgba(255,255,255,.3)}
+.showcase-nav:hover,.showcase-tools button:hover{background:var(--glass-sheen),rgba(255,255,255,.26)}
+.showcase-nav{position:absolute;top:50%;margin-top:-19px}
+.showcase-nav.prev{left:14px}
+.showcase-nav.next{right:14px}
+.showcase-tools{position:absolute;top:12px;right:12px;display:flex;gap:8px}
+.showcase-caption{padding:2px 18px 12px;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.showcase-caption b{display:block;font-size:16px;line-height:1.35}
+.showcase-caption small{display:block;font-size:12px;opacity:.86;margin-top:3px;font-variant-numeric:tabular-nums}
+.showcase-strip{display:flex;gap:6px;padding:0 14px 14px;overflow-x:auto;scrollbar-width:none}
+.showcase-strip::-webkit-scrollbar{display:none}
+.showcase-strip button{flex:none;width:52px;height:52px;border:2px solid transparent;border-radius:12px;padding:0;overflow:hidden;background:none;opacity:.7}
+.showcase-strip button.on{border-color:#fff;opacity:1}
+.showcase-strip button:hover{opacity:1}
+.showcase-strip img{width:100%;height:100%;object-fit:cover}
 
 .first-tags{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
 .first-tags span{font-size:12px;font-weight:600;color:var(--space);background:#e6f5ed;border-radius:6px;padding:2px 8px}
+.first-tags span.last{color:#a35300;background:#fdf0e2}
 .detail-fields small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
 .detail-fields small.unsure{color:#a35300}
 .photo-open{position:relative}
@@ -388,11 +408,14 @@ body{overflow:hidden}
   .photo-card{border-radius:22px 22px 0 0;overflow:visible}
 }
 
-/* Notices sit under the top bar so they never cover the time bar or the butler */
+/* Notices sit under the top bar so they never cover the time bar or the subtitles */
 .toast{top:var(--chrome-top);bottom:auto}
 
 @media(max-width:900px){
-  .butler{left:12px;right:12px;top:auto;height:min(42%,360px);bottom:12px;width:auto}
+  /* The photo stage becomes a sheet above the microphone; the map keeps the top */
+  .showcase{left:12px;right:12px;top:auto;height:min(46%,420px);bottom:230px;width:auto;border-radius:24px}
+  .voice-butler{width:calc(100% - 24px);bottom:112px}
+  .subtitle{font-size:15px;padding:10px 12px}
   .timebar-wrap{left:12px;right:12px!important}
   .tray{left:20px;top:auto;bottom:140px;width:calc(100% - 40px);max-height:50%}
 }
@@ -446,7 +469,7 @@ body{overflow:hidden}
 
 /* ---- Liquid Glass (skills/liquid-glass) ------------------------------------------------
    Navigation and controls float above the map as glass; the map, its labels and photos are content. */
-.app-bar,.map-heading,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
+.app-bar,.map-heading,.tray,.map-photo-menu,.map-empty,.auth-card,
 .import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{
   background:var(--glass-sheen),var(--glass-fill);
   backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
@@ -454,17 +477,19 @@ body{overflow:hidden}
   box-shadow:var(--glass-rim),var(--glass-shadow);
 }
 /* Regular variant, thicker where there is a lot of text */
-.butler,.tray,.map-photo-menu,.import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{background:var(--glass-sheen),var(--glass-fill-thick);backdrop-filter:var(--glass-blur-thick);-webkit-backdrop-filter:var(--glass-blur-thick)}
+.tray,.map-photo-menu,.import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{background:var(--glass-sheen),var(--glass-fill-thick);backdrop-filter:var(--glass-blur-thick);-webkit-backdrop-filter:var(--glass-blur-thick)}
 /* The top bar: a full-width glass strip with one bright lower edge */
 .app-bar{border-width:0 0 1px;border-radius:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.7),inset 0 -1px 0 rgba(255,255,255,.35),0 1px 0 rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.08)}
 /* Specular rim drawn as a 1 px gradient ring (masked), so the glass reads as a slab with thickness */
 .auth-card,.import-modal,.privacy-modal,.cull-sheet{position:relative}
-.map-heading::before,.butler::before,.tray::before,.map-empty::before,.auth-card::before,.map-photo-menu::before,
+.map-heading::before,.tray::before,.map-empty::before,.auth-card::before,.map-photo-menu::before,
 .import-modal::before,.privacy-modal::before,.cull-sheet::before{content:'';position:absolute;inset:0;border-radius:inherit;padding:1px;background:var(--glass-specular);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
 /* Refracting surfaces (src/lib/liquidGlass.ts, Chromium) bend the map at their rim and need less blur */
-.refracts{--glass-refract-blur:5px;background:var(--glass-sheen),rgba(255,255,255,.34)}
-/* Panels with text need a denser slab to stay legible over a busy map */
-.map-heading.refracts,.map-empty.refracts{--glass-refract-blur:9px;background:var(--glass-sheen),rgba(255,255,255,.58)}
+.refracts{--glass-refract-blur:6px;background:var(--glass-sheen),rgba(255,255,255,.26)}
+/* Panels with text: still see-through, legibility comes from the blur and a light halo behind the letters */
+.map-heading.refracts,.map-empty.refracts{--glass-refract-blur:12px;background:var(--glass-sheen),rgba(255,255,255,.4)}
+.map-heading,.map-empty,.tray,.globe-place-menu,.map-photo-menu-heading{text-shadow:0 0 1px rgba(255,255,255,.9),0 1px 3px rgba(255,255,255,.6)}
+.map-heading .heading-chips,.tray li button{text-shadow:none}
 /* The timeline is one interactive line over the map, without a panel behind it. */
 .timebar,.timebar.refracts{background:none;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}
 .timebar .timebar-head b,.timebar .timebar-head span,.timebar .band-name,.timebar .years{color:#17303d;text-shadow:0 1px 1px #fff,0 0 6px #fff}
@@ -477,7 +502,8 @@ body{overflow:hidden}
 .detail-panel{border-width:0 0 0 1px;border-radius:30px 0 0 30px}
 .import-modal{border-radius:30px}
 .detail-topbar,.detail-footer{background:transparent}
-.butler-head,.composer{border-color:var(--line)}
+.detail-auto{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--label-2)}
+.detail-footer>div{display:flex;gap:8px}
 .modal-backdrop{background:rgba(10,12,20,.26);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 
 /* Buttons: tinted glass for the primary action, fills for the rest */
@@ -500,14 +526,16 @@ body{overflow:hidden}
 
 /* Accessibility: reduce transparency → nearly opaque; increase contrast → visible edges */
 @media (prefers-reduced-transparency: reduce){
-  .app-bar,.map-heading,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
+  .app-bar,.map-heading,.tray,.map-photo-menu,.map-empty,.auth-card,
   .import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{background:#f5f5f7;backdrop-filter:none;-webkit-backdrop-filter:none}
-  .toast{background:#1c1c1e;backdrop-filter:none;-webkit-backdrop-filter:none}
-  .lightbox-toolbar button{background:#3a3a3c;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .toast,.subtitle{background:#1c1c1e;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .showcase{background:#1c1c1e;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .lightbox-toolbar button,.showcase-nav,.showcase-tools button{background:#3a3a3c;backdrop-filter:none;-webkit-backdrop-filter:none}
   .timebar .timebar-head b,.timebar .timebar-head span,.timebar .band-name,.timebar .years{text-shadow:0 1px 1px #fff}
 }
 @media (prefers-contrast: more){
-  .app-bar,.map-heading,.butler,.tray,.map-photo-menu,.map-empty,.auth-card,
+  .app-bar,.map-heading,.tray,.map-photo-menu,.map-empty,.auth-card,
   .import-modal,.privacy-modal,.detail-panel,.memory-library,.film-modal,.photo-card,.cull-sheet{border-color:rgba(0,0,0,.45)}
   .map-label,.map-photo{border-color:rgba(0,0,0,.5)}
+  .subtitle,.showcase{box-shadow:inset 0 0 0 1px rgba(255,255,255,.85)}
 }

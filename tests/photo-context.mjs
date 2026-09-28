@@ -20,6 +20,8 @@ await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟', geocode: true } }))
 await page.route('**/api/geocode', (route) => route.fulfill({ json: { results: route.request().postDataJSON().points.map(fakeGeocode) } }))
 await page.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '测试照片', caption: '', scene: '测试画面', visibleText: '', clues: [], landmark: null, placeQuery: null, eventGuess: { type: '', reason: '' }, tags: [], questions: [] } }))
+// Events analyze themselves after the cards; keep the event as it is (a real 401 here would sign the mocked session out)
+await page.route('**/api/analyze', (route) => route.fulfill({ json: { title: '', summary: '', type: '', place: '', city: '', people: [], visibleText: '', tags: [], questions: [], confidence: 0.5 } }))
 await page.route('**/api/photo-context', (route) => {
   const body = route.request().postDataJSON()
   requests.push(body)
@@ -49,8 +51,14 @@ try {
   assert.match(request.target.known.timeSource, /拍摄时间/)
 
   await page.keyboard.press('Escape')
-  await page.locator('.map-label.place').filter({ hasText: '上海' }).click()
-  await page.locator('.butler').waitFor()
+  // On the globe, Shanghai sits in a cluster of nearby places; pick it from the cluster's menu
+  const single = page.locator('.globe-place').filter({ hasText: '上海' })
+  if (await single.count()) await single.first().click()
+  else {
+    await page.locator('.globe-cluster').filter({ hasText: '上海' }).first().click()
+    await page.getByRole('dialog', { name: '选择地点' }).getByRole('button', { name: /上海/ }).click()
+  }
+  await page.locator('.subtitle.bot').waitFor()
   await page.waitForTimeout(900)
   assert.equal(await page.locator('.map-label.event.unsure').count(), 1, '补全的城市未确认，故事线上显示为虚线')
 
