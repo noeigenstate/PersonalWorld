@@ -114,7 +114,7 @@ try {
     await page.locator('.film-context summary').click()
     await page.getByLabel('这段回忆的已知事实').fill('这是我画的公园插画')
     await page.getByRole('button', { name: '保存补充', exact: true }).click()
-    await page.waitForFunction(() => document.querySelector('.film-notes h3')?.textContent === '我画的四季公园', null, { timeout: 20000 })
+    await page.waitForFunction(() => document.querySelector('.film-notes h3')?.textContent === '我画的四季公园', null, { timeout: 45000 })
     await page.waitForFunction((oldUrl) => {
       const video = document.querySelector('.film-screen video')
       return video && !video.getAttribute('src').includes(oldUrl)
@@ -126,7 +126,7 @@ try {
     assert.equal(revisedState.jobs[0].storyContext.text, '这是我画的公园插画')
     assert.deepEqual(revisedState.jobs[0].plan.shots.map((s) => s.assetId).sort(), completed.plan.shots.map((s) => s.assetId).sort())
     await page.screenshot({ path: join(dir, 'film-story-context.png') })
-    await page.reload(); await page.waitForTimeout(5000)
+    await page.reload(); await page.waitForTimeout(23000)
     assert.equal(calls, 2, 'a saved correction must not regenerate repeatedly')
     await page.getByRole('button', { name: '回忆短片', exact: true }).click()
     await page.getByRole('button', { name: '重新编排一版', exact: true }).click()

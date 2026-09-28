@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { storyRelationships } from './storyRelationships.mjs'
 
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0,24)
 const dayOf = asset => asset.dateSource !== 'file' && Number.isFinite(Date.parse(asset.capturedAt))
@@ -16,8 +17,9 @@ const publicPlace = value => !value || /(?:府|小区|公寓|家园|花城|华�
 // Cheap, deterministic graph maintenance. No face or model call happens here.
 // Stable chapter IDs and content fingerprints let downstream editors invalidate
 // only a chapter whose photos, observations or confirmed people have changed.
-export function buildStoryGraph(assets, sourceEvents, people, faces, manualFacts = []) {
+export function buildStoryGraph(assets, sourceEvents, people, faces, manualFacts = [], priorRelationships = []) {
   const ids=new Set(assets.map(a=>a.id)), personById=new Map(people.map(p=>[p.id,p]))
+  const relationships=storyRelationships(people,priorRelationships)
   const facesByAsset=new Map()
   for(const face of faces){
     if(face.status==='ignored' || !ids.has(face.assetId))continue
@@ -35,11 +37,12 @@ export function buildStoryGraph(assets, sourceEvents, people, faces, manualFacts
     addFact(asset,'time',day,asset.dateSource==='exif'?'metadata':'approximate',asset.dateSource)
     addFact(asset,'place',asset.location?.aoi||asset.location?.poi||asset.location?.city,'metadata',asset.location?.source||'unknown')
     addFact(asset,'observation',asset.card?.scene,'observed','photo-card')
-    const members=[...new Set((facesByAsset.get(asset.id)||[]).filter(f=>f.status==='confirmed'||f.status==='matched').map(f=>f.personId).filter(id=>personById.get(id)?.confirmed))]
+    const members=[...new Set((facesByAsset.get(asset.id)||[]).filter(f=>f.status==='confirmed'||f.status==='matched').map(f=>f.personId).filter(id=>personById.get(id)?.confirmed))].sort()
     memberships.set(asset.id,members)
     for(const personId of members) addFact(asset,'person',personId,'identity',`identity:${personId}`)
   }
   for(const fact of manualFacts) facts.push({...fact,status:'confirmed',source:'user'})
+  for(const relation of relationships) facts.push({...relation,type:'relationship',revision:digest(relation)})
   const groups=new Map()
   const eventByAsset=new Map(sourceEvents.flatMap(e=>(e.assetIds||[]).map(id=>[id,e])))
   for(const asset of assets){
@@ -74,6 +77,7 @@ export function buildStoryGraph(assets, sourceEvents, people, faces, manualFacts
     const factIds=[...new Set(related.flatMap(e=>e.factIds).filter(id=>{const f=facts.find(f=>f.id===id);return !f?.assetId||selected.includes(f.assetId)}))]
     const userFacts=manualFacts.filter(f=>participants.includes(f.subjectId)&&(!f.assetIds?.length||f.assetIds.some(id=>selected.includes(id))))
     factIds.push(...userFacts.map(f=>f.id))
+    factIds.push(...relationships.filter(r=>participants.includes(r.subjectId)&&participants.includes(r.objectId)).map(r=>r.id))
     const chosenFacts=facts.filter(f=>factIds.includes(f.id))
     const dates=selected.map(id=>times.get(id)).filter(Boolean)
     chapters.push({id:`chapter:${digest(key)}`,kind,title,assetIds:selected,personIds:participants,eventIds:related.map(e=>e.id),factIds,
@@ -96,6 +100,10 @@ export function buildStoryGraph(assets, sourceEvents, people, faces, manualFacts
     if(new Set(selected.map(a=>times.get(a.id)).filter(Boolean)).size>=2)
       add(`person:${person.id}`,'person',`${person.name||person.relationship||'这个人'}的时光`,selected.map(a=>a.id),[person.id],'已确认人物参与的多个日子；不自动断言成长里程碑')
   }
-  return {events,chapters:chapters.sort((a,b)=>b.score-a.score),facts,memberships:Object.fromEntries(memberships),
+  for(const relation of relationships){
+    const selected=assets.filter(a=>{const members=memberships.get(a.id)||[];return members.includes(relation.subjectId)&&members.includes(relation.objectId)})
+    add(`together:${relation.id}`,'relationship',`${personById.get(relation.subjectId).name||relation.label}和${personById.get(relation.objectId).name}的片刻`,selected.map(a=>a.id),[relation.subjectId,relation.objectId],`${relation.value}；这些照片已分别确认两人出现，不根据年龄或同地点猜测关系`)
+  }
+  return {events,chapters:chapters.sort((a,b)=>b.score-a.score),facts,relationships,memberships:Object.fromEntries(memberships),
     revision:digest([assets.map(a=>[a.id,a.hash,a.card?.createdAt]),events,chapters.map(c=>c.revision)])}
 }

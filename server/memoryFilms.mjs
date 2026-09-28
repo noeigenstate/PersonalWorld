@@ -7,11 +7,12 @@ import { filmFingerprint, planFilm, readFilmSources, validateFilmPlan, FILM_VERS
 import { filmCapability, renderFilm, FILM_RENDER_VERSION } from './memoryFilmRender.mjs'
 import { createFilmContextStore, filmContextSummary } from './memoryFilmContext.mjs'
 import { exportCompletedFilm } from './memoryFilmExport.mjs'
+import { filmKnowledgeRevision } from './filmKnowledge.mjs'
 
 const active = new Set(['planning', 'awaiting-images', 'queued', 'rendering'])
 const lifetime = 24 * 60 * 60 * 1000
 
-export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR || fileURLToPath(new URL('./data/memory-films/', import.meta.url)), exportRoot = process.env.MEMORY_FILM_EXPORT_DIR, planner = planFilm, renderer = renderFilm, enrichSources=(_user,sources)=>sources, chapterFor=()=>undefined } = {}) {
+export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR || fileURLToPath(new URL('./data/memory-films/', import.meta.url)), exportRoot = process.env.MEMORY_FILM_EXPORT_DIR, planner = planFilm, renderer = renderFilm, capability=filmCapability, enrichSources=(_user,sources)=>sources, chapterFor=()=>undefined } = {}) {
   root = path.resolve(root)
   mkdirSync(root, { recursive: true })
   const contexts = createFilmContextStore(root)
@@ -28,12 +29,16 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
     writeFileSync(path.join(directory(job.id), 'job.json'), JSON.stringify(job), 'utf8')
   }
   const selectedSources = (job) => job.sources.filter((s) => job.plan?.shots.some((shot) => shot.assetId === s.id))
+  const freshSources = (user,sources) => enrichSources(user,contexts.apply(user,readFilmSources(sources)))
   const publicJob = ({ userId, sources, fingerprint: _fingerprint, ...job }) => {
     const selected = selectedSources({ ...job, sources })
     const storyContext = filmContextSummary(contexts.apply({ id: userId }, selected))
     storyContext.changed = storyContext.revision !== filmContextSummary(selected).revision
     const chapter=job.chapterId?chapterFor({id:userId},job.chapterId):undefined
-    return { ...job, storyContext, chapterChanged:Boolean(chapter&&chapter.revision!==job.chapterRevision),currentChapterRevision:chapter?.revision,url: job.status === 'complete' ? `/api/memory-films/${job.id}/video` : undefined }
+    const currentKnowledgeRevision=filmKnowledgeRevision(freshSources({id:userId},sources))
+    const knowledgeRevision=job.knowledgeRevision||filmKnowledgeRevision(sources)
+    return { ...job, storyContext, knowledgeRevision,currentKnowledgeRevision,knowledgeChanged:knowledgeRevision!==currentKnowledgeRevision,
+      chapterChanged:Boolean(chapter&&chapter.revision!==job.chapterRevision),currentChapterRevision:chapter?.revision,url: job.status === 'complete' ? `/api/memory-films/${job.id}/video` : undefined }
   }
   const get = (id, user) => { const job = jobs.get(id); return job?.userId === user.id ? job : null }
   async function deliver(job) {
@@ -86,6 +91,17 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
   const cleanupTimer = setInterval(() => { void prune() }, 60 * 60 * 1000)
   cleanupTimer.unref()
 
+  function plan(job) {
+    const revision=job.knowledgeRevision
+    void planner(config,job.sources).then(result=>{
+      if(job.status!=='planning'||!jobs.has(job.id)||job.knowledgeRevision!==revision)return
+      Object.assign(job,result,{status:'awaiting-images',progress:10});persist(job)
+    }).catch(error=>{
+      if(job.status!=='planning'||!jobs.has(job.id)||job.knowledgeRevision!==revision)return
+      job.status='failed';job.error=String(error.message).slice(0,300);persist(job)
+    })
+  }
+
   async function pump() {
     if (rendering) return
     const job = [...jobs.values()].find((j) => j.status === 'queued')
@@ -112,14 +128,15 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
   return {
     async list(user) { await prune(); return [...jobs.values()].filter((j) => j.userId === user.id).sort((a, b) => b.createdAt - a.createdAt).map(publicJob) },
     async start(body, user) {
-      const capability=await filmCapability()
-      if (!capability.available) return [503, { error: capability.message||'本机短片依赖尚未配置，请检查 FFmpeg、Python 和 Pillow' }]
+      const available=await capability()
+      if (!available.available) return [503, { error: available.message||'本机短片依赖尚未配置，请检查 FFmpeg、Python 和 Pillow' }]
       const original = body.fromJob ? get(body.fromJob, user) : null
       if (body.fromJob && !original?.plan) return [404, { error: '原短片不存在或已过期' }]
-      const chapter=body.chapterId?chapterFor(user,body.chapterId):undefined
+      const chapterId=body.chapterId||original?.chapterId
+      const chapter=chapterId?chapterFor(user,chapterId):undefined
       if(body.chapterId&&!chapter)return [404,{error:'故事章节已更新，请重新选择'}]
       const initial=readFilmSources(original ? selectedSources(original) : body.sources)
-      const sources = enrichSources(user,contexts.apply(user,chapter?initial.filter(s=>chapter.assetIds.includes(s.id)):initial))
+      const sources = freshSources(user,chapter?initial.filter(s=>chapter.assetIds.includes(s.id)):initial).filter(s=>s.sourceAvailable!==false)
       if (sources.length < 2) return [400, { error: '至少需要 2 张已有信息卡的照片' }]
       const batch = original?.batch || (/^[a-f0-9]{16,64}$/.test(body.batch) ? body.batch : filmFingerprint(sources))
       const fingerprint = filmFingerprint(sources)
@@ -128,21 +145,17 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       const cached = [...jobs.values()].find((j) => j.userId === user.id && j.fingerprint === fingerprint && j.status === 'complete')
       if (cached && body.regenerate !== true) return [200, publicJob(cached)]
       const previous = [...jobs.values()].filter((j) => j.userId === user.id).sort((a, b) => b.createdAt - a.createdAt)
-      const job = { id: randomUUID(), userId: user.id, batch, fingerprint, version: FILM_VERSION, renderVersion: FILM_RENDER_VERSION, createdAt: Date.now(), expiresAt: Date.now() + lifetime, status: 'planning', progress: 2, sources, uploaded: [] }
-      if(chapter){job.chapterId=chapter.id;job.chapterRevision=chapter.revision;job.factIds=[...new Set(sources.flatMap(s=>s.factIds||[]))]}
+      const job = { id: randomUUID(), userId: user.id, batch, fingerprint, knowledgeRevision:filmKnowledgeRevision(sources), version: FILM_VERSION, renderVersion: FILM_RENDER_VERSION, createdAt: Date.now(), expiresAt: Date.now() + lifetime, status: 'planning', progress: 2, sources, uploaded: [],factIds:[...new Set(sources.flatMap(s=>s.factIds||[]))] }
+      job.lineageId=original?.lineageId||original?.id||job.id
+      if(original)job.supersedesId=original.id
+      if(chapter){job.chapterId=chapter.id;job.chapterRevision=chapter.revision}
       // Reserve before asynchronous cleanup: two tabs must see the same job.
       jobs.set(job.id, job); persist(job)
       for (const old of previous.slice(7)) {
         if (!await deliver(old)) continue
         try { await rm(directory(old.id), { recursive: true, force: true }); jobs.delete(old.id) } catch { /* Retry at expiry if a media reader holds the file. */ }
       }
-      void planner(config, sources).then((result) => {
-        if (job.status !== 'planning' || !jobs.has(job.id)) return
-        Object.assign(job, result, { status: 'awaiting-images', progress: 10 }); persist(job)
-      }).catch((error) => {
-        if (job.status !== 'planning' || !jobs.has(job.id)) return
-        job.status = 'failed'; job.error = String(error.message).slice(0, 300); persist(job)
-      })
+      plan(job)
       return [202, publicJob(job)]
     },
     get(id, user) { const job = get(id, user); return job ? [200, publicJob(job)] : [404, { error: '短片不存在或已过期' }] },
@@ -174,6 +187,20 @@ export function createFilmService(config, { root = process.env.MEMORY_FILMS_DIR 
       if (!job) return [404, { error: '短片不存在' }]
       if (['queued', 'rendering', 'complete'].includes(job.status)) return [200, publicJob(job)]
       if (job.status !== 'awaiting-images' || job.uploaded.length !== job.plan.shots.length) return [409, { error: '选中的照片尚未全部上传' }]
+      const refreshed=freshSources(user,job.sources)
+      if(filmKnowledgeRevision(refreshed)!==(job.knowledgeRevision||filmKnowledgeRevision(job.sources))){
+        // A correction during planning/upload must not silently publish an edit
+        // made from old knowledge. Reuse the task and let the browser supply the
+        // newly selected images; no extra face extraction is needed.
+        await clearInputs(job)
+        if(job.status!=='awaiting-images')return [409,{error:'任务已经停止'}]
+        const sources=refreshed.filter(s=>s.sourceAvailable!==false)
+        if(sources.length<2){job.status='failed';job.error='照片已更新，可用照片不足两张';persist(job);return [409,{error:job.error}]}
+        Object.assign(job,{sources,knowledgeRevision:filmKnowledgeRevision(sources),fingerprint:filmFingerprint(sources),status:'planning',uploaded:[],progress:2,factIds:[...new Set(sources.flatMap(s=>s.factIds||[]))]})
+        const chapter=job.chapterId?chapterFor(user,job.chapterId):undefined
+        if(chapter)job.chapterRevision=chapter.revision
+        delete job.plan;delete job.warning;persist(job);plan(job);return [202,publicJob(job)]
+      }
       job.plan=validateFilmPlan(job.plan,job.sources)
       job.status = 'queued'; job.progress = 15; persist(job); void pump()
       return [202, publicJob(job)]

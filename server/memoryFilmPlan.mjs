@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { chat, parseJsonAnswer } from './stepfun.mjs'
 import { loadSkill } from './skills.mjs'
+import { storyRelationships } from './storyRelationships.mjs'
 
 export const FILM_VERSION = 'memory-film-6'
 const clean = (v, length) => String(v || '').replace(/[\x00-\x1f]/g, ' ').trim().slice(0, length)
@@ -24,6 +25,21 @@ function sampled(sources, max = 10) {
   return Array.from({ length: n }, (_, i) => sources[Math.round(i * (sources.length - 1) / (n - 1))])
 }
 
+function relationshipWords(sources) {
+  const people=[...new Map(sources.flatMap(s=>s.people||[]).map(p=>[p.id,{...p,confirmed:true}])).values()]
+  const words=new Set()
+  const relations=[...sources.flatMap(s=>s.relationships||[]),...storyRelationships(people)]
+  const present=new Set(people.map(p=>p.id))
+  for(const relation of relations.filter(r=>present.has(r.subjectId)&&present.has(r.objectId))){
+    const aliases=/^(姥姥|外婆|外祖母)$/.test(relation.label)?['姥姥','外婆','外祖母','祖孙']
+      :/^(奶奶|祖母)$/.test(relation.label)?['奶奶','祖母','祖孙']
+        :/^(姥爷|外公|外祖父)$/.test(relation.label)?['姥爷','外公','外祖父','祖孙']
+          :/^(爷爷|祖父)$/.test(relation.label)?['爷爷','祖父','祖孙']:[]
+    aliases.forEach(word=>words.add(word))
+  }
+  return words
+}
+
 // Rules provide an honest usable edit if the model is unavailable; never pretend
 // the fallback involved semantic selection or a verified identity across visits.
 export function fallbackFilm(sources) {
@@ -43,12 +59,13 @@ export function validateFilmPlan(answer, sources) {
     // Strong personal claims need user-confirmed evidence, never only AI guesses.
     const claims = result.match(/第一次[^，。！!?？]{0,12}|第[一1](?:支|个|口|步)|首次|\d+\s*岁|[一二三四五六七八九十]+岁|生日|女儿|儿子|妈妈|爸爸|母亲|父亲|父女|母女|父子|母子|奶奶|爷爷|外婆|外公|姥姥|姥爷|祖孙|长辈|亲子|家长|最爱|爱吃|长高|长大/g) || []
     const facts = source ? `${source.confirmed} ${source.story || ''}` : chosen.map((s) => `${s.confirmed} ${s.story || ''}`).join(' ')
+    const aliases=relationshipWords(source?[source]:chosen)
     const evidence = source ? `${source.observed} ${facts}` : chosen.map(s => `${s.observed} ${s.confirmed} ${s.story || ''}`).join(' ')
     if(!/玩累|疲惫|疲倦/.test(evidence))result=result.replace(/玩累了[，,]?/g,'')
     if(!/睡着|熟睡|入睡/.test(evidence))result=result.replace(/睡着了/g,'闭着眼睛')
     const timeClaims = result.match(/清晨|早晨|上午|中午|午后|下午|傍晚|黄昏|夜晚|深夜/g) || []
     const causalClaims=result.match(/醒来|醒啦|睡醒|终于|不肯|舍不得|迫不及待/g)||[]
-    return claims.some((claim) => !facts.includes(claim)) || [...timeClaims,...causalClaims].some(claim => !evidence.includes(claim)) ? '' : result
+    return claims.some((claim) => !facts.includes(claim)&&!aliases.has(claim)) || [...timeClaims,...causalClaims].some(claim => !evidence.includes(claim)) ? '' : result
   }
   const shots = (Array.isArray(answer?.shots) ? answer.shots : []).slice(0, 12).flatMap((shot) => {
     const source = known.get(shot?.assetId)

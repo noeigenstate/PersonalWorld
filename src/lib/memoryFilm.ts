@@ -16,6 +16,7 @@ export interface FilmJob {
   exportedAt?: string; exportError?: string
   storyContext?: { text: string; notes: { text: string; count: number }[]; revision: string; changed: boolean }
   chapterId?:string;chapterRevision?:string;chapterChanged?:boolean;currentChapterRevision?:string
+  knowledgeRevision?:string;currentKnowledgeRevision?:string;knowledgeChanged?:boolean;lineageId?:string;supersedesId?:string
 }
 export const filmActive = (job?: FilmJob) => Boolean(job && ['planning', 'awaiting-images', 'queued', 'rendering'].includes(job.status))
 

@@ -14,21 +14,53 @@ recognizer_path = root / 'face_recognition_sface_2021dec.onnx'
 fingerprint = 'yunet-sface-v1:' + hashlib.sha256(
     detector_path.read_bytes() + recognizer_path.read_bytes() + cv2.__version__.encode()
 ).hexdigest()[:24]
+detector_revision = 'yunet-multiscale-v2'
 detector = cv2.FaceDetectorYN_create(str(detector_path), '', (640, 640), .88, .3, 500)
 recognizer = cv2.FaceRecognizerSF_create(str(recognizer_path), '')
+
+def iou(a, b):
+    left, top = max(a[0], b[0]), max(a[1], b[1])
+    right, bottom = min(a[0]+a[2], b[0]+b[2]), min(a[1]+a[3], b[1]+b[3])
+    intersection = max(0., right-left) * max(0., bottom-top)
+    return intersection / max(1., a[2]*a[3] + b[2]*b[3] - intersection)
+
 
 def detect(filename):
     image = cv2.imdecode(np.frombuffer(Path(filename).read_bytes(), np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         raise ValueError('无法读取这张照片')
     h, w = image.shape[:2]
-    scale = min(1., 960. / max(w, h))
-    small = cv2.resize(image, (round(w * scale), round(h * scale)))
-    detector.setInputSize((small.shape[1], small.shape[0]))
-    _, detected = detector.detect(small)
+    candidates = []
+
+    def scan(left, top, right, bottom, resolution):
+        crop = image[top:bottom, left:right]
+        scale = min(1., resolution / max(crop.shape[:2]))
+        small = cv2.resize(crop, (round(crop.shape[1]*scale), round(crop.shape[0]*scale)))
+        detector.setInputSize((small.shape[1], small.shape[0]))
+        _, detected = detector.detect(small)
+        for face in detected if detected is not None else []:
+            actual = face.copy(); actual[:14] /= scale
+            actual[0] += left; actual[1] += top
+            actual[[4, 6, 8, 10, 12]] += left
+            actual[[5, 7, 9, 11, 13]] += top
+            candidates.append(actual)
+
+    scan(0, 0, w, h, 960)
+    if max(w, h) > 960:
+        scan(0, 0, w, h, 1600)
+        # Overlapping crops preserve small/profile face pixels while retaining
+        # the same detector thresholds and the same embedding model space.
+        cw, ch = round(w*.65), round(h*.65)
+        for left in (0, w-cw):
+            for top in (0, h-ch):
+                scan(left, top, left+cw, top+ch, 960)
+    detected = []
+    for face in sorted(candidates, key=lambda f: -float(f[-1])):
+        if not any(iou(face, prior) > .4 for prior in detected):
+            detected.append(face)
     faces = []
-    for face in sorted(detected if detected is not None else [], key=lambda f: -float(f[2] * f[3]))[:32]:
-        actual = face.copy(); actual[:14] /= scale
+    for face in sorted(detected, key=lambda f: -float(f[2] * f[3]))[:32]:
+        actual = face
         x, y, fw, fh = actual[:4]
         left, top = max(0, int(x)), max(0, int(y))
         right, bottom = min(w, int(x + fw)), min(h, int(y + fh))
@@ -49,12 +81,12 @@ def detect(filename):
         faces.append({'box':[left/w,top/h,right/w,bottom/h], 'confidence':float(face[-1]),
             'embedding':(feature/norm).tolist(),'quality':quality,'blur':round(blur,1),
             'thumb':base64.b64encode(jpeg).decode('ascii')})
-    return {'fingerprint':fingerprint,'width':w,'height':h,'faces':faces}
+    return {'fingerprint':fingerprint,'detectorRevision':detector_revision,'width':w,'height':h,'faces':faces}
 
 for line in sys.stdin:
     try:
         request = json.loads(line)
-        result = {'fingerprint':fingerprint,'engine':'OpenCV YuNet + SFace'} if request.get('action') == 'status' else detect(request['path'])
+        result = {'fingerprint':fingerprint,'detectorRevision':detector_revision,'engine':'OpenCV YuNet + SFace'} if request.get('action') == 'status' else detect(request['path'])
         print(json.dumps({'id':request.get('id'),'result':result},ensure_ascii=True),flush=True)
     except Exception as error:
         print(json.dumps({'id':request.get('id') if 'request' in locals() else None,'error':str(error)[:300]},ensure_ascii=True),flush=True)

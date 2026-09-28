@@ -6,6 +6,8 @@ import {join} from 'node:path'
 import {openIdentityStore} from '../server/identityStore.mjs'
 import {buildStoryGraph} from '../server/storyGraph.mjs'
 import {candidateGroups} from '../server/identityCandidates.mjs'
+import {storyRelationships} from '../server/storyRelationships.mjs'
+import {validateFilmPlan} from '../server/memoryFilmPlan.mjs'
 
 const asset=(id,day='01')=>({id,hash:id,kind:'image',capturedAt:`2026-01-${day}T06:30:00Z`,dateSource:'exif',location:{aoi:'测试公园',source:'gps'},card:{scene:'在雪地玩雪',createdAt:'v1'}})
 const face=(axis=0)=>({embedding:Array.from({length:128},(_,i)=>i===axis?1:0),quality:'good',box:[.2,.2,.5,.5],confidence:.99,thumb:''})
@@ -50,6 +52,78 @@ test('candidate consensus blocks transitive bridges, co-occurrence and mixed mod
  assert.equal(candidateGroups([a,b,c]).length,2)
  assert.equal(candidateGroups([a,{...a,id:'b'}]).length,2)
  assert.equal(candidateGroups([a,{...a,id:'b',assetId:'b',model:'v2'}]).length,2)
+})
+
+test('confirming an anchor immediately re-matches older unlocked candidates',()=>withStore(s=>{
+ s.sync({assets:[asset('a'),asset('b','02')],events:[]})
+ run(s,'a');run(s,'b',[face(1)])
+ const anchor=s.snapshot().faces.find(f=>f.assetId==='a').personId
+ // A better detector pass refreshes a former candidate's feature, but it has
+ // not yet been settled against the newly confirmed identity.
+ run(s,'b',[face(0)])
+ const state=s.correct({action:'name',personId:anchor,name:'团团',relationship:'女儿'})
+ assert.equal(state.faces.find(f=>f.assetId==='b').personId,anchor)
+ assert.equal(state.faces.find(f=>f.assetId==='b').status,'matched')
+ assert.deepEqual(state.graph.memberships.b,[anchor])
+}))
+
+test('detector upgrades add missed faces without deleting confirmed identities',()=>withStore(s=>{
+ s.sync({assets:[asset('a')],events:[]});let state=run(s,'a')
+ const original=state.faces[0]
+ s.correct({action:'name',personId:original.personId,name:'团团'})
+ const info={available:true,fingerprint:'model-v1',detectorRevision:'multiscale-v2'}
+ assert.deepEqual(s.pendingFor(info),['a'])
+ const key=s.needsAnalysis('a','model-v1',false,'multiscale-v2').key
+ state=s.saveDetection('a',key,{fingerprint:'model-v1',detectorRevision:'multiscale-v2',faces:[face(),{...face(1),box:[.6,.2,.9,.5]}]})
+ assert.equal(state.faces.length,2)
+ assert.equal(state.faces.find(f=>f.id===original.id).personId,original.personId)
+ assert.equal(state.faces.find(f=>f.id===original.id).locked,true)
+ assert.deepEqual(s.pendingFor(info),[])
+ assert.equal(s.needsAnalysis('a','model-v1',false,'multiscale-v2').needed,false)
+ // A second pass neither duplicates detections nor undoes explicit ignores.
+ const second=state.faces.find(f=>f.id!==original.id)
+ s.correct({action:'ignore',faceIds:[second.id]})
+ state=s.saveDetection('a',key,{fingerprint:'model-v1',detectorRevision:'multiscale-v3',faces:[face(),{...face(1),box:[.6,.2,.9,.5]}]})
+ assert.equal(state.faces.length,2);assert.equal(state.faces.find(f=>f.id===second.id).status,'ignored')
+}))
+
+test('revoking the confirmed anchor rechecks dependent automatic matches',()=>withStore(s=>{
+ s.sync({assets:[asset('a'),asset('b','02')],events:[]});let state=run(s,'a')
+ const anchor=state.faces[0]
+ s.correct({action:'name',personId:anchor.personId,name:'团团'})
+ state=run(s,'b');assert.equal(state.faces.find(f=>f.assetId==='b').status,'matched')
+ state=s.correct({action:'ignore',faceIds:[anchor.id]})
+ assert.equal(state.faces.find(f=>f.assetId==='b').status,'candidate')
+ assert.deepEqual(state.graph.memberships.b,[])
+}))
+
+test('explicit family relationships survive renaming, scope to visible people, and invalidate relevant chapters',()=>withStore(s=>{
+ s.sync({assets:[asset('a'),asset('b','02'),asset('child-only','03')],events:[]})
+ let state=run(s,'a',[face(),{...face(1),box:[.6,.2,.9,.5]}])
+ const [child,grandma]=state.faces
+ s.correct({action:'name',personId:child.personId,name:'团团',relationship:'女儿'})
+ s.correct({action:'name',personId:grandma.personId,name:'姥姥',relationship:'团团的姥姥'})
+ run(s,'b',[face(),{...face(1),box:[.6,.2,.9,.5]}]);run(s,'child-only',[face()])
+ state=s.snapshot();const relation=state.graph.relationships[0],chapter=state.graph.chapters.find(c=>c.kind==='relationship')
+ assert.equal(relation.objectId,child.personId);assert.equal(chapter.assetIds.length,2)
+ state=s.correct({action:'name',personId:child.personId,name:'新昵称',relationship:'女儿'})
+ assert.equal(state.graph.relationships[0].id,relation.id)
+ assert.equal(state.graph.relationships[0].value,'姥姥是新昵称的姥姥')
+ assert.notEqual(state.graph.chapters.find(c=>c.id===chapter.id).revision,chapter.revision)
+ const sources=s.enrich([{id:'a'},{id:'b'},{id:'child-only'}])
+ assert.equal(sources[2].relationships.length,0)
+ assert.ok(!sources[2].people.some(p=>p.name==='姥姥'))
+ const answer={title:'祖孙的小日子',shots:sources.map(s=>({assetId:s.id,caption:'祖孙玩雪',seconds:4}))}
+ const plan=validateFilmPlan(answer,sources)
+ assert.equal(plan.title,'祖孙的小日子');assert.equal(plan.shots.find(s=>s.assetId==='child-only').caption,'')
+ state=s.correct({action:'name',personId:grandma.personId,name:'姥姥',relationship:'家人'})
+ assert.equal(state.graph.relationships.length,0)
+ assert.equal(state.graph.chapters.filter(c=>c.kind==='relationship').length,0)
+}))
+
+test('ambiguous names and visual co-occurrence do not invent family edges',()=>{
+ assert.deepEqual(storyRelationships([{id:'a',name:'团团',confirmed:true},{id:'b',name:'团团',confirmed:true},{id:'c',name:'姥姥',relationship:'团团的姥姥',confirmed:true}]),[])
+ assert.deepEqual(storyRelationships([{id:'a',name:'团团',confirmed:true},{id:'c',name:'姥姥',relationship:'家人',confirmed:true}]),[])
 })
 test('candidate regrouping keeps explicitly split faces apart and confirmed identities intact',()=>withStore(s=>{
  s.sync({assets:[asset('a'),asset('b','02'),asset('c','03')],events:[]});run(s,'a');run(s,'b');let state=run(s,'c');const id=state.faces[0].personId

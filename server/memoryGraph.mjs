@@ -17,17 +17,18 @@ export function createMemoryGraph(root,{engine=createFaceEngine()}={}) {
     catch(error){capability={available:false,message:error.message}}
     checkedAt=Date.now();return capability
   }
+  async function withCapability(user,state){const info=await status();return {...state,capability:info,pending:store(user).pendingFor(info)}}
   return {
-    async read(user){return {...store(user).reconcile(),capability:await status()}},
+    async read(user){return withCapability(user,store(user).reconcile())},
     async sync(user,body){
       const s=store(user),{removed,...state}=s.sync(body)
       for(const id of removed)await rm(join(s.root,'faces',id+'.jpg'),{force:true}).catch(()=>{})
-      return {...state,capability:await status()}
+      return withCapability(user,state)
     },
     async analyze(user,body){
       const s=store(user),id=String(body.assetId||''),info=await status()
       if(!info.available)throw new Error(info.message)
-      const {needed,key}=s.needsAnalysis(id,info.fingerprint,body.retry===true)
+      const {needed,key}=s.needsAnalysis(id,info.fingerprint,body.retry===true,info.detectorRevision)
       if(!needed)return {...s.snapshot(),capability:info}
       const activeKey=user.id+':'+id
       if(active.has(activeKey))return {...s.snapshot(),capability:info}
@@ -57,7 +58,7 @@ export function createMemoryGraph(root,{engine=createFaceEngine()}={}) {
     context(user){
       const state=store(user).snapshot()
       return {people:state.people.filter(p=>p.confirmed).map(({id,name,relationship})=>({id,name,relationship})),
-        chapters:state.graph.chapters.slice(0,30),events:state.graph.events.slice(-100),facts:state.graph.facts.slice(-300)}
+        relationships:state.graph.relationships,chapters:state.graph.chapters.slice(0,30),events:state.graph.events.slice(-100),facts:state.graph.facts.slice(-300)}
     },
     async face(user,id){
       if(!/^[a-f0-9]{32}$/.test(id)||!store(user).hasFace(id))return null

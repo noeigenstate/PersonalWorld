@@ -49,7 +49,7 @@ export function useMemoryGraph(assets:MemoryAsset[],events:MemoryEvent[],ready:b
       }).catch(e=>{if(!cancelled){setBusy(false);setError(e.message)}})
     },1400)
     return()=>{cancelled=true;window.clearTimeout(timer);setBusy(false)}
-  },[key,ready,wait,paused,revision])
+  },[key,ready,wait,paused,revision,state?.capability?.detectorRevision])
   const mutate=async(path:string,body:unknown)=>{
     const value=await graphRequest(path,body);setState(prior=>({...value,capability:prior?.capability}));return value
   }

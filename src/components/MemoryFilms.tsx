@@ -4,6 +4,7 @@ import { Download, Film, LoaderCircle, Pause, Play, RotateCcw, X } from 'lucide-
 import type { MemoryAsset, MemoryEvent } from '../types'
 import { filmActive, filmBatch, filmImage, filmRequest, filmSources, boundedFilmSources, type FilmJob, type FilmSource } from '../lib/memoryFilm'
 import { discoverFilmStories, storyAlreadyMade, storyAttempted } from '../lib/filmStories'
+import { nextFilmUpdate } from '../lib/filmUpdates'
 import { loadFilmSettings, saveFilmSettings } from '../lib/storage'
 import type { MemoryGraphState, StoryChapter } from '../lib/memoryGraph'
 
@@ -35,7 +36,7 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
     for(const chapter of chapters){
       if(found.some(s=>s.chapterId===chapter.id||s.sources.length===chapter.assetIds.length&&s.sources.every(a=>chapter.assetIds.includes(a.id))))continue
       const candidates=sources.filter(s=>chapter.assetIds.includes(s.id));if(candidates.length<2)continue
-      found.push({key:`chapter:${chapter.id}:${chapter.revision}`,place:chapter.title,sources:candidates,chapterId:chapter.id,chapterRevision:chapter.revision,automatic:chapter.kind==='person'})
+      found.push({key:`chapter:${chapter.id}:${chapter.revision}`,place:chapter.title,sources:candidates,chapterId:chapter.id,chapterRevision:chapter.revision,automatic:['person','relationship'].includes(chapter.kind)})
     }
     return found
   }, [sources,graph?.graph.revision])
@@ -45,6 +46,7 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
   const roundUsed = settings?.attempted.filter(key => key.startsWith(round)).length || 0
   const assetKey = assets.map((a) => `${a.id}:${a.hash}`).sort().join('|')
   const current = jobs.find((j) => filmActive(j))
+  const pendingUpdate=nextFilmUpdate(jobs,settings?.attempted||[])
   const displayed = jobs.find((j) => j.id === selected) || current || jobs.find((j) => j.status === 'complete') || jobs[0]
   const upsert = (job: FilmJob) => setJobs((all) => [job, ...all.filter((j) => j.id !== job.id)].sort((a, b) => b.createdAt - a.createdAt))
   useEffect(() => { setContextDraft(displayed?.storyContext?.text || '') }, [displayed?.id, displayed?.storyContext?.revision])
@@ -91,14 +93,14 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
   },[requestedChapter,batch,loaded,capable,current,starting,graph])
 
   useEffect(() => {
-    if (!loaded || !capable || !settings?.enabled || !batch || current || starting || analyzing || sources.length < 2) return
+    if (!loaded || !capable || !settings?.enabled || !batch || current || starting || analyzing || sources.length < 2 || pendingUpdate) return
     if (roundUsed >= 3) return
     const next = stories.find(story => story.automatic && !attempted(story.key) && !made(story))
     if (stories.length && !next) return
     if (!stories.length && (settings.attempted.includes(round+'album') || jobs.some(j => j.batch === batch&&j.version==='memory-film-6'))) return
     const timer = window.setTimeout(() => { void start(false, undefined, next ? round + next.key : round+'album', next?.sources || sources,next?.chapterId) }, 10_000)
     return () => window.clearTimeout(timer)
-  }, [loaded, capable, settings, batch, jobs, current, starting, analyzing, sources, stories])
+  }, [loaded, capable, settings, batch, jobs, current, starting, analyzing, sources, stories,pendingUpdate?.key])
 
   // Confirmed identities and factual corrections invalidate their own chapter.
   // Track the revision durably so a correction never becomes an endless render.
@@ -107,20 +109,18 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
     return latest&&latest.chapterRevision!==chapter.revision&&!settings?.attempted.includes(`identity:${chapter.id}:${chapter.revision}`)
   })
   useEffect(()=>{
-    if(!changedChapter||!settings?.enabled||!capable||current||starting||analyzing||!batch)return
-    const timer=window.setTimeout(()=>{void start(false,undefined,`identity:${changedChapter.id}:${changedChapter.revision}`,sources.filter(s=>changedChapter.assetIds.includes(s.id)),changedChapter.id)},4000)
+    if(!changedChapter||!settings?.enabled||!capable||current||starting||analyzing||!batch||pendingUpdate)return
+    const timer=window.setTimeout(()=>{void start(false,undefined,`identity:${changedChapter.id}:${changedChapter.revision}`,sources.filter(s=>changedChapter.assetIds.includes(s.id)),changedChapter.id)},20_000)
     return()=>window.clearTimeout(timer)
-  },[changedChapter?.revision,settings,capable,current,starting,analyzing,batch])
+  },[changedChapter?.revision,settings,capable,current,starting,analyzing,batch,pendingUpdate?.key])
 
   // A confirmed correction may arrive from this UI or an authorized assistant.
   // Re-edit only that film's photos, once per revision, respecting Pause.
-  const corrected = jobs[0]?.status === 'complete' && jobs[0].storyContext?.changed ? jobs[0] : undefined
-  const correctionKey = corrected ? `context:${corrected.id}:${corrected.storyContext?.revision}` : ''
   useEffect(() => {
-    if (!corrected || !settings?.enabled || !capable || current || starting || analyzing || !batch || settings.attempted.includes(correctionKey)) return
-    const timer = window.setTimeout(() => { void start(false, corrected.id, correctionKey) }, 2000)
+    if (!pendingUpdate || !settings?.enabled || !capable || current || starting || analyzing || !batch) return
+    const timer = window.setTimeout(() => { void start(false, pendingUpdate.job.id, pendingUpdate.key) },20_000)
     return () => window.clearTimeout(timer)
-  }, [correctionKey, settings, capable, current, starting, analyzing, batch])
+  }, [pendingUpdate?.key, settings, capable, current, starting, analyzing, batch])
 
   // Repair the known short-source validation fallback once after the planner
   // upgrade. Generic provider outages stay manual; Pause is always respected.
@@ -159,9 +159,9 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
     }
     window.addEventListener('focus', refresh)
     const timer = reconnect ? window.setInterval(() => { void refresh() }, 8000) : undefined
-    if (open) void refresh()
-    return () => { cancelled = true; window.removeEventListener('focus', refresh); if (timer) window.clearInterval(timer) }
-  }, [ready, reconnect, open])
+    const changed=window.setTimeout(()=>{if(open||graph?.revision)void refresh()},1200)
+    return () => { cancelled = true;window.clearTimeout(changed);window.removeEventListener('focus', refresh); if (timer) window.clearInterval(timer) }
+  }, [ready, reconnect, open,graph?.revision])
 
   useEffect(() => {
     if (current?.status !== 'awaiting-images' || uploadLock.current || !current.plan) return
@@ -245,6 +245,7 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
             {displayed?.error && <p className="film-error">{displayed.error}</p>}
             {displayed?.warning && <p className="film-warning">{displayed.warning}</p>}
             {displayed?.exportError && <p className="film-warning">{displayed.exportError}</p>}
+            {displayed?.status==='complete'&&(displayed.knowledgeChanged||displayed.chapterChanged)&&<p className="film-warning" role="status">人物或照片资料已更新。这是更新前的成片；{settings?.enabled?'停止修改一会儿后，会自动按最新资料重编。':'开启自动生成或点击“重新编排一版”即可更新。'}</p>}
             {displayed?.plan && <details className="film-context">
               <summary>人物与故事补充（可选）{displayed.storyContext?.notes.length ? ' · 已记住' : ''}</summary>
               <p>可以补充人物关系或这次出游的小故事。只用于本片的 {displayed.plan.shots.length} 张照片；留空也能自动成片。</p>
