@@ -155,6 +155,7 @@ try {
   await page.waitForTimeout(900)
   assert.match(await page.locator('.map-heading h1').innerText(), /上海的故事线/)
   assert.equal(await page.locator('.map-label.event').count(), 6, '上海 5 件事加上从上海出发的杭州旅行')
+  assert.equal(await page.locator('.map-label.event.has-photo').count(), 6, '备用卡通地图也把封面与日期放在同一张事件卡片里')
   assert.match(await page.locator('.bubble.bot').first().innerText(), /我记得这里的 6 件事/)
   await page.locator('.role-choices').getByRole('button', { name: '工作' }).click()
   assert.match(await page.locator('.bubble.bot').last().innerText(), /上海是你工作的地方/)
@@ -184,7 +185,7 @@ try {
   await page.screenshot({ path: join(shots, 'pw-2-story.png') })
 
   // Story node opens the event
-  await page.locator('.map-label.event').filter({ hasText: '2018.07' }).click()
+  await page.locator('.map-label.event').filter({ hasText: '2018.07' }).locator('.map-event-cover').click()
   await page.locator('.detail-panel').waitFor()
   assert.match(await page.locator('.first-tags').innerText(), /照片记录中第一次在上海/)
   assert.match(await page.locator('.detail-fields').innerText(), /由照片定位得出/)

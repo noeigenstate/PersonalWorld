@@ -18,6 +18,7 @@ class Film:
     def __init__(self, root, plan):
         self.root, self.plan = root, plan
         self.style = plan.get('treatment', 'warm-album')
+        self.subjects = ' · '.join(plan.get('cast',[]))[:38]
         self.snow = self.style == 'snow-journal'
         self.sweet = self.style == 'sweet-moments'
         self.making = self.style == 'little-makers'
@@ -162,7 +163,7 @@ class Film:
         """
         image=self.background();shots=self.plan['shots'];last=len(shots)-1;kind=segment['kind']
         if self.together:
-            self.text(image,'一起的这些日子',(54,51),21)
+            self.text(image,self.subjects or '一起的这些日子',(54,51),21)
             if kind=='intro':
                 self.text(image,self.plan['title'],(52,112),48,width=610,bold=True)
                 self.paste_photo(image,0,(49,302,298,459),p,radius=20,cover=False)
@@ -216,10 +217,56 @@ class Film:
                 self.text(image,f'{i+1:02d}',(619,900),23,'#baa783')
         return image
 
+    def motif_mark(self,image,motif,x,y):
+        d=ImageDraw.Draw(image);c=self.accent
+        if motif=='book':
+            d.polygon([(x,y+5),(x+28,y+12),(x+56,y+5),(x+56,y+44),(x+28,y+51),(x,y+44)],outline=c,width=3)
+            d.line((x+28,y+12,x+28,y+51),fill=c,width=2)
+            for offset in [18,28,38]:
+                d.line((x+6,y+offset,x+22,y+offset+4),fill=c,width=2)
+                d.line((x+34,y+offset+4,x+50,y+offset),fill=c,width=2)
+        elif motif=='icecream':
+            d.polygon([(x+6,y+25),(x+50,y+25),(x+28,y+64)],fill='#d5ab71')
+            d.ellipse((x+1,y-10,x+55,y+39),fill='#f2c0b3',outline=c,width=2)
+            d.line((x+19,y+38,x+34,y+50),fill='#a77746',width=2)
+        elif motif=='snow':
+            for angle in [0,math.pi/3,2*math.pi/3]:
+                dx,dy=23*math.cos(angle),23*math.sin(angle)
+                d.line((x+28-dx,y+25-dy,x+28+dx,y+25+dy),fill=c,width=3)
+        elif motif=='sand':
+            for offset in [0,12,24]:d.arc((x,y+offset,x+60,y+offset+24),185,355,fill=c,width=3)
+        elif motif=='craft':
+            d.line((x+7,y+48,x+44,y+3),fill=c,width=9)
+            d.polygon([(x+2,y+55),(x+5,y+39),(x+16,y+48)],fill=self.ink)
+
+    def render_callback(self,index,p):
+        image=self.background();shot=self.plan['shots'][index];shots=self.plan['shots']
+        self.text(image,self.plan['title'],(48,48),24,width=555,bold=True)
+        self.motif_mark(image,shot.get('motif',''),618,39)
+        if shot['layout']=='compare':
+            ref=next((i for i,s in enumerate(shots[:index]) if s['assetId']==shot.get('compareAssetId')),max(0,index-1))
+            self.text(image,'两个片刻，放在一起',(49,116),21)
+            for i,x,y in [(ref,42,202),(index,376,264)]:
+                self.paste_photo(image,i,(x,y,292,442),0,radius=12,cover=False)
+                self.text(image,shots[i].get('date','') or '日期未确定',(x+4,y+457),18,width=292)
+            ImageDraw.Draw(image).line((65,756,651,756),fill=self.accent,width=2)
+            self.text(image,shot.get('caption',''),(51,797),33,width=604,bold=True)
+        else:
+            self.text(image,'这一页的三个片刻',(49,105),21)
+            self.paste_photo(image,index,(48,162,624,379),p,radius=12,cover=False)
+            self.text(image,shot.get('date','') or '日期未确定',(55,551),17)
+            for i,x in [(index-2,48),(index-1,376)]:
+                self.paste_photo(image,i,(x,607,296,196),0,radius=10,cover=False)
+                self.text(image,shots[i].get('date','') or '日期未确定',(x+5,815),16,width=296)
+            self.text(image,shot.get('caption',''),(50,858),28,width=610,bold=True)
+        return image
+
     def render(self, segment, seconds):
         duration=segment['duration'];p=min(1,max(0,seconds/duration))
         image=self.background();d=ImageDraw.Draw(image)
         kind=segment['kind'];shots=self.plan['shots'];last=len(shots)-1
+        if kind=='photo' and shots[segment['index']].get('layout') in ['compare','ribbon']:
+            return self.render_callback(segment['index'],p)
         if self.together or self.poem:return self.render_story(segment,p)
         if kind=='intro':
             if self.snow:
@@ -229,14 +276,14 @@ class Film:
                 self.text(image,self.plan['title'],(42,724),47,'#fff9e9',620,True)
                 self.text(image,shots[0].get('date','').replace('-',' · '),(46,892),18,'#bdd5d2')
             elif self.sweet:
-                self.text(image,'SWEET LITTLE MOMENTS',(42,44),17,bold=True)
+                self.text(image,self.subjects or 'SWEET LITTLE MOMENTS',(42,44),20,bold=True)
                 self.text(image,self.plan['title'],(38,99),64,width=600,bold=True,spacing=6)
                 self.paste_photo(image,0,(52,348,360,444),p,angle=5,border=9)
                 self.paste_photo(image,last,(398,470,234,310),p,angle=-7,border=7)
                 self.doodle(image,570,350,1.8)
                 self.text(image,'把甜甜的片刻，装进口袋',(48,865),24)
             else:
-                self.text(image,'小小创作簿' if self.making else '我们的日常放映室',(68,48),22)
+                self.text(image,self.subjects or ('小小创作簿' if self.making else '我们的日常放映室'),(68,48),22)
                 self.text(image,self.plan['title'],(67,112),51,width=584,bold=True)
                 self.paste_photo(image,0,(85,326,496,438),p,angle=-3,border=12,cover=False)
                 self.doodle(image,583,253,1.2)
@@ -323,13 +370,15 @@ def main():
     try:
         for number,segment in enumerate(film.segments):
             count=round(segment['duration']*FPS)
+            edit=plan['shots'][segment['index']].get('transition','dissolve') if segment['kind']=='photo' else 'dissolve'
             transition=round((.24 if film.sweet else .7 if film.poem else .5 if film.together else .42)*FPS)
+            if edit=='cut':transition=1
             previous=last
             for n in range(count):
                 frame=film.render(segment,n/FPS)
                 if previous is not None and n<transition:
                     p=(n+1)/transition
-                    if film.sweet or film.making:
+                    if edit=='page' or film.sweet or film.making:
                         old=previous.copy();cut=round(W*(1-(1-p)**3));old.paste(frame.crop((0,0,cut,H)),(0,0));frame=old
                     else:frame=Image.blend(previous,frame,p)
                 if number==0 and n<8:frame=Image.blend(Image.new('RGB',(W,H),film.paper),frame,(n+1)/8)

@@ -146,7 +146,7 @@ export function createLabels(layer: HTMLElement) {
   return {
     clear() { layer.replaceChildren(); labels = [] },
     add(className: string, anchor: THREE.Vector3, lines: [string, string][], onClick?: () => void, priority = 0) {
-      const el = document.createElement(onClick ? 'button' : 'div')
+      const el = document.createElement(onClick && !className.split(' ').includes('event') ? 'button' : 'div')
       el.className = `map-label ${className}`
       if (className.split(' ').includes('place')) {
         el.append(cityStamp(lines.find(([tag]) => tag === 'strong')?.[1] || ''))
@@ -170,6 +170,7 @@ export function createLabels(layer: HTMLElement) {
         placed.some((r) => rect.left < r.right && rect.right > r.left && rect.top < r.bottom && rect.bottom > r.top)
       const levels = DETAILS.slice(DETAILS.indexOf(detail))
       for (const { el, anchor, priority } of order) {
+        if (el.hidden) { el.style.visibility = 'hidden'; continue }
         v.copy(toScreen ? toScreen(anchor) : anchor).project(camera)
         const x = ((v.x + 1) / 2) * w
         const y = ((1 - v.y) / 2) * h
@@ -182,8 +183,8 @@ export function createLabels(layer: HTMLElement) {
           }
           if (choice) break
         }
-        // Places and the current event always show: smallest bubble above the point
-        if (!choice && priority >= 3) {
+        // Place names have a compact fallback; event cards must not cover one another.
+        if (!choice && priority >= 3 && !el.classList.contains('event')) {
           const level = levels[levels.length - 1]
           const { width, height } = sizeOf(el, level)
           choice = { level, side: 'above', rect: bubbleRect('above', x, y, width, height) }
@@ -219,6 +220,7 @@ function bubbleRect(side: Side, x: number, y: number, width: number, height: num
 
 // Bubble sizes per level, measured once per label (labels are rebuilt when their text changes)
 const sizes = new WeakMap<HTMLElement, Partial<Record<LabelDetail, { width: number; height: number }>>>()
+export const invalidateLabelSize = (el: HTMLElement) => sizes.delete(el)
 function sizeOf(el: HTMLElement, level: LabelDetail) {
   const known = sizes.get(el) || {}
   if (!known[level]) {
@@ -319,4 +321,73 @@ export function eventMarker(kind: MarkerKind, now: boolean): THREE.Group {
     if (material?.isMeshToonMaterial) { mesh.material = new THREE.MeshBasicMaterial({ color: material.color }); material.dispose() }
   })
   return group
+}
+
+// One event, one button: the cover and the date/title share the same hit target.
+// The cover is decoration; clicking it opens the event's complete photo group.
+export function attachEventCover(el: HTMLElement, event: MemoryEvent, cover?: { preview: string; count: number }) {
+  el.dataset.eventId = event.id
+  el.setAttribute('role', 'group')
+  const open = document.createElement('button')
+  open.type = 'button'
+  open.className = 'map-event-open'
+  open.dataset.eventId = event.id
+  open.setAttribute('aria-label', `打开事件：${event.title}${cover ? `，${cover.count} 张照片` : ''}`)
+  const body = document.createElement('span')
+  body.className = 'map-event-copy'
+  body.append(...el.childNodes)
+  if (!cover) { open.append(body); el.append(open); return }
+  el.classList.add('has-photo')
+  const media = document.createElement('span')
+  media.className = 'map-event-cover'
+  const img = document.createElement('img')
+  img.src = cover.preview
+  img.alt = ''
+  img.draggable = false
+  const count = document.createElement('span')
+  count.className = 'map-event-count'
+  count.textContent = `${cover.count} 张`
+  media.append(img, count)
+  open.append(media, body)
+  el.append(open)
+  el.title = `${formatYearMonth(event.occurredAt)} · ${event.title} · ${cover.count} 张照片`
+}
+
+// Repeated visits are independent rows in one place card, visible without a popup.
+export function fillEventStack(el: HTMLElement, events: MemoryEvent[], covers: Record<string, { preview: string; count: number; place?: string }>, openEvent: (id: string) => void) {
+  el.replaceChildren()
+  el.classList.toggle('event-stack', events.length > 1)
+  if (events.length === 1) {
+    for (const [tag, text] of eventLabel(events[0], false, false).lines) {
+      const line = document.createElement(tag); line.textContent = text; el.append(line)
+    }
+    attachEventCover(el, events[0], covers[events[0].id])
+    return
+  }
+  const places = events.map(event => covers[event.id]?.place).filter(Boolean)
+  const place = places.length === events.length && new Set(places).size === 1 ? places[0] : ''
+  const heading = document.createElement('div')
+  heading.className = 'map-event-stack-heading'
+  const title = document.createElement('strong'); title.textContent = place || '附近的回忆'
+  const count = document.createElement('span'); count.textContent = `${events.length} 段`
+  heading.append(title, count)
+  heading.addEventListener('click', e => e.stopPropagation())
+  const rows = document.createElement('div'); rows.className = 'map-event-stack-rows'
+  rows.setAttribute('aria-label', '各次回忆'); rows.tabIndex = 0
+  rows.addEventListener('wheel', e => e.stopPropagation())
+  rows.addEventListener('pointerdown', e => e.stopPropagation())
+  rows.addEventListener('click', e => e.stopPropagation())
+  for (const event of events) {
+    const holder = document.createElement('div')
+    for (const [tag, text] of eventLabel(event, false, false).lines) {
+      const line = document.createElement(tag); line.textContent = tag === 'time' ? new Date(event.occurredAt).toLocaleDateString('zh-CN') : text; holder.append(line)
+    }
+    attachEventCover(holder, event, covers[event.id])
+    const button = holder.querySelector<HTMLButtonElement>('.map-event-open')!
+    button.addEventListener('click', e => { e.stopPropagation(); openEvent(event.id) })
+    rows.append(button)
+  }
+  el.title = place || '每段回忆可单独打开'
+  el.setAttribute('aria-label', `${place || '附近'}，${events.length} 段回忆`)
+  el.append(heading, rows)
 }

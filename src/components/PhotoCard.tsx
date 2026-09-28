@@ -51,6 +51,7 @@ export function PhotoCard({ asset, event, aiAvailable, busy, onGenerate, peers, 
 
   const facts = photoFacts(asset, event, dimensions)
   const card: Card | undefined = asset.card
+  const understood = event?.understanding?.photos?.find(photo => photo.assetId === asset.id)
   const context = asset.context
   const candidates = peers.candidateCount(asset)
   const cityKnown = Boolean(event?.city && event.citySource !== 'ai')
@@ -60,8 +61,9 @@ export function PhotoCard({ asset, event, aiAvailable, busy, onGenerate, peers, 
   return (
     <aside className="photo-card" aria-label="照片信息卡">
       <div className="pc-kicker">照片信息卡</div>
-      {card ? <h2>{card.title}</h2> : <h2 className="pc-placeholder">这张照片记录了什么？</h2>}
-      {card?.caption && <p className="pc-caption"><Marked text={card.caption} /></p>}
+      {card ? <h2>{understood?.title || card.title}</h2> : <h2 className="pc-placeholder">这张照片记录了什么？</h2>}
+      {(understood?.caption || card?.caption) && <p className="pc-caption"><Marked text={understood?.caption || card!.caption} /></p>}
+      {understood && <small className="pc-muted">已结合当前人物关系与照片线索更新</small>}
       {Boolean(identities?.length)&&<section><h3>人物库关联</h3><p>{identities!.join(' · ')}</p><small>使用你确认过的称呼。自动匹配若有误，可在“人物与故事”中调整。</small></section>}
 
       <section>

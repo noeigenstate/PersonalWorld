@@ -4,6 +4,7 @@ import { heicAsJpeg, isHeic } from './import'
 
 export interface FilmSource { id: string; date: string; capturedAt?:string; observed: string; confirmed: string; place: string; tags: string[] }
 export interface FilmPlan {
+  cast?: string[]
   treatment?: 'snow-journal' | 'sweet-moments' | 'little-makers' | 'warm-album' | 'together-pages' | 'detail-poem'
   kind: 'outing' | 'revisit' | 'season'; title: string; closing: string; reason: string
   shots: { assetId: string; caption: string; seconds: number; evidence: string; date: string; beat?: string; motion?: string }[]

@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto'
 import { chat, parseJsonAnswer } from './stepfun.mjs'
 import { loadSkill } from './skills.mjs'
+import { knownKinshipWords } from './storyRelationships.mjs'
 
-export const UNDERSTANDING_VERSION='story-understanding-2'
+export const UNDERSTANDING_VERSION='story-understanding-3'
 export const storyHash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0,24)
 const text=(v,max=300)=>typeof v==='string'?v.replace(/[\x00-\x1f]/g,' ').trim().slice(0,max):''
 const sample=(items,max)=>items.length<=max?items:Array.from({length:max},(_,i)=>items[Math.round(i*(items.length-1)/(max-1))])
@@ -28,10 +29,18 @@ export function eventInputs(state,minimum=2){
 
 // Strong personal claims require actual user evidence. Interpretations stay
 // separate from confirmed facts even when their supporting photo IDs are valid.
+function unsupportedClaims(value,input){
+  const confirmed=JSON.stringify([input.people,input.relationships,input.confirmed])
+  const observed=(input.photos||[]).map(p=>p.observed||'').join(' ')
+  // The name/type of a venue is not a claim that its visitors are related.
+  const checked=String(value||'').replace(/亲子(?:活动中心|乐园|餐厅|区域)/g,word=>observed.includes(word)?'活动场所':word)
+  const claims=checked.match(/第一次[^，。！!?？]{0,8}|首次|\d+岁|[一二三四五六七八九十]+岁|最爱|最喜欢|爱吃|长高了|学会了|性格[^，。！!?？]{0,5}|单独外出|没有其他家人|三代同框|三代人|每次出游|专属出游|女儿|儿子|妈妈|母亲|爸爸|父亲|姥姥|姥爷|外婆|外公|奶奶|爷爷|父女|母女|祖孙|亲子/g)||[]
+  const aliases=knownKinshipWords(input.people,input.relationships)
+  return claims.filter(claim=>!confirmed.includes(claim)&&!aliases.has(claim))
+}
 function grounded(value,input,max){
-  const result=text(value,max),confirmed=JSON.stringify([input.people,input.relationships,input.confirmed])
-  const claims=result.match(/第一次[^，。！!?？]{0,8}|首次|\d+岁|[一二三四五六七八九十]+岁|最爱|最喜欢|爱吃|长高了|学会了|性格[^，。！!?？]{0,5}|单独外出|没有其他家人|三代同框|三代人|每次出游|专属出游/g)||[]
-  return claims.some(claim=>!confirmed.includes(claim))?'':result
+  const result=text(value,max)
+  return unsupportedClaims(result,input).length?'':result
 }
 function scopePhotos(input,assetIds){
   const photos=input.photos.filter(p=>assetIds.includes(p.id)),personIds=new Set(photos.flatMap(p=>p.personIds))
@@ -50,12 +59,18 @@ export function validateEventUnderstanding(answer,input){
   const known=new Set(input.photos.map(p=>p.id))
   const insights=(Array.isArray(answer?.insights)?answer.insights:[]).slice(0,5).flatMap(i=>{
     const assetIds=[...new Set(Array.isArray(i.assetIds)?i.assetIds:[])].filter(id=>known.has(id))
-    const value=grounded(i.text,input,220)
+    const value=scopedText(i.text,input,scopePhotos(input,assetIds),220)
     return assetIds.length&&value?[{text:value,assetIds,status:'interpretation'}]:[]
   })
   const title=grounded(answer?.title,input,40),summary=grounded(answer?.summary,input,450)
-  if(!title||!summary||!insights.length)throw new Error(`事件理解未通过：${!title?'标题包含无依据的个人断言；':''}${!summary?'摘要包含无依据的个人断言；':''}${!insights.length?'线索没有真实照片依据或包含无依据的断言；':''}删除第一次、年龄、最爱、性格等未经用户确认的结论，仅描述可见内容`)
-  return {title,summary,insights,openQuestions:(Array.isArray(answer.openQuestions)?answer.openQuestions:[]).map(v=>text(v,120)).filter(Boolean).slice(0,3),
+  if(!title||!summary||!insights.length)throw new Error(`事件理解未通过：${!title?'标题缺少依据：'+unsupportedClaims(answer?.title,input).join('、')+'；':''}${!summary?'摘要缺少依据：'+unsupportedClaims(answer?.summary,input).join('、')+'；':''}${!insights.length?'线索缺少照片依据或含有未在相应照片确认的人物；':''}改写上述称谓或断言，只描述已知人物和可见动作，不将场所中的成年人自动当作父母`)
+  const photos=(Array.isArray(answer.photos)?answer.photos:[]).flatMap(photo=>{
+    if(!known.has(photo.assetId))return []
+    const scope=scopePhotos(input,[photo.assetId])
+    const caption=scopedText(photo.caption,input,scope,160),title=scopedText(photo.title,input,scope,32)
+    return caption&&title?[{assetId:photo.assetId,title,caption}]:[]
+  }).filter((p,i,all)=>all.findIndex(other=>other.assetId===p.assetId)===i)
+  return {title,summary,insights,photos,openQuestions:(Array.isArray(answer.openQuestions)?answer.openQuestions:[]).map(v=>text(v,120)).filter(Boolean).slice(0,3),
     motifs:(Array.isArray(answer.motifs)?answer.motifs:[]).map(v=>text(v,30)).filter(Boolean).slice(0,6),status:'interpretation'}
 }
 
@@ -64,7 +79,7 @@ export function libraryInput(inputs,results,previous=[]){
   const relationships=[...new Map(inputs.flatMap(i=>i.relationships).map(r=>[r.id,r])).values()]
   const confirmed=[...new Map(inputs.flatMap(i=>i.confirmed).map(f=>[f.id,f])).values()]
   const photos=[...new Map(inputs.flatMap(i=>i.photos).map(p=>[p.id,p])).values()]
-  const events=inputs.map(i=>({eventId:i.eventId,assetIds:i.photos.map(p=>p.id),understanding:results[i.eventId]?.result||null}))
+  const events=inputs.map(i=>({eventId:i.eventId,assetIds:i.photos.map(p=>p.id),understanding:results[i.eventId]?.status==='complete'&&results[i.eventId]?.revision===results[i.eventId]?.wanted?results[i.eventId].result:null}))
   const content={people,relationships,confirmed,photos,events}
   return {...content,previous:previous.map(c=>({key:c.key,title:c.title,angle:c.angle,assetIds:c.assetIds})).slice(0,8),revision:storyHash([UNDERSTANDING_VERSION,content])}
 }

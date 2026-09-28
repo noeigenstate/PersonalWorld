@@ -18,9 +18,10 @@ test('SKILL.md 格式完整，写明了事实与推断、地标、隐私和输�
 })
 
 let api
+let incompleteObservation = false
 before(async () => {
   api = await startApi(() => ({
-    title: '外滩看东方明珠', caption: '〔在黄浦江边〕', scene: '电视塔', visibleText: '',
+    title: '外滩看东方明珠', caption: '〔在黄浦江边〕', scene: incompleteObservation ? '  ' : '电视塔', visibleText: '',
     clues: [{ kind: '地点', evidence: '东方明珠塔身', inference: '在上海', confidence: 0.9 }, { kind: '事件', evidence: '', inference: '没有依据', confidence: 0.8 }],
     landmark: { name: '东方明珠', city: '上海市', confidence: 2 },
     placeQuery: { text: '东方明珠', city: '上海市', from: 'landmark', confidence: 0.9 },
@@ -28,6 +29,15 @@ before(async () => {
   }))
 })
 after(() => api?.close())
+
+test('/api/photo-card 不把缺少画面观察的响应标记为成功', async () => {
+  incompleteObservation = true
+  try {
+    const { status, json } = await api.post('/api/photo-card', { image: { dataUrl: pearl }, facts: {} })
+    assert.equal(status, 422)
+    assert.match(json.error, /缺少画面观察/)
+  } finally { incompleteObservation = false }
+})
 
 test('/api/photo-card 用这个 skill，并整理地标、线索和列表长度', async () => {
   const { status, json } = await api.post('/api/photo-card', { image: { dataUrl: pearl }, facts: { fileName: 'IMG.jpg', time: '2026-01-01T00:00:00Z', timeSource: 'filename', size: '960 × 1280' } })

@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { MapControls } from 'three/examples/jsm/controls/MapControls.js'
 import type { MemoryEvent, PhotoCard, Place } from '../types'
 import { wgs84ToGcj02 } from '../lib/geo'
-import { LAND, PY, adder, arrowHead, box, building, createLabels, dim, eventLabel, placeLabel, seeded, toon, tree, tube } from './objects'
+import { LAND, PY, adder, arrowHead, attachEventCover, box, building, createLabels, dim, eventLabel, placeLabel, seeded, toon, tree, tube } from './objects'
 
 // Life map rendered as a cartoon diorama. Places sit at their real (projected) positions;
 // a selected city's story line is laid out schematically around it, keeping each event's
@@ -15,6 +15,8 @@ export interface LifeMapData {
   selectedCity: string | null
   highlightedEventId: string | null
   photos?: MapPhoto[]
+  // Covers include photos without GPS: the event supplies their map position.
+  eventCovers?: Record<string, { preview: string; count: number; place?: string }>
   // Only a deliberately selected outing has a geographic connecting line.
   routeEventIds?: string[]
 }
@@ -308,7 +310,8 @@ export function createLifeMap(container: HTMLElement, callbacks: LifeMapCallback
         }
         focusPoints.push(pos.clone(), new THREE.Vector3(pos.x, LAND + 0.5, pos.z))
         const spec = eventLabel(event, now, unsure)
-        labels.add(spec.className, new THREE.Vector3(pos.x, LAND + 0.5, pos.z), spec.lines, () => callbacks.onOpenEvent(event.id), spec.priority)
+        const label = labels.add(spec.className, new THREE.Vector3(pos.x, LAND + 0.5, pos.z), spec.lines, () => callbacks.onOpenEvent(event.id), spec.priority)
+        attachEventCover(label, event, data.eventCovers?.[event.id])
       }
     }
 

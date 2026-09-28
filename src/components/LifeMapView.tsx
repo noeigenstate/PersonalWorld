@@ -90,9 +90,17 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, inset
 
   const mount = (target: typeof map, api: MapApi) => {
     target.current = api
-    api.setInsets(latest.current.insets)
+    api.setInsets(measuredInsets())
     api.setSceneEnabled?.(latest.current.sceneEnabled)
     api.update(latest.current.data)
+  }
+
+  function measuredInsets() {
+    const insets = latest.current.insets
+    const el = host.current
+    // The mobile butler is a bottom sheet, not a 432 px sidebar.
+    if (!el || el.clientWidth > 900 || !insets.right) return insets
+    return { ...insets, right: 0, bottom: Math.max(insets.bottom, Math.min(el.clientHeight * .42, 360) + 12) }
   }
 
   // The street map
@@ -136,17 +144,27 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, inset
 
   // Insets first, so the camera is framed for the space the panels leave free
   useEffect(() => {
-    const insets = { right: insetRight, bottom: insetBottom, top: insetTop }
+    const insets = measuredInsets()
     map.current?.setInsets(insets)
     globe.current?.setInsets(insets)
   }, [insetRight, insetBottom, insetTop])
+  useEffect(() => {
+    if (!host.current) return
+    const observer = new ResizeObserver(() => {
+      const insets = measuredInsets()
+      map.current?.setInsets(insets)
+      globe.current?.setInsets(insets)
+    })
+    observer.observe(host.current)
+    return () => observer.disconnect()
+  }, [])
   useEffect(() => { map.current?.setSceneEnabled?.(sceneEnabled) }, [sceneEnabled])
 
   useEffect(() => {
     map.current?.update(data)
     globe.current?.update(data)
     // Rebuild only when the data the scene draws actually changes
-  }, [data.places, data.bases, data.story, data.selectedCity, data.highlightedEventId, data.photos, data.routeEventIds]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.places, data.bases, data.story, data.selectedCity, data.highlightedEventId, data.photos, data.eventCovers, data.routeEventIds]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (focus) map.current?.focusPhoto?.(focus.photo) }, [focus])
   useEffect(() => { if (landmarkPreviewAt) map.current?.focusLandmark?.() }, [landmarkPreviewAt])

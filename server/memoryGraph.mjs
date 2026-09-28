@@ -45,9 +45,9 @@ export function createMemoryGraph(root,{engine=createFaceEngine(),config,underst
       const s=store(user),id=String(body.assetId||''),info=await status()
       if(!info.available)throw new Error(info.message)
       const {needed,key}=s.needsAnalysis(id,info.fingerprint,body.retry===true,info.detectorRevision)
-      if(!needed)return {...s.snapshot(),capability:info}
+      if(!needed)return {...changed(user,s.snapshot()),capability:info}
       const activeKey=user.id+':'+id
-      if(active.has(activeKey))return {...s.snapshot(),capability:info}
+      if(active.has(activeKey))return {...changed(user,s.snapshot()),capability:info}
       if(typeof body.dataUrl!=='string'||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(body.dataUrl))throw new Error('人物分析需要 JPEG 照片')
       const image=Buffer.from(body.dataUrl.split(',')[1],'base64')
       if(image.length<20||image.length>8*1024*1024||image[0]!==255||image[1]!==216)throw new Error('照片格式无效或超过 8 MB')
@@ -61,7 +61,7 @@ export function createMemoryGraph(root,{engine=createFaceEngine(),config,underst
         const {saved,...state}=s.saveDetection(id,key,result)
         await mkdir(join(s.root,'faces'),{recursive:true})
         for(const face of saved||[])await writeFile(join(s.root,'faces',face.id+'.jpg'),Buffer.from(face.thumb,'base64'))
-        return {...state,capability:info}
+        return {...changed(user,state),capability:info}
       }catch(error){s.runFailed(id,key,error.message);throw error}
       finally{active.delete(activeKey);await rm(file,{force:true}).catch(()=>{})}
     },
@@ -70,7 +70,14 @@ export function createMemoryGraph(root,{engine=createFaceEngine(),config,underst
     undo:(user,body)=>changed(user,store(user).undo(String(body.id||''))),
     fact:(user,body)=>changed(user,store(user).fact(body)),
     understanding(user,body){const u=understanding(user);u.observe(store(user).snapshot());u.control(body);return u.decorate(store(user).snapshot())},
-    enrich:(user,sources)=>store(user).enrich(sources),
+    enrich(user,sources){
+      const snapshot=understanding(user).decorate(store(user).snapshot())
+      return store(user).enrich(sources).map(source=>{
+        const event=snapshot.graph.events.find(e=>e.assetIds.includes(source.id))
+        const note=event?.interpretation?.photos?.find(p=>p.assetId===source.id)
+        return {...source,narrative:note?.caption||''}
+      })
+    },
     chapter:(user,id)=>understanding(user).decorate(store(user).snapshot()).graph.chapters.find(c=>c.id===id),
     context(user){
       const state=understanding(user).decorate(store(user).snapshot())

@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto'
 import { chat, parseJsonAnswer } from './stepfun.mjs'
 import { loadSkill } from './skills.mjs'
-import { storyRelationships } from './storyRelationships.mjs'
+import { knownKinshipWords, storyRelationships } from './storyRelationships.mjs'
 
-export const FILM_VERSION = 'memory-film-6'
+export const FILM_VERSION = 'memory-film-7'
 const clean = (v, length) => String(v || '').replace(/[\x00-\x1f]/g, ' ').trim().slice(0, length)
+const motifs=[['icecream',/冰淇淋|冰激凌|甜筒|雪糕/],['snow',/积雪|雪地|滑雪|雪场/],['sand',/沙滩|玩沙|沙铲|沙粒/],['book',/绘本|阅读|读书/],['craft',/手工|画画|绘画|涂鸦/]]
+const motifOf=source=>motifs.find(([,pattern])=>pattern.test(source?.observed||''))?.[0]||''
 
 export function readFilmSources(input) {
   const seen = new Set()
@@ -27,17 +29,8 @@ function sampled(sources, max = 10) {
 
 function relationshipWords(sources) {
   const people=[...new Map(sources.flatMap(s=>s.people||[]).map(p=>[p.id,{...p,confirmed:true}])).values()]
-  const words=new Set()
   const relations=[...sources.flatMap(s=>s.relationships||[]),...storyRelationships(people)]
-  const present=new Set(people.map(p=>p.id))
-  for(const relation of relations.filter(r=>present.has(r.subjectId)&&present.has(r.objectId))){
-    const aliases=/^(姥姥|外婆|外祖母)$/.test(relation.label)?['姥姥','外婆','外祖母','祖孙']
-      :/^(奶奶|祖母)$/.test(relation.label)?['奶奶','祖母','祖孙']
-        :/^(姥爷|外公|外祖父)$/.test(relation.label)?['姥爷','外公','外祖父','祖孙']
-          :/^(爷爷|祖父)$/.test(relation.label)?['爷爷','祖父','祖孙']:[]
-    aliases.forEach(word=>words.add(word))
-  }
-  return words
+  return knownKinshipWords(people,relations)
 }
 
 // Rules provide an honest usable edit if the model is unavailable; never pretend
@@ -65,7 +58,8 @@ export function validateFilmPlan(answer, sources, {brief}={}) {
     if(!/睡着|熟睡|入睡/.test(evidence))result=result.replace(/睡着了/g,'闭着眼睛')
     const timeClaims = result.match(/清晨|早晨|早上|上午|中午|午后|下午|傍晚|黄昏|夜晚|深夜/g) || []
     const causalClaims=result.match(/醒来|醒啦|睡醒|刚醒|醒过来|慢慢醒|准备[^，。！!?？]{0,5}|终于|不肯|舍不得|迫不及待/g)||[]
-    return claims.some((claim) => !facts.includes(claim)&&!aliases.has(claim)) || [...timeClaims,...causalClaims].some(claim => !evidence.includes(claim)) ? '' : result
+    const absent=source?sources.flatMap(s=>s.people||[]).filter(p=>!(source.people||[]).some(known=>known.id===p.id)).map(p=>p.name).filter(Boolean):[]
+    return absent.some(name=>result.includes(name)) || claims.some((claim) => !facts.includes(claim)&&!aliases.has(claim)) || [...timeClaims,...causalClaims].some(claim => !evidence.includes(claim)) ? '' : result
   }
   const shots = (Array.isArray(answer?.shots) ? answer.shots : []).slice(0, 12).flatMap((shot) => {
     const source = known.get(shot?.assetId)
@@ -75,7 +69,9 @@ export function validateFilmPlan(answer, sources, {brief}={}) {
       beat: ['opening','action','detail','rest','closing'].includes(shot.beat) ? shot.beat : 'detail',
       capturedAt:source.capturedAt||'',factIds:source.factIds||[],
       faceBoxes:(source.faceBoxes||[]).filter(b=>Array.isArray(b)&&b.length===4&&b.every(v=>Number.isFinite(v)&&v>=0&&v<=1)),
-      layout:['hero','pair','page','full'].includes(shot.layout)?shot.layout:'hero',
+      layout:['hero','pair','page','full','compare','ribbon'].includes(shot.layout)?shot.layout:'hero',
+      compareAssetId:clean(shot.compareAssetId,100),motif:motifOf(source),
+      transition:['dissolve','page','cut'].includes(shot.transition)?shot.transition:'dissolve',
       motion: ['still','push','pull','drift'].includes(shot.motion) ? shot.motion : 'push' }]
   })
   const minimum = Math.min(6, sources.length)
@@ -91,6 +87,23 @@ export function validateFilmPlan(answer, sources, {brief}={}) {
   const dates = new Set(shots.map((s) => s.date).filter(Boolean))
   const kind = dates.size <= 1 ? 'outing' : answer.kind === 'revisit' ? 'revisit' : 'season'
   const chosen = shots.map((shot) => known.get(shot.assetId))
+  const related=(a,b)=>Boolean(a.place&&a.place===b.place || motifOf(a)&&motifOf(a)===motifOf(b) || (a.people||[]).some(p=>(b.people||[]).some(q=>q.id===p.id)))
+  for(const [index,shot] of shots.entries()){
+    const candidates=shots.slice(0,index).filter(prior=>related(known.get(shot.assetId),known.get(prior.assetId)))
+    const ref=candidates.find(prior=>prior.assetId===shot.compareAssetId)||candidates.find(prior=>prior.date!==shot.date)||candidates[0]
+    shot.compareAssetId=ref?.assetId||''
+    if(shot.layout==='compare'&&!ref || shot.layout==='ribbon'&&index<2)shot.layout='hero'
+  }
+  // When the director supplies only the old vocabulary, let actual shared
+  // subjects earn one visual callback. No invented photo or generated crop.
+  if(!shots.some(s=>s.layout==='compare')){
+    const echo=shots.slice(1).reverse().find(s=>s.compareAssetId)
+    if(echo){echo.layout='compare';echo.motion='still'}
+  }
+  if(shots.length>=4&&!shots.some(s=>s.layout==='ribbon')){
+    const ribbon=shots.slice(2,-1).find(s=>s.layout!=='compare')
+    if(ribbon){ribbon.layout='ribbon';ribbon.transition='page'}
+  }
   const count = re => chosen.filter(s => re.test(s.observed)).length / chosen.length
   // Render direction derives from actual selected subject matter, not random skins.
   const together=brief?.format==='relationship'&&new Set(chosen.flatMap(s=>(s.people||[]).map(p=>p.id))).size>=2
@@ -98,7 +111,8 @@ export function validateFilmPlan(answer, sources, {brief}={}) {
     : count(/积雪|雪地|滑雪|雪场/) >= .6 ? 'snow-journal'
     : count(/冰淇淋|冰激凌|甜筒|雪糕/) >= .6 ? 'sweet-moments'
       : count(/手工|画画|绘画|砂画|马克笔|涂鸦/) >= .6 ? 'little-makers' : 'warm-album'
-  return { kind, treatment, title: text(answer.title, 22) || '把这些小日子留住', closing: text(answer.closing, 28) || '平常的小事，也值得记住', reason: text(answer.reason, 240) || '围绕选中照片里共同出现的活动，按可靠日期编排。', shots }
+  const cast=[...new Map(chosen.flatMap(s=>s.people||[]).filter(p=>p.name).map(p=>[p.id,p.name])).values()].slice(0,4)
+  return { kind, treatment, cast, title: text(answer.title, 22) || '把这些小日子留住', closing: text(answer.closing, 28) || '平常的小事，也值得记住', reason: text(answer.reason, 240) || '围绕选中照片里共同出现的活动，按可靠日期编排。', shots }
 }
 
 export async function planFilm(config, sources, {brief}={}) {

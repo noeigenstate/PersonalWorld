@@ -9,7 +9,7 @@ const PLATE = /车牌|牌照/
 // Provinces and their capitals: the places a plate's first two characters point to
 const PLACE_NAMES = ['北京', '天津', '上海', '重庆', '河北', '石家庄', '河南', '郑州', '云南', '昆明', '辽宁', '沈阳', '黑龙江', '哈尔滨', '湖南', '长沙', '安徽', '合肥', '山东', '济南', '新疆', '乌鲁木齐', '江苏', '南京', '浙江', '杭州', '江西', '南昌', '湖北', '武汉', '广西', '南宁', '甘肃', '兰州', '山西', '太原', '内蒙古', '呼和浩特', '陕西', '西安', '吉林', '长春', '福建', '福州', '贵州', '贵阳', '广东', '广州', '青海', '西宁', '西藏', '拉萨', '四川', '成都', '宁夏', '银川', '海南', '海口']
 
-export function cardMessages({ system, dataUrl, facts = {}, consented }) {
+export function cardMessages({ system, dataUrl, facts = {}, consented, knowledge }) {
   const metadata = [
     `文件名：${String(facts.fileName || '未知').slice(0, 120)}`,
     `时间：${String(facts.time || '未知')}（来源：${String(facts.timeSource || '未知')}）`,
@@ -19,6 +19,7 @@ export function cardMessages({ system, dataUrl, facts = {}, consented }) {
     `拍摄设备：${String(facts.device || '未知').slice(0, 60)}`,
     `元数据中的地名：${String(facts.metaPlace || '无').slice(0, 60)}`,
     `隐私声明：${consented ? '用户已同意' : '用户未同意'}`,
+    knowledge ? `本照片的人物库确认（优先于外观猜测，不能扩展给未匹配的人）：${JSON.stringify(knowledge)}` : '',
   ].join('\n')
   return [
     { role: 'system', content: system },

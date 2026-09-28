@@ -4,7 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const binary = () => process.env.FFMPEG_PATH || 'ffmpeg'
-export const FILM_RENDER_VERSION = 'creative-scenes-5'
+export const FILM_RENDER_VERSION = 'creative-scenes-6'
 export const filmTreatments = {
   'warm-album': {paper:'fbf4e8', ink:'655548', accent:'d5ae82', width:624, height:664, top:134, stride:.8, transpose:0, harmonic:.22, label:'日子的片段'},
   'snow-journal': {paper:'edf5f6', ink:'385766', accent:'a6c9d5', width:648, height:682, top:124, stride:1.08, transpose:5, harmonic:.09, label:'雪地手记'},

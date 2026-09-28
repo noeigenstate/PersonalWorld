@@ -87,7 +87,7 @@ const routes = {
     const place = known.city ? `\n根据坐标查到的位置：${String(known.city)} ${String(known.address || '')}` : ''
     const privacy = `\n隐私声明：${consented ? '用户已同意' : '用户未同意'}`
     const content = [
-      { type: 'text', text: `请判断这些影像属于什么事件。元数据如下：\n${context}${place}${privacy}\n\n如多张图片无法证明同一事件，应降低 confidence，并提问确认。` },
+      { type: 'text', text: `请判断这些影像属于什么事件。元数据如下：\n${context}${place}${privacy}\n\n如多张图片无法证明同一事件，应降低 confidence，并提问确认。\n已保存的人物资料，按每张照片 ID 适用；不得把未匹配人物认作亲属：${JSON.stringify(graph.enrich(user,images.filter(i=>typeof i.id==='string').map(i=>({id:i.id}))).map(({id,people,relationships,story})=>({id,people,relationships,story})))}` },
       ...images.map((item) => ({ type: 'image_url', image_url: { url: item.dataUrl } })),
     ]
     const answer = parseJsonAnswer(await chat(stepfun, [{ role: 'system', content: loadSkill('event-analysis') }, { role: 'user', content }], { json: true }))
@@ -111,8 +111,12 @@ const routes = {
     const image = body.image && typeof body.image === 'object' ? body.image : {}
     if (typeof image.dataUrl !== 'string' || !/^data:image\/(jpeg|png|webp|gif);base64,/i.test(image.dataUrl)) return [400, { error: '图片格式不受支持' }]
     const facts = body.facts && typeof body.facts === 'object' ? body.facts : {}
-    const answer = parseJsonAnswer(await chat(stepfun, cardMessages({ system: loadSkill('photo-card'), dataUrl: image.dataUrl, facts, consented }), { json: true }))
-    return [200, readCard(answer, { consented })]
+    const known = typeof image.id==='string'?graph.enrich(user,[{id:image.id}])[0]:undefined
+    const knowledge = known?{people:known.people,relationships:known.relationships,confirmed:known.confirmed,story:known.story}:undefined
+    const answer = parseJsonAnswer(await chat(stepfun, cardMessages({ system: loadSkill('photo-card'), dataUrl: image.dataUrl, facts, consented, knowledge }), { json: true }))
+    const card = readCard(answer, { consented })
+    if (!card.scene.trim()) return [422, { error: '照片分析缺少画面观察，请重试；原信息卡仍保留' }]
+    return [200, card]
   },
 
   async 'POST /api/photo-context'(body, user) {

@@ -9,7 +9,7 @@ import { chromium } from 'playwright'
 // npm run dev → http://localhost:5183/; npm run dev:lan → BASE_URL=https://localhost:5183/
 const BASE = process.env.BASE_URL || 'http://localhost:5183/'
 const shots = process.env.SMOKE_SHOTS || tmpdir()
-const browser = await chromium.launch({ channel: 'chrome' })
+const browser = await chromium.launch({ channel: 'chrome', headless: true })
 const page = await browser.newPage({ ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } })
 const errors = []
 page.on('pageerror', (error) => errors.push(error.message))
@@ -28,9 +28,10 @@ const card = {
   questions: ['这是你在杭州的新家吗？'],
 }
 let cardRequest = null
+let cardCalls = 0
 await page.route('**/api/auth/me', (route) => route.fulfill({ json: { user: { id: 'card-test', username: '测试', createdAt: '2026-09-24T00:00:00Z', privacyAccepted: true } } }))
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟', geocode: false } }))
-await page.route('**/api/photo-card', (route) => { cardRequest = route.request().postDataJSON(); return route.fulfill({ json: card }) })
+await page.route('**/api/photo-card', (route) => { cardCalls++; cardRequest = route.request().postDataJSON(); return route.fulfill({ json: card }) })
 
 try {
   await page.goto(BASE, { waitUntil: 'networkidle' })
@@ -76,6 +77,27 @@ try {
   await page.locator('.photo-open').first().click()
   await page.locator('.photo-card h2').filter({ hasText: '新居装修验收' }).waitFor()
   assert.equal(await page.getByRole('button', { name: '重新生成' }).count(), 1)
+
+  // A legacy card can exist without any visual observation. It must be repaired
+  // once, then retained on subsequent loads instead of running indefinitely.
+  const beforeRepair = cardCalls
+  await page.evaluate(async () => {
+    const { openDB } = await import('/node_modules/.vite/deps/idb.js')
+    const db = await openDB('personal-world-card-test', 1)
+    const saved = await db.get('state', 'current')
+    saved.assets[0].card.scene = ''
+    await db.put('state', saved, 'current'); db.close()
+  })
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForFunction(async () => {
+    const { openDB } = await import('/node_modules/.vite/deps/idb.js')
+    const db = await openDB('personal-world-card-test', 1)
+    const saved = await db.get('state', 'current'); db.close()
+    return Boolean(saved.assets[0].card.scene)
+  })
+  assert.equal(cardCalls, beforeRepair + 1, '空观察旧卡片应自动补分析一次')
+  await page.reload({ waitUntil: 'networkidle' })
+  assert.equal(cardCalls, beforeRepair + 1, '有效卡片不应重复调用模型')
 
   await page.setViewportSize({ width: 390, height: 844 })
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)

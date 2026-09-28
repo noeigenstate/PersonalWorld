@@ -43,13 +43,13 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
   }, [sources,graph?.graph.revision])
   const round = `auto-v3:${batch}:`
   const attempted=(key:string)=>storyAttempted((settings?.attempted||[]).filter(v=>v.startsWith('auto-v3:')||v.startsWith('manual-v3:')),key)
-  const made=(story:typeof stories[number])=>storyAlreadyMade(story,jobs.filter(j=>j.version==='memory-film-6'&&(!story.chapterId||j.chapterId===story.chapterId&&j.chapterRevision===story.chapterRevision)))
+  const made=(story:typeof stories[number])=>storyAlreadyMade(story,jobs.filter(j=>['memory-film-6','memory-film-7'].includes(j.version||'')&&(!story.chapterId||j.chapterId===story.chapterId&&j.chapterRevision===story.chapterRevision)))
   const roundUsed = settings?.attempted.filter(key => key.startsWith(round)).length || 0
   const assetKey = assets.map((a) => `${a.id}:${a.hash}`).sort().join('|')
   const current = jobs.find((j) => filmActive(j))
   const pendingUpdate=nextFilmUpdate(jobs,settings?.attempted||[])
   const changedChapter=(graph?.graph.chapters||[]).find(chapter=>{
-    const latest=jobs.find(j=>j.chapterId===chapter.id&&j.status==='complete'&&j.version==='memory-film-6')
+    const latest=jobs.find(j=>j.chapterId===chapter.id&&j.status==='complete'&&['memory-film-6','memory-film-7'].includes(j.version||''))
     return latest&&latest.chapterRevision!==chapter.revision&&!settings?.attempted.includes(`identity:${chapter.id}:${chapter.revision}`)
   })
   const creativeRound=graph?.understanding?.revision?`creative-v1:${graph.understanding.revision}:`:''
@@ -108,7 +108,7 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
     if (roundUsed >= 3) return
     const next = stories.find(story => story.automatic && !attempted(story.key) && !made(story))
     if (stories.length && !next) return
-    if (!stories.length && (settings.attempted.includes(round+'album') || jobs.some(j => j.batch === batch&&j.version==='memory-film-6'))) return
+    if (!stories.length && (settings.attempted.includes(round+'album') || jobs.some(j => j.batch === batch&&['memory-film-6','memory-film-7'].includes(j.version||'')))) return
     const timer = window.setTimeout(() => { void start(false, undefined, next ? round + next.key : round+'album', next?.sources || sources,next?.chapterId) }, 10_000)
     return () => window.clearTimeout(timer)
   }, [loaded, capable, settings, batch, jobs, current, starting, analyzing, sources, stories,pendingUpdate?.key,changedChapter?.revision,creativeReady])
@@ -176,7 +176,7 @@ export function MemoryFilms({ assets, events, ready, analyzing, graph, requested
     const timer = reconnect ? window.setInterval(() => { void refresh() }, 8000) : undefined
     const changed=window.setTimeout(()=>{if(open||graph?.revision)void refresh()},1200)
     return () => { cancelled = true;window.clearTimeout(changed);window.removeEventListener('focus', refresh); if (timer) window.clearInterval(timer) }
-  }, [ready, reconnect, open,graph?.revision])
+  }, [ready, reconnect, open,graph?.revision,graph?.graph.revision])
 
   useEffect(() => {
     if (current?.status !== 'awaiting-images' || uploadLock.current || !current.plan) return

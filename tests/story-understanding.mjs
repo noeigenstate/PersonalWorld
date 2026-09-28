@@ -22,17 +22,17 @@ test('durable incremental event understanding leads to grounded creative chapter
  let service=createStoryUnderstanding(root,{available:true,delayMs:0,planner})
  try{
    let raw=snapshot();service.observe(raw);let state=await ready(service,raw)
-   assert.equal(calls.filter(c=>c.kind==='event').length,2)
+   assert.equal(calls.filter(c=>c.kind==='event').length,3,'single-photo memories also receive current understanding')
    const creative=state.graph.chapters.find(c=>c.kind==='creative')
    assert.ok(creative.assetIds.includes('single'),'single-photo events remain available for cross-place themes')
    assert.ok(creative.brief.direction)
    assert.ok(state.graph.chapters.some(c=>c.interpretation))
-   service.observe(raw);await sleep();assert.equal(calls.length,3,'no new source evidence, no repeated model call')
+   service.observe(raw);await sleep();assert.equal(calls.length,4,'no new source evidence, no repeated model call')
    raw=snapshot('新昵称');service.observe(raw);state=await ready(service,raw)
-   assert.equal(calls.filter(c=>c.kind==='event').length,3,'only the affected event is re-understood')
+   assert.equal(calls.filter(c=>c.kind==='event').length,4,'only the affected event is re-understood')
    assert.notEqual(state.graph.chapters.find(c=>c.kind==='creative').revision,creative.revision)
    service.close();service=createStoryUnderstanding(root,{available:true,delayMs:0,planner});service.observe(raw)
-   await ready(service,raw);await sleep();assert.equal(calls.length,5,'restart reuses completed revisions')
+   await ready(service,raw);await sleep();assert.equal(calls.length,6,'restart reuses completed revisions')
  }finally{service.close();cleanup(root)}
 })
 

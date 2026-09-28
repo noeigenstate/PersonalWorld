@@ -74,6 +74,7 @@ export async function analyzeEvent(event: MemoryEvent, assets: MemoryAsset[]): P
     .filter((asset): asset is MemoryAsset => Boolean(asset?.preview))
     .slice(0, 6)
     .map((asset) => ({
+      id: asset.id,
       name: asset.name,
       capturedAt: asset.capturedAt,
       latitude: asset.latitude,
@@ -87,7 +88,7 @@ export async function analyzeEvent(event: MemoryEvent, assets: MemoryAsset[]): P
 export async function generatePhotoCard(asset: MemoryAsset, facts: PhotoFacts): Promise<Omit<PhotoCard, 'createdAt'>> {
   if (!asset.preview) throw new Error('这张照片没有可用的预览图')
   return jsonResponse(await post('/api/photo-card', {
-    image: { dataUrl: await detailImage(asset) },
+    image: { id: asset.id, dataUrl: await detailImage(asset) },
     // Local wall-clock time as the camera recorded it; an ISO/UTC string made the model convert time zones
     facts: { fileName: facts.fileName, time: formatDate(asset.capturedAt, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }), timeSource: facts.timeSource, latitude: facts.latitude, longitude: facts.longitude, city: facts.city, address: facts.address, size: facts.size, device: facts.device, metaPlace: facts.metaPlace },
   }))

@@ -129,6 +129,19 @@ export interface MemoryEvent {
   questions: string[]
   confidence?: number
   status: EventStatus
+  // A live projection from the story graph, never persisted as a user fact.
+  understanding?: EventUnderstanding
+}
+
+export interface EventUnderstanding {
+  title: string
+  summary: string
+  insights: { text: string; assetIds: string[] }[]
+  photos?: { assetId: string; title: string; caption: string }[]
+  motifs: string[]
+  openQuestions: string[]
+  revision: string
+  updatedAt?: number
 }
 
 export type PlaceRole = 'home' | 'study' | 'work' | 'residence' | 'travel'

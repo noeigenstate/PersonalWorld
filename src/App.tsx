@@ -23,6 +23,7 @@ import { TimelineBar } from './components/TimelineBar'
 import { MemoryFilms } from './components/MemoryFilms'
 import { useSceneCoverage } from './lib/useSceneCoverage'
 import { useMemoryGraph } from './lib/useMemoryGraph'
+import { understoodEvents } from './lib/eventUnderstanding'
 import { MemoryLibrary } from './components/MemoryLibrary'
 import { PhotoCull } from './components/PhotoCull'
 import { SceneCoverage } from './components/SceneCoverage'
@@ -152,7 +153,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     return () => { cancelled = true }
   }, [memory.assets, ready])
 
-  const events = useMemo(() => [...memory.events].sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()), [memory.events])
+  const library = useMemoryGraph(memory.assets, memory.events, ready, importing || autoBusyIds.length > 0 || Boolean(cardBusyId))
+  const events = useMemo(() => [...understoodEvents(memory.events, memory.assets, library.state)].sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()), [memory.events, memory.assets, library.state?.graph.revision])
   const places = useMemo(() => derivePlaces(events, memory.placeRoles), [events, memory.placeRoles])
   const bases = useMemo(() => spaceLine(places), [places])
   const story = useMemo(() => (selectedCity ? storyLine(selectedCity, events, places) : []), [selectedCity, events, places])
@@ -162,8 +164,17 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const firsts = useMemo(() => firstsOf(events), [events])
   const needsWork = events.filter((e) => !e.city || e.status === 'draft')
   const analyzablePhotos = memory.assets.filter((a) => a.preview && a.kind !== 'video')
-  const pendingPhotoCards = analyzablePhotos.filter((a) => !a.card).length
+  const pendingPhotoCards = analyzablePhotos.filter((a) => !a.card?.scene?.trim()).length
   const activeEvent = events.find((e) => e.id === activeEventId)
+  const eventCovers = useMemo(() => {
+    const assets = new Map(memory.assets.map((asset) => [asset.id, asset]))
+    return Object.fromEntries(events.flatMap((event) => {
+      const images = event.assetIds.map((id) => assets.get(id)).filter((asset) => asset?.preview && asset.kind !== 'video')
+      const names = images.map(asset => asset?.location?.aoi || asset?.location?.poi?.name).filter(Boolean)
+      const place = names.length && new Set(names).size === 1 ? names[0] : undefined
+      return images.length ? [[event.id, { preview: images[0]!.preview, count: images.length, place }]] : []
+    }))
+  }, [events, memory.assets])
   // Every photo with a place, for the map's photo layer
   const mapPhotos = useMemo<MapPhoto[]>(() => memory.assets.flatMap((a) => {
     if (!a.preview || a.kind === 'video') return []
@@ -180,7 +191,6 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     return mapPhotos.filter((photo) => (captured.get(photo.id) ?? Infinity) <= timelineAt + 86400000)
   }, [mapPhotos, memory.assets, timelineAt])
   const sceneCoverage = useSceneCoverage(memory.assets, mapPhotos, ready && !locating)
-  const library = useMemoryGraph(memory.assets, memory.events, ready, importing || autoBusyIds.length > 0 || Boolean(cardBusyId))
 
   function openPhoto(assetId: string) {
     const event = memory.events.find((e) => e.assetIds.includes(assetId))
@@ -190,12 +200,13 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   }
 
   // Analyze actual imported photos in the browser's account database, two at a time. Existing
-  // cards are kept. Photos without their own location can additionally use the card's place clue.
+  // Complete cards are kept; legacy cards with no observation need repair. Photos without
+  // their own location can additionally use the card's place clue.
   useEffect(() => {
     const key = aiConfig.amapJsKey
     if (!ready || !aiConfig.available || memory.autoPhotoCards === false || autoRun.current) return
     const queue = memory.assets.filter((a) => a.preview && a.kind !== 'video' && (
-      !a.card || (key && !a.location && !a.locateTried && a.latitude === undefined && !a.metaPlace)
+      !a.card?.scene?.trim() || (key && !a.location && !a.locateTried && a.latitude === undefined && !a.metaPlace)
     )).sort((a, b) => Number(!b.location && b.latitude === undefined) - Number(!a.location && a.latitude === undefined))
     if (!queue.length) return
     autoRun.current = true
@@ -208,13 +219,13 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           const event = memory.events.find((e) => e.assetIds.includes(asset!.id))
           setAutoBusyIds((ids) => [...ids, asset.id])
           try {
-            const card = asset.card || { ...(await generatePhotoCard(asset, factsOf(asset, event))), createdAt: new Date().toISOString() }
+            const card = asset.card?.scene?.trim() ? asset.card : { ...(await generatePhotoCard(asset, factsOf(asset, event))), createdAt: new Date().toISOString() }
             const needsPlace = !asset.location && asset.latitude === undefined && !asset.metaPlace
             const found = needsPlace && key && card.placeQuery ? await searchPlace(key, card.placeQuery).catch(() => undefined) : undefined
             const id = asset.id
             setMemory((current) => ({
               ...current,
-              assets: current.assets.map((a) => (a.id === id ? { ...a, card: a.card || card, locateTried: needsPlace && key ? true : a.locateTried, location: better(a.location, found) } : a)),
+              assets: current.assets.map((a) => (a.id === id ? { ...a, card: a.card?.scene?.trim() ? a.card : card, locateTried: needsPlace && key ? true : a.locateTried, location: better(a.location, found) } : a)),
               // The event takes the place too (a dashed, unconfirmed city), with coordinates so the map can draw it
               events: found?.city || found?.province ? current.events.map((e) => {
                 if (!e.assetIds.includes(id) || e.city) return e
@@ -255,7 +266,8 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const panelOpen = Boolean(selectedCity)
 
   const updateEvent = useCallback((next: MemoryEvent) => {
-    setMemory((current) => ({ ...current, events: current.events.map((e) => (e.id === next.id ? next : e)) }))
+    const { understanding: _interpretation, ...source } = next
+    setMemory((current) => ({ ...current, events: current.events.map((e) => (e.id === next.id ? source : e)) }))
   }, [])
 
   const selectCity = useCallback((city: string | null, announce = true) => {
@@ -559,6 +571,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           onFocusPhoto={(photo) => { setGlobeOverview(false); setMapFocus({ photo, at: Date.now() }) }}
           onGlobeChange={(on) => { if (on && selectedCity) selectCity(null, false); else setGlobeOverview(on) }}
           photos={visibleMapPhotos}
+          eventCovers={eventCovers}
           focus={mapFocus}
           landmarkPreviewAt={landmarkPreviewAt}
         />}
@@ -614,6 +627,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                   : pendingPhotoCards > 0 && memory.autoPhotoCards === false ? <button onClick={() => { stopLocating.current = false; setMemory((current) => ({ ...current, autoPhotoCards: true })) }}>继续分析</button> : null}
               </div>
             )}
+            {library.state?.understanding?.busy && <div className="locating-chip" role="status" aria-label="回忆更新状态">
+              <span>{library.state.understanding.phase === 'stories' ? '正在串联这些回忆' : `正在更新回忆 ${library.state.understanding.completed}/${library.state.understanding.total}`}</span>
+            </div>}
             {needsWork.length > 0 && <button className="tray-chip" onClick={() => setTrayOpen((open) => !open)}><CircleHelp size={14} />{needsWork.length} 件事待整理</button>}
           </div>
         )}

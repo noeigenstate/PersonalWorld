@@ -5,7 +5,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js'
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js'
 import type { MemoryEvent } from '../types'
 import { gcj02ToWgs84, wgs84ToGcj02 } from '../lib/geo'
-import { LAND, adder, box, building, createLabels, dim, eventLabel, eventMarker, labelDetailForZoom, markerKind, placeLabel, seeded } from './objects'
+import { LAND, adder, attachEventCover, box, building, createLabels, dim, eventLabel, eventMarker, fillEventStack, invalidateLabelSize, labelDetailForZoom, markerKind, placeLabel, seeded } from './objects'
 import { createOrientalPearlScene, isOrientalPearl, ORIENTAL_PEARL_GCJ } from './memoryScene'
 import { createStyledDistrict, shanghaiScene, type SceneData } from './styledDistrict'
 import { fetchRegionScene, hasStreetLocation, metresApart, photoRegions, photoSceneKey, regionForPhoto } from './regionScene'
@@ -122,6 +122,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   const memoryWorld = new THREE.Group()
   scene.add(world, memoryWorld)
   const labels = createLabels(labelLayer)
+  let eventCards: { event: MemoryEvent; el: HTMLElement; anchor: THREE.Vector3; original: THREE.Vector3; approximateCenter?: THREE.Vector3; marker: THREE.Object3D; members: MemoryEvent[] }[] = []
+  let eventPhotoIds = new Set<string>()
   const raycaster = new THREE.Raycaster()
 
   let origin: [number, number] | null = null
@@ -270,6 +272,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     })
     world.clear()
     labels.clear()
+    eventCards = []
+    eventPhotoIds = new Set(data.selectedCity ? data.story.flatMap((event) => event.assetIds) : [])
     scaled = []
     lines = []
     storyLines = []
@@ -352,9 +356,15 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
         }
         disc.traverse((child) => { child.userData.eventId = event.id })
         base.userData.eventId = event.id
-        stand(disc, pos)
+        const marker = stand(disc, pos)
         const spec = eventLabel(event, now, unsure)
-        labels.add(spec.className, anchorOver(pos, 0.5), spec.lines, () => callbacks.onOpenEvent(event.id), spec.priority)
+        const anchor = anchorOver(pos, 0.5)
+        const el = labels.add(spec.className, anchor, spec.lines, () => callbacks.onOpenEvent(event.id), spec.priority)
+        attachEventCover(el, event, data.eventCovers?.[event.id])
+        const approximateCenter = event.lat === undefined || event.lng === undefined ? (positions.get(event.city || selected) || cityPos).clone() : undefined
+        const card = { event, el, anchor, original: anchorOver(pos, 0.5), approximateCenter, marker, members: [event] }
+        if (approximateCenter) el.title += ' · 具体位置待确认，仅在城市范围示意'
+        eventCards.push(card)
       }
     }
   }
@@ -402,6 +412,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     camera.up.set(up[0], up[1], up[2])
     camera.lookAt(lookAt[0], lookAt[1], lookAt[2])
     camera.updateProjectionMatrix()
+    camera.updateMatrixWorld()
     unit = unitMetres(map.getZoom())
     container.classList.toggle('map-overview', map.getZoom() < 10)
     container.classList.toggle('map-neighbourhood', map.getZoom() >= 15 && mapStyle === 'amap://styles/macaron')
@@ -416,22 +427,64 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     atmosphere.hidden = sceneSource.hidden
     for (const { object } of scaled) object.scale.setScalar(unit)
     for (const material of lines) material.resolution.set(size.w, size.h)
-    renderer.render(scene, camera)
-    if (!waterFrame && !reduceMotion && !document.hidden && memoryWorld.visible && hasAnimatedWater) waterFrame = requestAnimationFrame(animateWater)
     const projectLabel = (anchor: THREE.Vector3) => new THREE.Vector3(anchor.x, anchor.y, anchor.z * unit + ground(groundOf.get(anchor)))
-    // In a city's story the event labels carry the chronology. Lay them out first and
-    // move photo buttons a short distance when they would cover a label.
-    // Bubbles stay clear of the floating top bar and show as much as the zoom allows
+    // City memories have one cover/date/title card per event. An explicit photo focus
+    // moves that same card to the photo's exact position, without a second thumbnail.
+    const focused = photos.find(({ photo }) => photo.id === focusedId)
+    for (const card of eventCards) {
+      const isFocused = Boolean(focused && card.event.assetIds.includes(focused.photo.id))
+      card.anchor.copy(isFocused ? focused!.at : card.approximateCenter || card.original)
+      card.anchor.z = 0.5
+      const at = isFocused ? focused!.photo.gcj : groundOf.get(card.original)
+      if (at) groundOf.set(card.anchor, at)
+      card.marker.position.copy(card.anchor).setZ(ground(at))
+      card.el.classList.toggle('focused', isFocused)
+      if (isFocused) card.el.dataset.focusedPhotoId = focused!.photo.id
+      else delete card.el.dataset.focusedPhotoId
+      const img = card.el.querySelector<HTMLImageElement>(`.map-event-open[data-event-id="${card.event.id}"] .map-event-cover img`)
+      const cover = isFocused ? focused!.photo.preview : current?.eventCovers?.[card.event.id]?.preview
+      if (img && cover && img.getAttribute('src') !== cover) img.src = cover
+    }
+    // Nearby visits share a visual stack, not an event record. Keep every date
+    // reachable through a separate button; the main cover still opens one event.
+    const stacks: { cards: typeof eventCards; x: number; y: number }[] = []
+    const sorted = [...eventCards].sort((a, b) =>
+      Number(b.el.classList.contains('focused')) - Number(a.el.classList.contains('focused')) ||
+      Number(b.event.id === current?.highlightedEventId) - Number(a.event.id === current?.highlightedEventId) ||
+      b.event.occurredAt.localeCompare(a.event.occurredAt))
+    for (const card of sorted) {
+      const point = projectLabel(card.anchor).project(camera)
+      const x = (point.x + 1) / 2 * size.w, y = (1 - point.y) / 2 * size.h
+      const place=current?.eventCovers?.[card.event.id]?.place
+      const near = stacks.find(stack => {
+        const other=stack.cards[0].event
+        const samePlace=Boolean(place&&!/[省市县区路]$/.test(place)&&place===current?.eventCovers?.[other.id]?.place&&
+          card.event.lat!==undefined&&card.event.lng!==undefined&&other.lat!==undefined&&other.lng!==undefined&&
+          metresApart([card.event.lng,card.event.lat],[other.lng,other.lat])<1500)
+        return samePlace||Math.abs(stack.x - x) < 120 && Math.abs(stack.y - y) < 80
+      })
+      if (near) near.cards.push(card)
+      else stacks.push({cards:[card],x,y})
+    }
+    for (const stack of stacks) for (const [index, card] of stack.cards.entries()) {
+      card.el.hidden = index > 0
+      card.members = index ? [card.event] : stack.cards.map(c => c.event)
+      const signature = card.members.map(e => e.id).join('|')
+      if (card.el.dataset.groupEventIds !== signature) {
+        fillEventStack(card.el, card.members, current?.eventCovers || {}, callbacks.onOpenEvent)
+        card.el.dataset.groupEventIds = signature
+        invalidateLabelSize(card.el)
+      }
+    }
+    // Bubbles stay clear of controls and show as much as the zoom allows.
     const bar = new DOMRect(0, 0, size.w, insets.top)
     // The heading card floats over the map too (same stage, so container coordinates)
     const headingEl = container.closest('.stage')?.querySelector<HTMLElement>('.map-heading')
     const heading = headingEl ? (() => { const r = headingEl.getBoundingClientRect(), c = container.getBoundingClientRect(); return new DOMRect(r.left - c.left, r.top - c.top, r.width, r.height) })() : bar
     const detail = labelDetailForZoom(map.getZoom())
-    if (current?.selectedCity) labels.place(camera, size.w, size.h, projectLabel, [bar, heading], detail)
-    const host = container.getBoundingClientRect()
-    const labelRects = current?.selectedCity ? [...labelLayer.querySelectorAll<HTMLElement>('.map-label')]
-      .filter((el) => el.style.visibility !== 'hidden')
-      .map((el) => { const r = el.getBoundingClientRect(); return new DOMRect(r.left - host.left, r.top - host.top, r.width, r.height) }) : []
+    const controls = [bar, heading,
+      new DOMRect(size.w - insets.right, 0, insets.right, size.h),
+      new DOMRect(0, size.h - insets.bottom, size.w, insets.bottom)]
     const landmarkRects: DOMRect[] = []
     if (memoryWorld.visible) for (const bounds of landmarkBounds) {
       const points = []
@@ -440,7 +493,13 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
       const xs = points.map(p => (p.x + 1) / 2 * size.w), ys = points.map(p => (1 - p.y) / 2 * size.h)
       landmarkRects.push(new DOMRect(Math.min(...xs) - 6, Math.min(...ys) - 6, Math.max(...xs) - Math.min(...xs) + 12, Math.max(...ys) - Math.min(...ys) + 12))
     }
-    const taken = placePhotos([...labelRects, ...landmarkRects])
+    labels.place(camera, size.w, size.h, projectLabel, [...controls, ...landmarkRects], detail)
+    for (const card of eventCards) card.marker.visible = !card.el.hidden && card.el.style.visibility !== 'hidden'
+    const host = container.getBoundingClientRect()
+    const labelRects = [...labelLayer.querySelectorAll<HTMLElement>('.map-label')]
+      .filter((el) => el.style.visibility !== 'hidden')
+      .map((el) => { const r = el.getBoundingClientRect(); return new DOMRect(r.left - host.left, r.top - host.top, r.width, r.height) })
+    const taken = placePhotos([...controls, ...labelRects, ...landmarkRects])
     if (memoryWorld.visible && memoryAnchor) {
       const marker = memoryAnchor.clone().project(camera)
       const x = ((marker.x + 1) / 2) * size.w
@@ -460,8 +519,10 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
         sceneCaption.style.transform = `translate(${choices[0].left}px, ${choices[0].top}px)`
       }
     } else sceneCaption.hidden = true
-    // Keep both photo buttons and story labels reachable at every zoom.
-    if (!current?.selectedCity) labels.place(camera, size.w, size.h, projectLabel, [...taken, bar, heading], detail)
+    // City labels take precedence over loose overview thumbnails, so photos cannot
+    // cover the button needed to enter a city in the first place.
+    renderer.render(scene, camera)
+    if (!waterFrame && !reduceMotion && !document.hidden && memoryWorld.visible && hasAnimatedWater) waterFrame = requestAnimationFrame(animateWater)
   }
 
   const layer = new AMap.GLCustomLayer({ zIndex: 120, init() {}, render: draw })
@@ -485,6 +546,7 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
   let menuPhotoIds = ''
   function closePhotoMenu() { photoMenu.hidden = true; photoMenu.replaceChildren(); menuPhotoIds = '' }
   function openPhotoMenu(members: MapPhoto[], x: number, y: number) {
+    photoMenu.setAttribute('aria-label', '选择照片')
     const ids = members.map((photo) => photo.id).sort().join('|')
     if (!photoMenu.hidden && menuPhotoIds === ids) { closePhotoMenu(); return }
     menuPhotoIds = ids
@@ -847,6 +909,8 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     const v = new THREE.Vector3()
     const projected: { photo: MapPhoto; x: number; y: number }[] = []
     for (const { photo, at } of photos) {
+      if (eventPhotoIds.has(photo.id)) continue
+      if (current?.selectedCity && photo.id !== focusedId) continue
       v.copy(at).project(camera)
       if (v.z > 1) continue
       const x = ((v.x + 1) / 2) * size.w
@@ -925,7 +989,11 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     closePhotoMenu()
     const pointer = new THREE.Vector2((event.pixel.x / size.w) * 2 - 1, -(event.pixel.y / size.h) * 2 + 1)
     raycaster.setFromCamera(pointer, camera)
-    const hit = raycaster.intersectObjects(world.children, true).find((h) => h.object.userData.eventId || h.object.userData.city)
+    const hit = raycaster.intersectObjects(world.children, true).find((h) => {
+      if (!h.object.userData.eventId && !h.object.userData.city) return false
+      for (let object: THREE.Object3D | null = h.object; object; object = object.parent) if (!object.visible) return false
+      return true
+    })
     if (hit?.object.userData.eventId) callbacks.onOpenEvent(hit.object.userData.eventId)
     else if (hit?.object.userData.city) callbacks.onSelectCity(hit.object.userData.city)
   })

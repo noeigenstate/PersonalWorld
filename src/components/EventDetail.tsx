@@ -52,7 +52,7 @@ export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose,
   const [videoUrl, setVideoUrl] = useState('')
   const activeAsset = assets.find((asset) => asset.id === activeAssetId)
 
-  useEffect(() => { setDraft(event) }, [event])
+  useEffect(() => { if (!editing) setDraft(event) }, [event, editing])
 
   useEffect(() => {
     if (activeAsset?.kind !== 'video') { setVideoUrl(''); return }
@@ -115,6 +115,12 @@ export function EventDetail({ event, assets, firsts, aiAvailable, busy, onClose,
                 <>
                   <div className="detail-title-row"><h2>{event.title}</h2><button className="icon-button bordered" onClick={() => setEditing(true)} aria-label="编辑事件"><Pencil size={17} /></button></div>
                   <p className="detail-summary">{event.summary}</p>
+                  {event.understanding && <section className="event-understanding">
+                    <h3>根据当前资料整理</h3>
+                    {event.status === 'confirmed' && <p>{event.understanding.summary}</p>}
+                    {event.understanding.insights.map((insight, index) => <p key={index}>{insight.text}</p>)}
+                    <small>结合照片线索与已确认人物关系更新。你确认的事件内容会保留。</small>
+                  </section>}
                   {firsts.length > 0 && <div className="first-tags">{firsts.map((first) => <span key={first}>{first}</span>)}</div>}
                   <div className="detail-fields">
                     <div><span>地点</span><strong>{where || '尚未确认'}</strong>{event.city && event.citySource && <small className={event.citySource === 'ai' ? 'unsure' : ''}>{sourceNote[event.citySource]}</small>}</div>

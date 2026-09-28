@@ -9,10 +9,15 @@ export function createStoryUnderstanding(root,{config,planner=understandStory,de
   mkdirSync(root,{recursive:true})
   const file=join(root,'understanding.json')
   let state={version:UNDERSTANDING_VERSION,paused:false,events:{},weave:null,changes:[]}
-  try{if(existsSync(file)){const saved=JSON.parse(readFileSync(file,'utf8'));if(saved.version===UNDERSTANDING_VERSION)state={...state,...saved}}}catch{ /* Start from validated source facts if a snapshot is incomplete. */ }
+  try{if(existsSync(file)){const saved=JSON.parse(readFileSync(file,'utf8'));state=saved.version===UNDERSTANDING_VERSION?{...state,...saved}:{...state,paused:saved.paused===true}}}catch{ /* Start from validated source facts if a snapshot is incomplete. */ }
   for(const job of [...Object.values(state.events),state.weave].filter(Boolean))if(job.status==='running')job.status='queued'
+  // One recovery of this known validator issue after upgrade; never turn a
+  // rejected/provider-failed input into a perpetual retry loop.
+  for(const job of Object.values(state.events))if(job.status==='failed'&&job.error?.startsWith('事件理解未通过')&&job.repairVersion!=='scoped-claims-2'){
+    job.status='queued';job.error='';job.repairVersion='scoped-claims-2'
+  }
   const plannerRevision=storyHash([UNDERSTANDING_VERSION,config?.model||'test-planner',loadSkill('story-understanding')])
-  const inputsFor=(snapshot,min=2)=>eventInputs(snapshot,min).map(input=>({...input,revision:storyHash([input.revision,plannerRevision])}))
+  const inputsFor=(snapshot,min=1)=>eventInputs(snapshot,min).map(input=>({...input,revision:storyHash([input.revision,plannerRevision])}))
   let timer,busy=false,closed=false,notBefore=0,raw=null
   const persist=()=>{const tmp=file+'.tmp';writeFileSync(tmp,JSON.stringify(state),'utf8');renameSync(tmp,file)}
   const schedule=(delay=delayMs)=>{clearTimeout(timer);if(closed||state.paused||!available)return;timer=setTimeout(()=>void pump(),delay);timer.unref()}
@@ -104,7 +109,12 @@ export function createStoryUnderstanding(root,{config,planner=understandStory,de
     const understanding={available,paused:state.paused,phase,busy:available&&!state.paused&&(pending||['running','queued'].includes(state.weave?.status)),completed:complete.length,total:values.length,
       creativeCount:proposals.length,revision:currentWeave&&!validationError?state.weave.revision:'',updatedAt:state.weave?.updatedAt,errors,
       events:values.map(j=>({id:j.input.eventId,status:j.status,stale:j.revision!==j.wanted,title:j.result?.title||'',updatedAt:j.updatedAt})),changes:state.changes.slice(-6)}
-    return {...snapshot,understanding,graph:{...snapshot.graph,chapters,revision:storyHash([snapshot.graph.revision,chapters.map(c=>c.revision)])}}
+    const events=snapshot.graph.events.map(event=>{
+      const job=state.events[event.id]
+      const fresh=job?.status==='complete'&&job.revision===job.wanted
+      return {...event,understandingState:job?.status||'idle',interpretation:fresh?{...job.result,revision:job.revision,updatedAt:job.updatedAt}:undefined}
+    })
+    return {...snapshot,understanding,graph:{...snapshot.graph,events,chapters,revision:storyHash([snapshot.graph.revision,chapters.map(c=>c.revision),events.map(e=>e.interpretation?.revision)])}}
   }
   return {observe,decorate,
     control({paused,retry}={}){

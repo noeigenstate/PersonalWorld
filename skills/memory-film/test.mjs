@@ -83,3 +83,14 @@ test('睡衣、闭眼和牙刷不能证明刚醒或准备刷牙',()=>{
  const plan=validateFilmPlan({title:'今天早上，陪你慢慢醒',shots:[{assetId:'a',caption:'刚醒，醒过来笑一笑'},{assetId:'b',caption:'准备刷牙啦'}]},pair)
  assert.equal(plan.title,'把这些小日子留住');assert.ok(plan.shots.every(s=>s.caption===''))
 })
+
+test('回看引用真实的较早镜头，日期独立且装饰来自观察，不能迁移人名',()=>{
+ const input=readFilmSources(Array.from({length:4},(_,i)=>({id:'p'+i,date:`2026-04-${10+i}`,observed:i===3?'室内翻绘本':'在沙地玩沙',place:i===3?'书店':'公园'}))).map((s,i)=>({...s,people:[{id:i===3?'reader':'child',name:i===3?'读者':'团团'}]}))
+ const answer=fallbackFilm(input);answer.shots[2].layout='compare';answer.shots[2].compareAssetId='invented';answer.shots[3].caption='团团翻书'
+ const plan=validateFilmPlan(answer,input)
+ const compare=plan.shots.find(s=>s.layout==='compare')
+ assert.ok(compare);assert.ok(plan.shots.findIndex(s=>s.assetId===compare.compareAssetId)<plan.shots.indexOf(compare))
+ assert.equal(compare.motif,'sand');assert.equal(plan.shots[3].motif,'book')
+ assert.equal(plan.shots[3].caption,'','a named child elsewhere in the movie is not present in this photograph')
+ assert.deepEqual(plan.shots.map(s=>s.date),input.map(s=>s.date))
+})

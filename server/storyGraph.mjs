@@ -50,15 +50,17 @@ export function buildStoryGraph(assets, sourceEvents, people, faces, manualFacts
     // Unknown times remain separate, not assigned an invented birthday or trip.
     const place=asset.location?.aoi||asset.location?.poi||given?.place||asset.location?.city||''
     const slot=day && asset.dateSource==='exif' ? Math.floor(new Date(Date.parse(asset.capturedAt)+8*3600000).getUTCHours()/6) : 'unknown'
-    const key=given?.status==='confirmed'?`user:${given.id}`:day?`${day}|${place||given?.id||'unlocated'}|${slot}`:`undated:${given?.id||asset.id}`
-    const group=groups.get(key)||{id:`event:${digest(key)}`,assets:[],given:given?.status==='confirmed'?given:null,place}
+    // Keep the map's event identity. A second independent time/place grouping
+    // made its understood chapters impossible to project back to the map.
+    const key=given?`${given.status==='confirmed'?'user':'source'}:${given.id}`:day?`${day}|${place||'unlocated'}|${slot}`:`undated:${asset.id}`
+    const group=groups.get(key)||{id:`event:${digest(key)}`,assets:[],sourceEventId:given?.id,given:given?.status==='confirmed'?given:null,place}
     group.assets.push(asset);groups.set(key,group)
   }
   const events=[...groups.values()].map(group=>{
     const members=group.assets.sort((a,b)=>a.capturedAt.localeCompare(b.capturedAt))
     const days=members.map(a=>times.get(a.id)).filter(Boolean).sort()
     const matched=themes.find(([, ,re])=>members.some(a=>re.test(a.card?.scene||'')))
-    const event={id:group.id,assetIds:members.map(a=>a.id),title:group.given?.title||`${publicPlace(group.place)||matched?.[1]||'日常片段'}${days[0]?' · '+days[0]:''}`,
+    const event={id:group.id,sourceEventId:group.sourceEventId,assetIds:members.map(a=>a.id),title:group.given?.title||`${publicPlace(group.place)||matched?.[1]||'日常片段'}${days[0]?' · '+days[0]:''}`,
       place:group.place,start:days[0]||'',end:days.at(-1)||'',status:group.given?'confirmed':'derived',
       personIds:[...new Set(members.flatMap(a=>memberships.get(a.id)||[]))],factIds:members.flatMap(a=>assetFacts.get(a.id)||[])}
     if(group.given) {

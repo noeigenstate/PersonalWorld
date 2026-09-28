@@ -118,10 +118,27 @@ try {
   await page.locator('.butler').waitFor()
   await page.waitForTimeout(2500)
   assert.ok(await page.locator('.map-label.event').count() >= 5, '上海的故事线节点')
+  assert.equal(await page.locator('.map-label.event.has-photo').count(), await page.locator('.map-label.event').count(), '每个事件都合并显示封面和日期，包括没有独立定位的照片')
+  assert.equal(await page.locator('.map-photo').count(), 0, '城市内的事件照片不再重复显示为独立缩略图')
+  const visibleCards = await page.locator('.map-label.event').evaluateAll((els) => els.filter(el => getComputedStyle(el).visibility === 'visible').map(el => {
+    const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}
+  }))
+  assert.ok(visibleCards.length >= 2, '城市视野保留多个可直接点击的回忆卡片')
+  const representedEvents = await page.locator('.map-label.event:visible').evaluateAll(els => [...new Set(els.flatMap(el => el.dataset.groupEventIds.split('|')))])
+  assert.ok(representedEvents.length >= 5, '聚合卡片仍能进入上海的每一段回忆，而非隐藏重叠的日期')
+  for(let a=0;a<visibleCards.length;a++)for(let b=a+1;b<visibleCards.length;b++){
+    const p=visibleCards[a],q=visibleCards[b]
+    assert.ok(p.right<=q.left||q.right<=p.left||p.bottom<=q.top||q.bottom<=p.top, '回忆卡片之间不重叠')
+  }
   await page.screenshot({ path: join(shots, 'pw-amap-2-story.png') })
 
   // Location chain, level 1: a GPS photo is resolved to street level or finer
-  await page.locator('.map-label.event').filter({ hasText: '2019.10' }).click()
+  const octoberCard = page.locator('.map-label.event:visible .map-event-open').filter({ hasText: /2019[./]10/ }).first()
+  const photoCount = Number((await octoberCard.locator('.map-event-count').textContent()).match(/\d+/)[0])
+  await octoberCard.click()
+  assert.equal(await page.locator('.map-event-more').count(),0,'常去地点直接展示各次回忆，无需先打开弹窗')
+  assert.equal(await page.locator('.photo-card').count(), 0, '点击封面直接打开事件详情，不先打开单图或照片选择器')
+  assert.equal(await page.locator('.photo-open').count(), photoCount, '事件详情包含卡片计数对应的整组照片')
   await page.locator('.photo-open').first().click()
   const gpsPlace = page.locator('.pc-facts div').filter({ hasText: '地点' })
   await gpsPlace.getByText('来自照片自带的 GPS').waitFor({ timeout: 45000 }).catch(async (error) => {
@@ -150,7 +167,7 @@ try {
   // The same complete renderer serves each group, before any photo theme is known.
   await page.reload({ waitUntil: 'load' })
   await chooseGlobeCity('杭州')
-  await page.locator('.map-label.event').first().click()
+  await page.locator('.map-label.event:visible .map-event-open').first().click()
   await page.locator('.photo-open').first().click()
   await page.getByRole('button', { name: '在地图上看' }).click()
   await page.locator('.life-map[data-scene-state="ready"]').waitFor({ timeout: 30000 })
@@ -165,7 +182,7 @@ try {
 
   await page.reload({ waitUntil: 'load' })
   await chooseGlobeCity('武汉')
-  await page.locator('.map-label.event').first().click()
+  await page.locator('.map-label.event:visible .map-event-open').first().click()
   await page.locator('.photo-open').first().click()
   await page.getByRole('button', { name: '在地图上看' }).click()
   await page.locator('.life-map[data-scene-state="ready"]').waitFor({ timeout: 30000 }).catch(async (error) => {

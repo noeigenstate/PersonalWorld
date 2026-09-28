@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto'
 export function filmKnowledgeRevision(sources) {
   const values = sources.map(s => ({ id:s.id, available:s.sourceAvailable!==false,
     date:s.date||'', capturedAt:s.capturedAt||'', observed:s.observed||'', confirmed:s.confirmed||'',
-    place:s.place||'', story:s.story||'',
+    place:s.place||'', story:s.story||'', narrative:s.narrative||'',
     people:(s.people||[]).map(({id,name,relationship})=>({id,name,relationship})).sort((a,b)=>a.id.localeCompare(b.id)),
     tags:[...(s.tags||[])].sort(),
   })).sort((a,b)=>a.id.localeCompare(b.id))
