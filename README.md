@@ -12,7 +12,7 @@ Personal World 是一个个人世界模型（Personal World Model）：先把照
 | **`.env`** | 复制 `.env.example` 为 `.env`，填 StepFun 与高德的密钥（见下表）。所有密钥只由本机 API 服务读取，不进浏览器、不入库 | 是 |
 | **地图数据** | 卡通世界的地理档案 `world-data/*.mbtiles`（浙江+江苏 558 MB）不在 Git 里。第一次 `npm run dev` 时服务端按 `world-data/manifest.json` 里的 Seafile 链接自动下载并校验 SHA-256（约 5 分钟），下载完成前地图用在线 OpenStreetMap 数据。也可以先手动 `npm run world:pull` | 自动 |
 | **Chrome** | 只有跑浏览器测试（`test:smoke` 等）时需要 | 否 |
-| **Python 3 + FFmpeg** | 人物识别、回忆短片合成（`FACE_PYTHON`、`MEMORY_FILM_PYTHON`；模型文件用 `python server/identity/setup_models.py` 下载） | 用这两项功能时 |
+| **Python 3.12 + FFmpeg** | 人物识别、回忆短片合成。`winget install Python.Python.3.12 Gyan.FFmpeg`，`python -m pip install -r server/requirements-local.txt`，模型文件用 `python server/identity/setup_models.py` 下载。Windows 上 `python` 可能仍是微软商店的占位别名、winget 装的 FFmpeg 也不在已打开终端的 PATH 里，所以 `.env` 里的 `FACE_PYTHON`、`MEMORY_FILM_PYTHON`、`FFMPEG_PATH` 建议写完整路径；服务启动时读取 `.env`，改完要重启 `npm run dev` | 用这两项功能时 |
 | **ComfyUI + Depth Anything 3** | 4D 时空场景把照片重建成可环视的三维模型，在本机 GPU 上完成。需要本机运行 ComfyUI（默认 `http://127.0.0.1:8188`，可用 `COMFY_URL` 改）并在其 `models/geometry_estimation/` 放入 `depth_anything_3_mono_large.safetensors`（[Comfy-Org/Depth-Anything-3](https://huggingface.co/Comfy-Org/Depth-Anything-3)，1.3 GB）。没有时时空场景只显示照片和各层证据 | 用 4D 场景时 |
 | **Java 23 + Planetiler** | 只有自己构建新地区的地图档案时需要（`npm run build:osm <地区>`，源数据见 `scripts/build-osm-region.mjs` 开头） | 否 |
 
@@ -50,7 +50,7 @@ npm run dev:lan
 | `AMAP_WEB_SERVICE_KEY` | 可选：改由服务端做逆地理编码 | 否 |
 | `WORLD_DATA_URL` | 地图档案的备用下载模板（含 `{name}`）；manifest 里已有链接的文件不需要 | 否 |
 | `COMFY_URL` | 本机 ComfyUI 地址，默认 `http://127.0.0.1:8188` | 否 |
-| `FACE_PYTHON`、`MEMORY_FILM_PYTHON`、`MEMORY_FILM_EXPORT_DIR` | 人物识别与回忆短片用的 Python 解释器和 MP4 导出目录 | 否 |
+| `FACE_PYTHON`、`MEMORY_FILM_PYTHON`、`FFMPEG_PATH`、`MEMORY_FILM_EXPORT_DIR` | 人物识别与回忆短片用的 Python 解释器、FFmpeg 可执行文件和 MP4 导出目录；不填时用 PATH 里的 `python` / `ffmpeg` | 否 |
 
 修改后重启 `npm run dev`。
 
