@@ -46,6 +46,8 @@ test('查看器守住规则：真实光轴、DA3 内参、小角度摆动、禁�
   const gamma = viewer.match(/DEPTH_GAMMA = ([\d.]+)/)
   assert.ok(gamma && Number(gamma[1]) > 0 && Number(gamma[1]) <= 0.7, `深度压缩指数：${gamma?.[0]}`)
   assert.match(viewer, /frameAspect/, '画布就是照片的画幅')
+  const scale = viewer.match(/VIEW_SCALE = ([\d.]+)/)
+  assert.ok(scale && Number(scale[1]) >= 0.9 && Number(scale[1]) < 1, `视口取照片中央的一部分，给摆动留余量：${scale?.[0]}`)
   assert.match(viewer, /inpaint\(/, '垫底照片里被浮雕遮住的部分要补成柔和的底色')
 })
 
@@ -92,6 +94,23 @@ test('垫底照片补洞：只补被遮住的内部，用周围没被遮住的�
   const grown = dilate(covered, w, h, 1)
   assert.equal(grown[12 * w + 11], 1)
   assert.equal(grown[12 * w + 10], 0)
+})
+
+test('多视图合成的工作流：每张照片一个视图，批量送进 multiview，每个视图各存一个 GLB，顺序不乱', async () => {
+  const { sceneWorkflow, MIN_SCENE_PHOTOS, MAX_SCENE_PHOTOS } = await importRoot('server/spacetimeScene.mjs')
+  assert.ok(MIN_SCENE_PHOTOS >= 2 && MAX_SCENE_PHOTOS <= 8)
+  const graph = sceneWorkflow(['a.jpg', 'b.jpg', 'c.jpg'], 'depth_anything_3_base.safetensors', { aspect: 0.75 })
+  const of = (type) => Object.entries(graph).filter(([, node]) => node.class_type === type)
+  assert.equal(of('LoadImage').length, 3)
+  assert.equal(of('ImageScale').length, 3)
+  assert.ok(of('ImageScale').every(([, node]) => node.inputs.crop === 'center' && node.inputs.width % 14 === 0 && node.inputs.height % 14 === 0), '所有视图缩放到同一个 14 的倍数的尺寸')
+  assert.equal(of('ImageBatch').length, 2, '三张照片要两次合批')
+  const [[, infer]] = of('DA3Inference')
+  assert.equal(infer.inputs.mode, 'multiview')
+  assert.ok(infer.inputs['mode.pose_method'] && infer.inputs['mode.ref_view_strategy'])
+  const saves = of('SaveGLB').map(([id]) => id).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  assert.deepEqual(saves, ['save00', 'save01', 'save02'], '输出的 GLB 按视图顺序排')
+  assert.deepEqual(of('DA3GeometryToMesh').map(([, node]) => node.inputs.batch_index).sort(), [0, 1, 2])
 })
 
 test('账户里的模型带版本：旧版本当作不存在，列表只给当前版本，删照片时一并删除', async () => {

@@ -44,3 +44,4 @@
 .spacetime-strip button.key:not(.on){border-color:rgba(255,255,255,.7)}
 .spacetime-strip img{width:100%;height:100%;object-fit:cover;display:block}
 .spacetime-strip i{position:absolute;right:5px;top:5px;width:9px;height:9px;border-radius:50%;background:#2f9e5c;box-shadow:0 0 0 2px rgba(255,255,255,.9)}
+.spacetime-hint{margin:0;font-size:12px;line-height:1.5;color:var(--label-2)}

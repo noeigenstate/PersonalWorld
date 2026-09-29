@@ -87,6 +87,7 @@ export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, ent
               ) : <div className="spacetime-empty">{epoch ? '这个时段没有可看的照片' : '这处地点的照片都没有可靠日期，还组不成时段'}</div>}
               {focus && <button className="spacetime-open" onClick={() => onPhoto(focus.id)} title="打开这张照片的详情与信息卡">照片详情</button>}
             </div>
+            <p className="spacetime-hint">这是一张照片的立体效果，只能在拍照的位置轻轻晃动。要 360° 环绕查看，需要在同一个地方绕着拍的一段视频，或多张视角互相重叠的照片（还没有支持）。</p>
             {epoch && epoch.photoIds.length > 0 && <div className="spacetime-strip" role="group" aria-label="这个时段的照片：点一张放到舞台上，可单独重建成三维">
               {epoch.photoIds.map((id) => { const a = assets.find((x) => x.id === id); return a ? <button key={id} className={`${id === focusId ? 'on' : ''}${id === epoch.keyPhoto ? ' key' : ''}`} aria-pressed={id === focusId} title={id === epoch.keyPhoto ? '这个时段的关键照片' : '放到舞台上'} onClick={() => setPicked(id)}><img src={a.preview} alt="" />{scenes.includes(id) && <i title="已有三维场景" />}</button> : null })}
             </div>}
@@ -123,6 +124,8 @@ export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, ent
 // never dollies in, and the photo itself stands behind the relief, lined up with it: where the sky was
 // cut out or an edge tore, the eye finds the photo instead of an empty page.
 const SWAY = { azimuth: 0.03, polar: 0.02 }
+// The view is the middle 95% of the photo: the sway (about 2.5% of the frame each way) never shows past its edge
+const VIEW_SCALE = 0.95
 // Triangles that lie along the view ray (|cos| of normal vs ray below this) are the smeared sheets between a
 // body and the ground behind it: dropped (see src/lib/reliefMesh.ts)
 const GRAZING_COS = 0.05
@@ -230,7 +233,7 @@ function ReliefViewer({ url, photo }: { url: string; photo: string }) {
       const frameX = HALF_TAN_X, frameY = HALF_TAN_X / aspect
       frameAspect = aspect
       resize()
-      camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(frameY)), 20, 110)
+      camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(frameY * VIEW_SCALE)), 20, 110)
       camera.near = median / 100
       camera.far = far * 4
       camera.updateProjectionMatrix()

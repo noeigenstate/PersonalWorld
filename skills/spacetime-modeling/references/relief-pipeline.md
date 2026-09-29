@@ -51,7 +51,7 @@ far = 压缩后的 97 分位
 canvas = 照片的画幅（在舞台里留边）
 camera.position = 0;  camera.lookAt(forward * median)
 frameX = 0.5 / 0.7;  frameY = frameX / 照片宽高比
-camera.fov = 2·atan(frameY)
+camera.fov = 2·atan(frameY × 0.95)   （VIEW_SCALE：中央 95%，摆动不露出照片以外）
 OrbitControls: target = forward * median, enableZoom = false, enablePan = false
   方位 ±0.03 rad, 俯仰 ±0.02 rad
 背景平面: 距离 far × 1.2, 大小 = 距离 × frame × 2 × 2.4
@@ -60,6 +60,18 @@ OrbitControls: target = forward * median, enableZoom = false, enablePan = false
 ```
 
 为什么这么严：单张照片对被遮挡的部分一无所知，摆动越大露出越多；近处几何的视差最大。调大摆动范围之前，先用一张前景有人物的照片看最大摆动的截图。
+
+## 多视图合成的接线（实验）
+
+```text
+LoadDA3Model(depth_anything_3_base)
+每张照片: LoadImage → ImageScale(同一个 14 的倍数的尺寸, crop = center)
+ImageBatch 依次合批
+DA3Inference(mode = multiview, mode.ref_view_strategy = saddle_balanced, mode.pose_method = cam_dec)
+每个视图: DA3GeometryToMesh(batch_index = i, decimation = 2) → SaveGLB(节点 id save00, save01, …)
+```
+
+动态下拉框在 API 里写成 `mode: 'multiview'` 加上 `'mode.ref_view_strategy'`、`'mode.pose_method'` 两个键。实测结论见 [SKILL.md](../SKILL.md) 的"多视图合成"。
 
 ## 换成多视角重建时
 
