@@ -113,17 +113,26 @@ export function createAccountVault(root) {
       await writeAtomic(join(dir, `${id}.json`), JSON.stringify({ ...meta, bytes: bytes.length, createdAt: new Date().toISOString() }))
     },
 
-    async getScene(user, id) {
+    // `version`: only a model saved under this reconstruction version counts (older ones are rebuilt)
+    async getScene(user, id, version) {
       checkId(id)
       const path = join(dirOf(user), 'spacetime', `${id}.glb`)
       if (!(await exists(path))) return null
       const meta = JSON.parse(await readFile(`${path.slice(0, -4)}.json`, 'utf8').catch(() => '{}'))
+      if (version !== undefined && meta.version !== version) return null
       return { bytes: await readFile(path), meta }
     },
 
-    async listScenes(user) {
-      const names = await readdir(join(dirOf(user), 'spacetime')).catch(() => [])
-      return names.filter((n) => n.endsWith('.glb')).map((n) => n.slice(0, -4))
+    async listScenes(user, version) {
+      const dir = join(dirOf(user), 'spacetime')
+      const ids = (await readdir(dir).catch(() => [])).filter((n) => n.endsWith('.glb')).map((n) => n.slice(0, -4))
+      if (version === undefined) return ids
+      const current = []
+      for (const id of ids) {
+        const meta = JSON.parse(await readFile(join(dir, `${id}.json`), 'utf8').catch(() => '{}'))
+        if (meta.version === version) current.push(id)
+      }
+      return current
     },
   }
 }

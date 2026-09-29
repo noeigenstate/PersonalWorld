@@ -65,13 +65,7 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
   menu.hidden = true
   const controls = document.createElement('div')
   controls.className = 'globe-controls'
-  const credit = document.createElement('a')
-  credit.className = 'globe-credit'
-  credit.href = 'https://www.naturalearthdata.com/'
-  credit.target = '_blank'
-  credit.rel = 'noopener noreferrer'
-  credit.textContent = '地球轮廓：Natural Earth'
-  host.append(stars, sky, canvas, labelsLayer, photoLayer, menu, placeMenu, controls, credit)
+  host.append(stars, sky, canvas, labelsLayer, photoLayer, menu, placeMenu, controls)
   container.append(host)
 
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true })
@@ -803,7 +797,7 @@ export function createGlobeLifeMap(container: HTMLElement, callbacks: LifeMapCal
     }
     host.dataset.approach = approach.toFixed(3)
     // The globe's own controls go as the street map comes through
-    controls.style.opacity = credit.style.opacity = approach > 0 ? String(1 - approach) : ''
+    controls.style.opacity = approach > 0 ? String(1 - approach) : ''
     updateDetail()
     host.dataset.detail = detail?.mesh.visible ? 'on' : 'off'
     renderer.render(scene, camera)

@@ -11,7 +11,7 @@ import { maskDeep } from './privacy.mjs'
 import { contextMessages, readContext } from './photoContext.mjs'
 import { cardMessages, readCard } from './photoCard.mjs'
 import { MAX_PHOTOS as CULL_MAX, cullMessages, readCull } from './photoCull.mjs'
-import { MAX_PHOTOS as SCENE_MAX, readScenePlan, reconstructRelief, reliefCapability, sceneMessages } from './spacetimeScene.mjs'
+import { MAX_PHOTOS as SCENE_MAX, RELIEF_VERSION, readScenePlan, reconstructRelief, reliefCapability, sceneMessages } from './spacetimeScene.mjs'
 import { mapSceneForPoint } from './mapScene.mjs'
 import { cartoonTile, reloadArchives } from './cartoonTiles.mjs'
 import { syncWorldData } from './worldData.mjs'
@@ -147,19 +147,19 @@ const routes = {
     if (!photos.length) return [400, { error: '这处地点还没有可用的照片' }]
     const place = String(body.place || '').slice(0, 80)
     const answer = parseJsonAnswer(await chat(stepfun, sceneMessages({ system: loadSkill('spacetime-scene'), place, photos }), { json: true }))
-    return [200, { plan: readScenePlan(answer, photos), capability: await reliefCapability(), scenes: await vault.listScenes(user) }]
+    return [200, { plan: readScenePlan(answer, photos), capability: await reliefCapability(), scenes: await vault.listScenes(user, RELIEF_VERSION) }]
   },
   // The relief mesh of one photo, reconstructed on this computer and kept with the account
   async 'POST /api/spacetime-scene/relief'(body, user) {
     const id = String(body.id || '')
     if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) return [400, { error: '照片编号无效' }]
-    const existing = body.force ? null : await vault.getScene(user, id)
+    const existing = body.force ? null : await vault.getScene(user, id, RELIEF_VERSION)
     if (existing) return [200, { id, url: `/api/spacetime-scene/models/${id}`, bytes: existing.bytes.length, cached: true }]
     const match = /^data:image\/(jpeg|png|webp);base64,(.+)$/i.exec(String(body.dataUrl || ''))
     if (!match) return [400, { error: '需要一张 JPEG/PNG 照片' }]
     try {
       const glb = await reconstructRelief(Buffer.from(match[2], 'base64'), { name: `${id}.${match[1].toLowerCase() === 'jpeg' ? 'jpg' : match[1].toLowerCase()}` })
-      await vault.putScene(user, id, glb, { photoId: id })
+      await vault.putScene(user, id, glb, { photoId: id, version: RELIEF_VERSION })
       return [200, { id, url: `/api/spacetime-scene/models/${id}`, bytes: glb.length, cached: false }]
     } catch (error) {
       return [503, { error: error.message }]
@@ -333,7 +333,7 @@ const server = http.createServer(async (req, res) => {
     if (sceneModel && req.method === 'GET') {
       const user = currentUser()
       if (!user) return send(res, 401, { error: '请先登录' })
-      const scene = await vault.getScene(user, sceneModel[1])
+      const scene = await vault.getScene(user, sceneModel[1], RELIEF_VERSION)
       if (!scene) return send(res, 404, { error: '这张照片还没有重建' })
       res.writeHead(200, { 'Content-Type': 'model/gltf-binary', 'Cache-Control': 'private, no-store' })
       return res.end(scene.bytes)

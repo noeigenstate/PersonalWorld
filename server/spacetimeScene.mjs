@@ -8,6 +8,8 @@
 const str = (v, max = 60) => String(v ?? '').slice(0, max)
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 export const MAX_PHOTOS = 40
+// Bump when the reconstruction changes: models saved under an older version are rebuilt on demand
+export const RELIEF_VERSION = 2
 export const EVIDENCE = ['observed', 'inferred', 'unknown']
 export const LAYERS = ['season', 'timeOfDay', 'weather', 'sound', 'traffic']
 
@@ -93,8 +95,10 @@ function workflow(image, model, resolution) {
     1: { class_type: 'LoadDA3Model', inputs: { model_name: model, weight_dtype: 'default' } },
     2: { class_type: 'LoadImage', inputs: { image } },
     3: { class_type: 'DA3Inference', inputs: { da3_model: ['1', 0], image: ['2', 0], resolution, resize_method: 'upper_bound_resize', mode: 'mono' } },
-    // Half-resolution vertices keep a photo's mesh under a few hundred thousand triangles
-    4: { class_type: 'DA3GeometryToMesh', inputs: { da3_geometry: ['3', 0], batch_index: 0, decimation: 2, discontinuity_threshold: 0.04, confidence_threshold: 0.1, use_sky_mask: true, texture: true } },
+    // Half-resolution vertices keep a photo's mesh under a few hundred thousand triangles. The
+    // default 0.04 depth-jump limit also cuts grazing ground (water, roads) into strips; 0.12 keeps
+    // it, and real edges (a bridge against the far bank) still tear
+    4: { class_type: 'DA3GeometryToMesh', inputs: { da3_geometry: ['3', 0], batch_index: 0, decimation: 2, discontinuity_threshold: Number(process.env.DA3_DISCONTINUITY) || 0.12, confidence_threshold: 0.1, use_sky_mask: true, texture: true } },
     5: { class_type: 'SaveGLB', inputs: { mesh: ['4', 0], filename_prefix: '3d/personal-world-scene' } },
   }
 }

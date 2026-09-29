@@ -69,7 +69,7 @@ export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, ent
         {error && <p className="film-error" role="alert">{error}{!plan && photos.length > 0 && <button className="button" onClick={() => setError('')}>重试</button>}</p>}
         {plan && <div className="spacetime-layout">
           <div className="spacetime-stage" data-model={modelUrl ? 'ready' : 'none'}>
-            {modelUrl ? <ReliefViewer url={modelUrl} /> : key ? (
+            {modelUrl ? <ReliefViewer url={modelUrl} photo={key?.preview || ''} /> : key ? (
               <div className="spacetime-photo">
                 <img src={key.preview} alt="" />
                 <div className="spacetime-build">
@@ -109,9 +109,16 @@ export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, ent
   </>
 }
 
-// The relief model is the photo's own view: the camera that took it sat at the origin, so the
-// viewer starts there and lets the eye wander a little around that vantage point
-function ReliefViewer({ url }: { url: string }) {
+// The relief is one photo's depth, not a scanned place: seen from the photo's own vantage point it is
+// right, and it only holds for a small sway around it (the depth edges tear open beyond that). So the
+// camera stays where the photo was taken (the origin), sways a few degrees around the median depth,
+// never dollies in, and the photo itself stands behind the relief, lined up with it: where the sky was
+// cut out or an edge tore, the eye finds the photo instead of an empty page.
+const SWAY = { azimuth: 0.13, polar: 0.08 }
+// Depth Anything 3 (mono) unprojects with a pinhole of fx = fy = 0.7 × image width (server side:
+// ComfyUI's DA3GeometryToMesh), so half the frame's width is 0.5 / 0.7 of the focal length
+const HALF_TAN_X = 0.5 / 0.7
+function ReliefViewer({ url, photo }: { url: string; photo: string }) {
   const host = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   useEffect(() => {
@@ -134,7 +141,9 @@ function ReliefViewer({ url }: { url: string }) {
     observer.observe(el)
     resize()
     let disposed = false
-    new GLTFLoader().load(url, (gltf) => {
+    const picture = new Image()
+    const pictureReady = photo ? (picture.src = photo, picture.decode().catch(() => undefined)) : Promise.resolve()
+    new GLTFLoader().load(url, (gltf) => { void pictureReady.then(() => {
       if (disposed) return
       const model = gltf.scene
       // Coloured by the photo itself: unlit shows it as it was
@@ -145,50 +154,72 @@ function ReliefViewer({ url }: { url: string }) {
         mesh.material = new THREE.MeshBasicMaterial({ map: old.map, vertexColors: Boolean(old.vertexColors), side: THREE.DoubleSide })
       })
       scene.add(model)
-      const box = new THREE.Box3().setFromObject(model)
-      const center = box.getCenter(new THREE.Vector3())
-      const size = box.getSize(new THREE.Vector3())
-      // Start where the photo was taken (the origin), with the field of view that frames the
-      // whole relief: the first view is the photo itself, then the eye can wander a little
-      const origin = new THREE.Vector3()
-      const fromOrigin = !box.containsPoint(origin) && center.distanceTo(origin) > size.length() * 0.2
-      const direction = fromOrigin ? center.clone().sub(origin).normalize() : new THREE.Vector3(0, 0, 1)
-      const distance = fromOrigin ? center.distanceTo(origin) : size.length()
-      camera.position.copy(center).addScaledVector(direction, -distance)
-      camera.lookAt(center)
-      camera.updateMatrixWorld()
-      // The field of view that shows every vertex from there (the sky was cut out of the relief,
-      // so the bounding box says little about what the eye needs)
-      const toCamera = camera.matrixWorldInverse
-      let tanX = 0, tanY = 0
-      const v = new THREE.Vector3()
+      model.updateMatrixWorld(true)
+      // Vertices as seen from the origin. The mesh keeps the reconstruction's frame: the camera at the
+      // origin looks down −z with y up (glTF), so depth is −z
+      const points: THREE.Vector3[] = []
       model.traverse((object) => {
         const mesh = object as THREE.Mesh
         if (!mesh.isMesh) return
         const position = mesh.geometry.getAttribute('position')
-        const step = Math.max(1, Math.floor(position.count / 20000))
-        for (let i = 0; i < position.count; i += step) {
-          v.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld).applyMatrix4(toCamera)
-          if (v.z > -1e-6) continue
-          tanX = Math.max(tanX, Math.abs(v.x / v.z))
-          tanY = Math.max(tanY, Math.abs(v.y / v.z))
-        }
+        const step = Math.max(1, Math.floor(position.count / 30000))
+        for (let i = 0; i < position.count; i += step) points.push(new THREE.Vector3().fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld))
       })
-      camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(tanY, tanX / camera.aspect))) * 1.02, 25, 110)
-      camera.near = distance / 200
-      camera.far = distance * 20
+      if (!points.length) { setStatus('error'); return }
+      const forward = new THREE.Vector3(0, 0, -1)
+      const depths = points.map((p) => -p.z).filter((d) => d > 0).sort((a, b) => a - b)
+      const median = depths[Math.floor(depths.length / 2)] || 1
+      const far = depths[Math.floor(depths.length * 0.97)] || median * 2
+      const target = forward.clone().multiplyScalar(median)
+      camera.position.set(0, 0, 0)
+      camera.lookAt(target)
+      camera.updateMatrixWorld()
+      // The photo's own frame: its aspect from the picture (else from the relief's extents), its
+      // angular size from the intrinsics above. The viewport shows all of it.
+      let tanX = 0, tanY = 0
+      const v = new THREE.Vector3()
+      for (const p of points) {
+        v.copy(p).applyMatrix4(camera.matrixWorldInverse)
+        if (v.z > -1e-6) continue
+        tanX = Math.max(tanX, Math.abs(v.x / v.z))
+        tanY = Math.max(tanY, Math.abs(v.y / v.z))
+      }
+      const aspect = picture.naturalWidth ? picture.naturalWidth / picture.naturalHeight : Math.max(0.5, Math.min(2.5, tanX / Math.max(tanY, 1e-3)))
+      const frameX = HALF_TAN_X, frameY = HALF_TAN_X / aspect
+      camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(frameY, frameX / camera.aspect))) * 1.02, 20, 110)
+      camera.near = median / 100
+      camera.far = far * 4
       camera.updateProjectionMatrix()
-      controls.target.copy(center)
-      controls.minDistance = distance * 0.5
-      controls.maxDistance = distance * 1.15
-      const spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(center))
-      controls.minPolarAngle = Math.max(0.05, spherical.phi - 0.3)
-      controls.maxPolarAngle = Math.min(Math.PI - 0.05, spherical.phi + 0.3)
-      controls.minAzimuthAngle = spherical.theta - 0.4
-      controls.maxAzimuthAngle = spherical.theta + 0.4
+      controls.target.copy(target)
+      controls.enableZoom = false
+      const spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(target))
+      controls.minPolarAngle = Math.max(0.05, spherical.phi - SWAY.polar)
+      controls.maxPolarAngle = Math.min(Math.PI - 0.05, spherical.phi + SWAY.polar)
+      controls.minAzimuthAngle = spherical.theta - SWAY.azimuth
+      controls.maxAzimuthAngle = spherical.theta + SWAY.azimuth
+      // The photo behind everything, at the angular size of the relief's own frame (so from the vantage
+      // point it lies exactly under it), extended past the edges by mirroring
+      if (picture.naturalWidth) {
+        const canvas = document.createElement('canvas')
+        canvas.width = 512
+        canvas.height = Math.max(8, Math.round(512 / aspect))
+        canvas.getContext('2d')!.drawImage(picture, 0, 0, canvas.width, canvas.height)
+        const texture = new THREE.CanvasTexture(canvas)
+        texture.colorSpace = THREE.SRGBColorSpace
+        texture.wrapS = texture.wrapT = THREE.MirroredRepeatWrapping
+        const extend = 2.4
+        texture.repeat.set(extend, extend)
+        texture.offset.set((1 - extend) / 2, (1 - extend) / 2)
+        const distance = far * 1.2
+        const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(distance * frameX * 2 * extend, distance * frameY * 2 * extend), new THREE.MeshBasicMaterial({ map: texture, depthWrite: false }))
+        backdrop.position.copy(forward).multiplyScalar(distance)
+        backdrop.lookAt(0, 0, 0)
+        backdrop.renderOrder = -1
+        scene.add(backdrop)
+      }
       controls.update()
       setStatus('ready')
-    }, undefined, () => { if (!disposed) setStatus('error') })
+    }) }, undefined, () => { if (!disposed) setStatus('error') })
     draw()
     return () => {
       disposed = true
@@ -200,7 +231,7 @@ function ReliefViewer({ url }: { url: string }) {
       renderer.domElement.remove()
     }
   }, [url])
-  return <div className="spacetime-viewer" ref={host} data-status={status} aria-label="三维场景：拖动环视，滚轮靠近">
+  return <div className="spacetime-viewer" ref={host} data-status={status} aria-label="三维场景：拖动可以在拍照的位置稍微环视">
     {status === 'loading' && <p className="spacetime-status"><LoaderCircle size={16} className="film-spin" /> 正在载入模型…</p>}
     {status === 'error' && <p className="spacetime-status">模型没有载入</p>}
   </div>

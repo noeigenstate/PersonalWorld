@@ -13,7 +13,8 @@ import { reliefCapability } from '../server/spacetimeScene.mjs'
 
 const dir = mkdtempSync(join(tmpdir(), 'pw-spacetime-'))
 const shots = process.env.SMOKE_SHOTS || dir
-const photo = 'data:image/jpeg;base64,' + readFileSync(new URL('../skills/photo-cull/evals/2026-09-28/images/all-a.jpg', import.meta.url)).toString('base64')
+// SPACETIME_PHOTO: any photo to reconstruct (default: a cartoon fixture)
+const photo = 'data:image/jpeg;base64,' + readFileSync(process.env.SPACETIME_PHOTO || new URL('../skills/photo-cull/evals/2026-09-28/images/all-a.jpg', import.meta.url)).toString('base64')
 const capability = await reliefCapability()
 
 let calls = 0
@@ -128,6 +129,17 @@ try {
     assert.equal(await dialog.locator('.film-error').count(), 0, await dialog.locator('.film-error').allTextContents())
     await page.waitForTimeout(800)
     await page.screenshot({ path: join(shots, 'pw-spacetime-2-relief.png') })
+    // The widest sway the viewer allows: the relief must still hold together (no torn sheets, no dolly in)
+    const stage = await dialog.locator('.spacetime-stage').boundingBox()
+    await page.mouse.move(stage.x + stage.width / 2, stage.y + stage.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(stage.x + stage.width / 2 - 600, stage.y + stage.height / 2 - 300, { steps: 20 })
+    await page.waitForTimeout(700)
+    await page.screenshot({ path: join(shots, 'pw-spacetime-3-sway-left.png') })
+    await page.mouse.move(stage.x + stage.width / 2 + 600, stage.y + stage.height / 2 + 300, { steps: 30 })
+    await page.waitForTimeout(700)
+    await page.screenshot({ path: join(shots, 'pw-spacetime-4-sway-right.png') })
+    await page.mouse.up()
     // Kept with the account: the model streams back without another reconstruction
     const model = await fetch(`${base}/api/spacetime-scene/models/spacetime-1`, { headers: { cookie } })
     assert.equal(model.status, 200)
