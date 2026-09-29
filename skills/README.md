@@ -1,6 +1,6 @@
 # 项目 Skills
 
-所有项目自建 skill 都放在根目录 `skills/`，包含 9 个运行时 skill 和 6 个开发 skill。每项的正文、测试、参考资料与可分发评估结果均随 Git 上传。
+所有项目自建 skill 都放在根目录 `skills/`，包含 9 个运行时 skill 和 7 个开发 skill。每项的正文、测试、参考资料与可分发评估结果均随 Git 上传。
 
 运行时 skill 由服务端明确读取后交给模型；开发 skill 供开发 agent 按需阅读执行。地图精修的流程可以复用，新地标仍需资料、模型制作与视觉验收，不能据此宣称已经实现任意地点同品质自动生成。
 
@@ -29,13 +29,14 @@ LIVE=1 npm run test:skills      # 含真实 StepFun / 高德调用
 | [memory-film](memory-film/SKILL.md) | 接收照片事实与故事角度，自动选片、字幕、镜头编排，交给本机合成 MP4 | `POST /api/memory-films` | [test.mjs](memory-film/test.mjs)、[真实渲染](../tests/film-treatments.mjs) | — |
 | [memory-storytelling](memory-storytelling/SKILL.md) | 自动选题选片、按具体发现讲故事、独立复核；跨图旁白、对照、留白、回扣、补充记忆及资料更新后重编 | `POST /api/butler` 的 story 路径；`/api/storytelling/list`、`/note` | [test.mjs](memory-storytelling/test.mjs)、[播放器回归](../tests/smoke.mjs) | [虚构材料单例配对](memory-storytelling/evals/2026-09-29/README.md)；私人样片存于忽略目录 |
 
-## 开发技能（6）
+## 开发技能（7）
 
 | Skill | 用途 | 测试与验收 |
 |---|---|---|
 | [map-scene-styling](map-scene-styling/SKILL.md) | 真实街区、水系、树木、光照、材质与地图层级的统一卡通语言 | [test.mjs](map-scene-styling/test.mjs)、[场景数据](../tests/scene-details.mjs)、实际地图截图 |
 | [landmark-refinement](landmark-refinement/SKILL.md) | 特殊建筑参考收集、特征提取、程序化模型和多视角验收 | [test.mjs](landmark-refinement/test.mjs)、[工作流程](landmark-refinement/references/workflow.md)、[模型检视](../tests/venue-models.mjs) |
 | [amap-threejs](amap-threejs/SKILL.md) | 高德与 Three.js 坐标、相机、叠加、地形及地球切换 | [test.mjs](amap-threejs/test.mjs)、[历史对比](amap-threejs/evals/2026-09-24/README.md) |
+| [spacetime-modeling](spacetime-modeling/SKILL.md) | 4D 三维建模：单张照片重建成三维浮雕（ComfyUI + Depth Anything 3）、网格坐标约定、查看器相机规则、失败模式、验收，以及升级到多视角重建的准入条件 | [test.mjs](spacetime-modeling/test.mjs)、[浮雕管线](spacetime-modeling/references/relief-pipeline.md)、[用/不用对比](spacetime-modeling/evals/2026-09-29/README.md)、`tests/spacetime-scene.mjs` |
 | [memory-identity](memory-identity/SKILL.md) | 稳定人物 ID、关系事实、增量故事和下游同步 | [test.mjs](memory-identity/test.mjs)、[身份回归](../tests/identity-graph.mjs)、[同步回归](../tests/event-understanding-sync.mjs) |
 | [liquid-glass](liquid-glass/SKILL.md) | 界面玻璃材质、层级、无障碍与稳定交互 | [test.mjs](liquid-glass/test.mjs)、[历史对比](liquid-glass/evals/2026-09-28/README.md) |
 | [stepfun-api](stepfun-api/SKILL.md) | Step Plan 对话、视觉、JSON、ASR 与语音合成 | [test.mjs](stepfun-api/test.mjs)、[历史对比](stepfun-api/evals/2026-09-24/README.md) |

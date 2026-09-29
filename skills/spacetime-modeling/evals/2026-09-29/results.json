@@ -1,0 +1,16 @@
+{
+  "without": {
+    "initialDiff": 101.3,
+    "extremeEmpty": 0.7404
+  },
+  "with": {
+    "initialDiff": 11.3,
+    "extremeEmpty": 0
+  },
+  "skill": {
+    "azimuth": 0.03,
+    "polar": 0.02,
+    "halfTanX": 0.7142857142857143,
+    "extend": 2.4
+  }
+}

@@ -6,6 +6,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import type { MemoryAsset, MemoryEvent } from '../types'
 import { EVIDENCE_LABEL, LAYER_LABEL, requestRelief, requestScenePlan, scenePhotos, scenePlaceName, type ReliefCapability, type ScenePlan } from '../lib/spacetime'
+import { dilate, inpaint, keepFacing, squeezeDepth } from '../lib/reliefMesh'
 import './spacetimeScene.css'
 
 // A place's story line, seen in 4D: the same spot at each time it was photographed. The
@@ -114,7 +115,12 @@ export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, ent
 // camera stays where the photo was taken (the origin), sways a few degrees around the median depth,
 // never dollies in, and the photo itself stands behind the relief, lined up with it: where the sky was
 // cut out or an edge tore, the eye finds the photo instead of an empty page.
-const SWAY = { azimuth: 0.13, polar: 0.08 }
+const SWAY = { azimuth: 0.03, polar: 0.02 }
+// Triangles that lie along the view ray (|cos| of normal vs ray below this) are the smeared sheets between a
+// body and the ground behind it: dropped (see src/lib/reliefMesh.ts)
+const GRAZING_COS = 0.05
+// Depth squeeze (0 = flat, 1 = as reconstructed): parallax stays modest, see squeezeDepth
+const DEPTH_GAMMA = 0.5
 // Depth Anything 3 (mono) unprojects with a pinhole of fx = fy = 0.7 × image width (server side:
 // ComfyUI's DA3GeometryToMesh), so half the frame's width is 0.5 / 0.7 of the focal length
 const HALF_TAN_X = 0.5 / 0.7
@@ -136,7 +142,19 @@ function ReliefViewer({ url, photo }: { url: string; photo: string }) {
     controls.enablePan = false
     let frame = 0
     const draw = () => { controls.update(); renderer.render(scene, camera); frame = requestAnimationFrame(draw) }
-    const resize = () => { const w = el.clientWidth || 1, h = el.clientHeight || 1; camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h, false) }
+    // The canvas is the photo's frame (letterboxed in the stage): the view then shows exactly the photo,
+    // nothing beyond it, until the eye sways
+    let frameAspect = 0
+    const resize = () => {
+      const cw = el.clientWidth || 1, ch = el.clientHeight || 1
+      let w = cw, h = ch
+      if (frameAspect) { if (cw / ch > frameAspect) w = ch * frameAspect; else h = cw / frameAspect }
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+      renderer.setSize(Math.round(w), Math.round(h), false)
+      renderer.domElement.style.width = `${Math.round(w)}px`
+      renderer.domElement.style.height = `${Math.round(h)}px`
+    }
     const observer = new ResizeObserver(resize)
     observer.observe(el)
     resize()
@@ -152,6 +170,11 @@ function ReliefViewer({ url, photo }: { url: string; photo: string }) {
         if (!mesh.isMesh) return
         const old = mesh.material as THREE.MeshStandardMaterial
         mesh.material = new THREE.MeshBasicMaterial({ map: old.map, vertexColors: Boolean(old.vertexColors), side: THREE.DoubleSide })
+        const position = mesh.geometry.getAttribute('position')
+        const flat = new Float32Array(position.count * 3)
+        for (let i = 0; i < position.count; i++) { flat[i * 3] = position.getX(i); flat[i * 3 + 1] = position.getY(i); flat[i * 3 + 2] = position.getZ(i) }
+        const index = mesh.geometry.getIndex()
+        mesh.geometry.setIndex(new THREE.BufferAttribute(keepFacing(flat, index ? (index.array as ArrayLike<number>) : null, GRAZING_COS), 1))
       })
       scene.add(model)
       model.updateMatrixWorld(true)
@@ -169,7 +192,19 @@ function ReliefViewer({ url, photo }: { url: string; photo: string }) {
       const forward = new THREE.Vector3(0, 0, -1)
       const depths = points.map((p) => -p.z).filter((d) => d > 0).sort((a, b) => a - b)
       const median = depths[Math.floor(depths.length / 2)] || 1
-      const far = depths[Math.floor(depths.length * 0.97)] || median * 2
+      const squeeze = (() => {
+        let squeezed = (depth: number) => depth
+        model.traverse((object) => {
+          const mesh = object as THREE.Mesh
+          if (!mesh.isMesh) return
+          const position = mesh.geometry.getAttribute('position') as THREE.BufferAttribute
+          squeezed = squeezeDepth(position.array as unknown as Float32Array, median, DEPTH_GAMMA)
+          position.needsUpdate = true
+          mesh.geometry.computeBoundingSphere()
+        })
+        return squeezed
+      })()
+      const far = squeeze(depths[Math.floor(depths.length * 0.97)] || median * 2)
       const target = forward.clone().multiplyScalar(median)
       camera.position.set(0, 0, 0)
       camera.lookAt(target)
@@ -186,7 +221,9 @@ function ReliefViewer({ url, photo }: { url: string; photo: string }) {
       }
       const aspect = picture.naturalWidth ? picture.naturalWidth / picture.naturalHeight : Math.max(0.5, Math.min(2.5, tanX / Math.max(tanY, 1e-3)))
       const frameX = HALF_TAN_X, frameY = HALF_TAN_X / aspect
-      camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(frameY, frameX / camera.aspect))) * 1.02, 20, 110)
+      frameAspect = aspect
+      resize()
+      camera.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(frameY)), 20, 110)
       camera.near = median / 100
       camera.far = far * 4
       camera.updateProjectionMatrix()
@@ -198,18 +235,56 @@ function ReliefViewer({ url, photo }: { url: string; photo: string }) {
       controls.minAzimuthAngle = spherical.theta - SWAY.azimuth
       controls.maxAzimuthAngle = spherical.theta + SWAY.azimuth
       // The photo behind everything, at the angular size of the relief's own frame (so from the vantage
-      // point it lies exactly under it), extended past the edges by mirroring
+      // point it lies exactly under it), and past its edges a soft blurred copy
       if (picture.naturalWidth) {
         const canvas = document.createElement('canvas')
         canvas.width = 512
         canvas.height = Math.max(8, Math.round(512 / aspect))
-        canvas.getContext('2d')!.drawImage(picture, 0, 0, canvas.width, canvas.height)
-        const texture = new THREE.CanvasTexture(canvas)
-        texture.colorSpace = THREE.SRGBColorSpace
-        texture.wrapS = texture.wrapT = THREE.MirroredRepeatWrapping
+        const context = canvas.getContext('2d', { willReadFrequently: true })!
+        context.drawImage(picture, 0, 0, canvas.width, canvas.height)
+        // Where the relief stands in front of the photo (seen from the vantage point), the backdrop
+        // is a soft fill of the colours around it: the relief moving off reveals colour, not a second copy
+        {
+          const w = canvas.width, h = canvas.height
+          const cover = new THREE.PerspectiveCamera(THREE.MathUtils.radToDeg(2 * Math.atan(frameY)), aspect, camera.near, camera.far)
+          cover.lookAt(0, 0, -1)
+          cover.updateMatrixWorld()
+          const target = new THREE.WebGLRenderTarget(w, h)
+          const clear = renderer.getClearColor(new THREE.Color()), clearAlpha = renderer.getClearAlpha()
+          scene.overrideMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+          renderer.setClearColor(0x000000, 1)
+          renderer.setRenderTarget(target)
+          renderer.render(scene, cover)
+          renderer.setRenderTarget(null)
+          renderer.setClearColor(clear, clearAlpha)
+          scene.overrideMaterial.dispose()
+          scene.overrideMaterial = null
+          const pixels = new Uint8Array(w * h * 4)
+          renderer.readRenderTargetPixels(target, 0, 0, w, h, pixels)
+          target.dispose()
+          const covered = new Uint8Array(w * h)
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) covered[y * w + x] = pixels[((h - 1 - y) * w + x) * 4] > 128 ? 1 : 0
+          const data = context.getImageData(0, 0, w, h)
+          // Only the solid inside of the relief is filled: its rim and the speckled gaps (foliage) keep the photo
+          const open = dilate(covered.map((c) => 1 - c), w, h, 2)
+          data.data.set(inpaint(data.data, open.map((c) => 1 - c), w, h, 16))
+          context.putImageData(data, 0, 0)
+        }
+        // Beyond the photo's edge: a soft, blurred copy of the whole photo, with the photo itself in the middle
         const extend = 2.4
-        texture.repeat.set(extend, extend)
-        texture.offset.set((1 - extend) / 2, (1 - extend) / 2)
+        const padded = document.createElement('canvas')
+        padded.width = Math.round(canvas.width * extend)
+        padded.height = Math.round(canvas.height * extend)
+        const paddedContext = padded.getContext('2d')!
+        const soft = document.createElement('canvas')
+        soft.width = 24
+        soft.height = Math.max(6, Math.round(24 / aspect))
+        soft.getContext('2d')!.drawImage(canvas, 0, 0, soft.width, soft.height)
+        paddedContext.imageSmoothingQuality = 'high'
+        paddedContext.drawImage(soft, 0, 0, padded.width, padded.height)
+        paddedContext.drawImage(canvas, (padded.width - canvas.width) / 2, (padded.height - canvas.height) / 2)
+        const texture = new THREE.CanvasTexture(padded)
+        texture.colorSpace = THREE.SRGBColorSpace
         const distance = far * 1.2
         const backdrop = new THREE.Mesh(new THREE.PlaneGeometry(distance * frameX * 2 * extend, distance * frameY * 2 * extend), new THREE.MeshBasicMaterial({ map: texture, depthWrite: false }))
         backdrop.position.copy(forward).multiplyScalar(distance)
