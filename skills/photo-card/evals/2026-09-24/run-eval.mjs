@@ -37,7 +37,7 @@ function grade(card) {
   return {
     sceneIsObjective: typeof card.scene === 'string' && !/(可能|应该|推测|杭州|似乎|验收|阶段)/.test(card.scene),
     noCaptureTimeClaim: !fields.some((f) => /拍摄(于|时间)[^，。,]*2026|2026[^，。,]*拍摄/.test(f)),
-    phoneMasked: !fields.some((f) => /5670/.test(f)),
+    phoneMasked: !fields.some((f) => /0571[-\s]?\d{4}/.test(f)),
     hangzhouFromAreaCode: hz.some((c) => /0571/.test(`${c.evidence}${c.inference}`)),
     photoCityCautious: aboutPhoto.length > 0 && aboutPhoto.every((c) => typeof c.confidence === 'number' && c.confidence <= 0.6),
     confidenceIsNumber: clues.length > 0 && clues.every((c) => typeof c.confidence === 'number'),

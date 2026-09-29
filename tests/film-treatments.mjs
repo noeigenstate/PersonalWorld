@@ -8,6 +8,10 @@ import {createHash} from 'node:crypto'
 import {chromium} from 'playwright'
 import {renderFilm,runMedia,makeCreativeMusic} from '../server/memoryFilmRender.mjs'
 
+// The FFmpeg / Python paths of this computer (.env), as the service itself uses them
+try{process.loadEnvFile(new URL('../.env',import.meta.url))}catch{/* no .env: the tools must be on the PATH */}
+const ffmpeg=process.env.FFMPEG_PATH||'ffmpeg'
+
 const root=await mkdtemp(join(tmpdir(),'pw-film-directions-'))
 const browser=await chromium.launch({channel:'chrome'})
 let fixtures
@@ -29,8 +33,8 @@ for(const treatment of directions){
   const plan={title:'留住这些认真的小片刻',closing:'认真留下的几笔，都在回忆里',treatment,
     shots:Array.from({length:3},(_,i)=>({assetId:`fixture-${i}`,date:'2026-09-27',caption:'这是很长的一段测试字幕用来检查结尾字幕不会重叠',seconds:3.5,motion:['pull','drift','still'][i]}))}
   const result=await renderFilm(directory,plan)
-  await runMedia('ffmpeg',['-v','error','-i',join(directory,'film.mp4'),'-f','null','-'])
-  await runMedia('ffmpeg',['-v','error','-y','-ss',String(result.duration-1.1),'-i',join(directory,'film.mp4'),'-frames:v','1',join(directory,'ending.jpg')])
+  await runMedia(ffmpeg,['-v','error','-i',join(directory,'film.mp4'),'-f','null','-'])
+  await runMedia(ffmpeg,['-v','error','-y','-ss',String(result.duration-1.1),'-i',join(directory,'film.mp4'),'-frames:v','1',join(directory,'ending.jpg')])
   assert.ok((await readFile(join(directory,'film.mp4'))).length>4096)
   music.add(createHash('sha256').update(makeCreativeMusic(5,treatment)).digest('hex'))
 }

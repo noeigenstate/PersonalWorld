@@ -39,7 +39,7 @@
 
 代码核对结果：`MemoryEvent.people` 是文字数组，`PhotoCard` 是叙述和线索；短片补充仅按账户、照片 ID 保存。当前没有人脸框、embedding、稳定 person ID、自动身份候选、合并/拆分审阅，也没有人物增量索引。
 
-用户提供的 `C:\Users\libowen\Desktop\face-detection-embedding-identity-handoff.md` 非常适合成为迁移依据。应提取其中的人脸模块，不整套搬运其素材管理、其他模型和工具集成。
+用户提供的人脸识别交接文档（旧项目的人脸模块说明） 非常适合成为迁移依据。应提取其中的人脸模块，不整套搬运其素材管理、其他模型和工具集成。
 
 ### 推荐连接方式
 

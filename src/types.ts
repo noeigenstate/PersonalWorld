@@ -190,7 +190,7 @@ export interface GeocodeResult {
 export interface AiConfig {
   localReview?: boolean
   available: boolean
-  mode: 'model' | 'unconfigured' | 'agent-needs-adapter'
+  mode: 'model' | 'unconfigured'
   message: string
   geocode: boolean
   amapJsKey?: string

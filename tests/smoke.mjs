@@ -62,7 +62,8 @@ await page.route('**/api/config', (route) => route.fulfill({ json: { available: 
 await page.route('**/api/geocode', (route) => route.fulfill({ json: { results: route.request().postDataJSON().points.map(fakeGeocode) } }))
 // Events analyze themselves after import; every event gets this answer (GPS cities are kept)
 await page.route('**/api/analyze', (route) => route.fulfill({ json: { title: '加班的夜晚', summary: '在办公室加班。', type: '工作', place: '', city: '上海市', people: [], visibleText: '', tags: [], questions: ['这是在公司吗？'], confidence: 0.6 } }))
-await page.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '测试照片', caption: '', scene: '测试画面', visibleText: '', clues: [], landmark: null, placeQuery: null, eventGuess: { type: '', reason: '' }, tags: [], questions: [] } }))
+// A little slower than instant, so the loading gate can be seen working
+await page.route('**/api/photo-card', async (route) => { await new Promise((resolve) => setTimeout(resolve, 150)); return route.fulfill({ json: { title: '测试照片', caption: '', scene: '测试画面', visibleText: '', clues: [], landmark: null, placeQuery: null, eventGuess: { type: '', reason: '' }, tags: [], questions: [] } }) })
 await page.route('**/api/asr', (route) => { asrCalls++; asrBytes = route.request().postDataBuffer()?.length || 0; return route.fulfill({ json: { text: asrText } }) })
 await page.route('**/api/tts', (route) => {
   const text = route.request().postDataJSON().text
@@ -167,6 +168,12 @@ try {
   const files = await makeLifeFixtures(page, mkdtempSync(join(tmpdir(), 'pw-life-')))
   await page.getByRole('button', { name: '导入第一批影像' }).click()
   await page.locator('input[type="file"]').setInputFiles(files)
+  // The analysis runs in the background with its progress shown, and the map stays usable
+  const progress = page.getByRole('status', { name: '后台分析进度' })
+  await progress.waitFor({ timeout: 10_000 })
+  await progress.locator('[data-step="cards"] [role="progressbar"]').waitFor()
+  assert.match(await progress.locator('[data-step="cards"]').innerText(), /照片信息卡[\s\S]*\d+%/, '后台进度显示照片信息卡的进度')
+  assert.equal(await page.locator('.load-gate').count(), 0, '分析期间不遮挡地图')
   await page.locator('.life-globe[data-place-count="4"]').waitFor()
   assert.deepEqual((await page.locator('.life-globe').getAttribute('data-place-names')).split('|').sort(), ['上海', '杭州', '武汉', '湘潭'], '湘潭、武汉、上海、杭州四个地点')
   assert.equal(await page.locator('.map-label.lifted').count(), 0, '标签不再抬高拉竖线')
@@ -215,6 +222,7 @@ try {
   assert.equal(await page.locator('.voice-butler .hold').count(), 1, '话筒按钮始终在地图上')
   assert.equal(await page.locator('.subtitle').count(), 0, '没选地点、没说话时没有字幕')
   await page.locator('.locating-chip').filter({ hasText: '事件已自动分析' }).waitFor({ timeout: 40_000 })
+  await progress.waitFor({ state: 'detached', timeout: 10_000 })
   assert.equal(await page.locator('.tray-chip').count(), 0, '分析后没有待整理的事件')
 
   // Click a place: story line + the butler speaks first, as a subtitle over the map

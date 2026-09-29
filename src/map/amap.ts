@@ -14,9 +14,27 @@ declare global {
 
 let loading: Promise<AMapNS> | null = null
 
+// AMap's JS API decides between its 3D (WebGL) and 2D map from navigator.userAgent alone and
+// gives every Linux desktop the 2D map, where AMap.Buildings, GLCustomLayer and the camera
+// (customCoords.getCameraParams) do not work: the cartoon world could not be drawn and the map
+// stayed blank. The same page with a Windows user agent gets 3D and works, so on desktop Linux
+// AMap is shown a Windows one. Only the page's own navigator is changed, only while the map
+// exists; nothing else in the app reads the user agent. Android is left alone.
+function letAmapUseWebgl() {
+  const ua = navigator.userAgent
+  if (!/Linux|X11/.test(ua) || /Android/.test(ua)) return
+  try {
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      get: () => ua.replace(/\(X11;[^)]*\)/, '(Windows NT 10.0; Win64; x64)'),
+    })
+  } catch { /* a locked-down navigator: AMap stays 2D and createAmapLifeMap falls back to the cartoon board */ }
+}
+
 export function loadAmap(key: string): Promise<AMapNS> {
   if (window.AMap) return Promise.resolve(window.AMap)
   if (loading) return loading
+  letAmapUseWebgl()
   window._AMapSecurityConfig = { serviceHost: `${location.origin}/_AMapService` }
   loading = new Promise((resolve, reject) => {
     const script = document.createElement('script')

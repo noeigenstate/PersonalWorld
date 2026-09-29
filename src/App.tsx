@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, CircleHelp, LogOut, Plus, Upload, UserRound, X } from 'lucide-react'
 import { CakeLogo } from './components/CakeLogo'
-import { analyzeEvent, askButler, fetchAiConfig, generatePhotoCard, geocode, inferFromPeers, speak, transcribe, type Account, type ButlerAction, type ButlerFocus, type ButlerMemoryPhoto, type ButlerState, type ButlerTurn } from './lib/api'
+import { analyzeEvent, askButler, fetchAiConfig, fetchWorldDataStatus, retryWorldData, type WorldDataStatus, generatePhotoCard, geocode, inferFromPeers, speak, transcribe, type Account, type ButlerAction, type ButlerFocus, type ButlerMemoryPhoto, type ButlerState, type ButlerTurn } from './lib/api'
 import { colorSignature, knownAbout, pickReferences } from './lib/peers'
 import { better, inheritFromEvent } from './lib/location'
 import { gcj02ToWgs84, wgs84ToGcj02 } from './lib/geo'
@@ -24,6 +24,7 @@ import { recentStories, shouldMoveStoryMap, type NarratedStory, type StorySummar
 import { EventDetail, statusLabel } from './components/EventDetail'
 import { ImportDialog } from './components/ImportDialog'
 import { LifeMapView } from './components/LifeMapView'
+import { BackgroundProgress, LoadingGate, type GateStep } from './components/LoadingGate'
 import { TimelineBar } from './components/TimelineBar'
 import { MemoryFilms, type FilmSummary } from './components/MemoryFilms'
 import { SpacetimeScene } from './components/SpacetimeScene'
@@ -97,6 +98,11 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [contextBusyId, setContextBusyId] = useState<string | null>(null)
   const [batch, setBatch] = useState<{ done: number; total: number } | null>(null)
   const [notice, setNotice] = useState('')
+  // What the loading gate waits for besides the analysis (see LoadingGate)
+  const [worldData, setWorldData] = useState<WorldDataStatus | null>(null)
+  const [worldDataUnreachable, setWorldDataUnreachable] = useState(false)
+  const [mapReady, setMapReady] = useState(false)
+  const [analysisError, setAnalysisError] = useState('')
   // The life butler: subtitles over the map instead of a chat window
   const [subtitle, setSubtitle] = useState<Subtitle | null>(null)
   const [focus, setFocus] = useState<ButlerFocus | null>(null)
@@ -230,6 +236,48 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const pendingPhotoCards = analyzablePhotos.filter((a) => !a.card?.scene?.trim()).length
   const hasImages = (event: MemoryEvent) => event.assetIds.some((id) => { const a = memory.assets.find((x) => x.id === id); return Boolean(a?.preview && a.kind !== 'video') })
   const pendingAnalysis = memory.events.filter((e) => e.status === 'draft' && hasImages(e)).length
+  // ---- The loading gate: the map opens once its data, the map itself and the analysis are done
+  const megabytes = (bytes: number) => (bytes / 1048576).toFixed(0)
+  const analysisPaused = memory.autoPhotoCards === false
+  const photosWithEvents = memory.events.filter(hasImages).length
+  const cardsDone = analyzablePhotos.length - pendingPhotoCards
+  const gateSteps: GateStep[] = [
+    (() => {
+      const step = { id: 'data', label: '地图数据' }
+      if (worldDataUnreachable) return { ...step, state: 'error', detail: '连接不到服务，请确认 npm run dev 在运行' }
+      const s = worldData
+      if (!s || s.state === 'checking') return { ...step, state: 'active', detail: '正在检查本机的地图数据…' }
+      if (s.state === 'ready') return { ...step, state: 'done', detail: '街区地图数据已在本机' }
+      if (s.state === 'unavailable') return { ...step, state: 'done', detail: s.message }
+      if (s.state === 'verifying') return { ...step, state: 'active', detail: '正在校验文件完整性…', progress: 1 }
+      if (s.state === 'error') return { ...step, state: 'error', detail: s.error, action: { label: '重试下载', onClick: () => { void retryWorldData().then(setWorldData).catch((error) => setNotice(error instanceof Error ? error.message : '重试失败')) } } }
+      const left = s.speed > 0 ? Math.ceil((s.total - s.received) / s.speed) : 0
+      return { ...step, state: 'active', progress: s.total ? s.received / s.total : 0, detail: `正在下载 ${s.file}：${megabytes(s.received)}/${megabytes(s.total)} MB${s.speed ? ` · ${(s.speed / 1048576).toFixed(1)} MB/s · 约 ${left > 90 ? `${Math.ceil(left / 60)} 分钟` : `${left} 秒`}` : ''}` }
+    })(),
+    mapReady ? { id: 'map', label: '地图', state: 'done', detail: '地球和街区地图已加载' } : { id: 'map', label: '地图', state: 'active', detail: aiConfig.amapJsKey ? '正在加载高德地图和卡通世界…' : '正在加载地图…' },
+    !ready || importing
+      ? { id: 'library', label: '照片库', state: 'active', detail: importing ? '正在导入影像…' : '正在读取照片库…' }
+      : { id: 'library', label: '照片库', state: 'done', detail: memory.assets.length ? `${memory.assets.length} 个影像` : '还没有导入照片' },
+    (() => {
+      const step = { id: 'cards', label: '照片信息卡', progress: analyzablePhotos.length ? cardsDone / analyzablePhotos.length : undefined }
+      if (!pendingPhotoCards) return { ...step, state: 'done', detail: analyzablePhotos.length ? `${analyzablePhotos.length} 张照片已分析` : '没有需要分析的照片' }
+      if (configChecked && !aiConfig.available) return { ...step, state: 'error', detail: `${aiConfig.message}。在 .env 配置 StepFun 后重启服务` }
+      if (analysisPaused) return { ...step, state: 'paused', detail: `已暂停，还有 ${pendingPhotoCards} 张${analysisError ? `：${analysisError}` : ''}`, action: { label: '继续分析', onClick: resumeAnalysis } }
+      return { ...step, state: 'active', detail: locating ? `正在分析照片 ${cardsDone}/${analyzablePhotos.length}` : `等待分析 ${pendingPhotoCards} 张` }
+    })(),
+    (() => {
+      const step = { id: 'events', label: '事件分析', progress: photosWithEvents ? (photosWithEvents - pendingAnalysis) / photosWithEvents : undefined }
+      if (!pendingAnalysis) return { ...step, state: 'done', detail: photosWithEvents ? `${photosWithEvents} 件事已分析` : '没有需要分析的事件' }
+      if (configChecked && !aiConfig.available) return { ...step, state: 'error', detail: '需要 StepFun，见上一步' }
+      if (analysisPaused) return { ...step, state: 'paused', detail: `已暂停，还有 ${pendingAnalysis} 件`, action: pendingPhotoCards ? undefined : { label: '继续分析', onClick: resumeAnalysis } }
+      if (pendingPhotoCards) return { ...step, state: 'waiting', detail: `照片信息卡完成后开始，共 ${pendingAnalysis} 件` }
+      return { ...step, state: 'active', detail: busyEventId ? `正在分析事件，还有 ${pendingAnalysis} 件` : `等待分析 ${pendingAnalysis} 件` }
+    })(),
+  ] as GateStep[]
+  // Map data, the map and the library hold the map back; the analysis runs in the background
+  const gateOpen = gateSteps.some((step) => ['data', 'map', 'library'].includes(step.id) && step.state !== 'done')
+  const analysisSteps = gateSteps.filter((step) => step.id === 'cards' || step.id === 'events')
+  const analysisInBackground = !gateOpen && analysisSteps.some((step) => step.state !== 'done')
   const activeEvent = events.find((e) => e.id === activeEventId)
   const eventCovers = useMemo(() => {
     const assets = new Map(memory.assets.map((asset) => [asset.id, asset]))
@@ -282,6 +330,43 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     setActiveEventId(event.id)
   }
 
+  function reportAnalysisPause(error: unknown) {
+    const message = error instanceof Error ? error.message : ''
+    setAnalysisError(message)
+    setNotice(message ? `自动分析已暂停：${message}` : '自动分析已暂停')
+  }
+  // Also forgets the events tried in this session, so the one that failed is analyzed again
+  function resumeAnalysis() {
+    stopLocating.current = false
+    analysed.current.clear()
+    setAnalysisError('')
+    setMemory((current) => ({ ...current, autoPhotoCards: true }))
+  }
+
+  // The map data download on the service computer, polled until it is in place
+  useEffect(() => {
+    let stopped = false
+    let timer = 0
+    const poll = async () => {
+      let delay = 1000
+      try {
+        const status = await fetchWorldDataStatus()
+        if (stopped) return
+        setWorldData(status)
+        setWorldDataUnreachable(false)
+        if (status.state === 'ready' || status.state === 'unavailable') return
+        if (status.state === 'error') delay = 3000
+      } catch {
+        if (stopped) return
+        setWorldDataUnreachable(true)
+        delay = 3000
+      }
+      timer = window.setTimeout(poll, delay)
+    }
+    void poll()
+    return () => { stopped = true; clearTimeout(timer) }
+  }, [])
+
   // Analyze actual imported photos in the browser's account database, two at a time. Existing
   // Complete cards are kept; legacy cards with no observation need repair. Photos without
   // their own location can additionally use the card's place clue.
@@ -319,7 +404,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           } catch (error) {
             stopLocating.current = true
             setMemory((current) => ({ ...current, autoPhotoCards: false }))
-            setNotice(error instanceof Error ? `自动分析已暂停：${error.message}` : '自动分析已暂停')
+            reportAnalysisPause(error)
           } finally {
             setAutoBusyIds((ids) => ids.filter((id) => id !== asset.id))
           }
@@ -341,7 +426,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       }
     })().catch((error) => {
       setMemory((current) => ({ ...current, autoPhotoCards: false }))
-      setNotice(error instanceof Error ? `自动分析已暂停：${error.message}` : '自动分析已暂停')
+      reportAnalysisPause(error)
     })
   }, [memory.assets, memory.events, memory.autoPhotoCards, ready, aiConfig.available, aiConfig.amapJsKey])
 
@@ -510,7 +595,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       }))
     } catch (error) {
       setMemory((current) => ({ ...current, autoPhotoCards: false }))
-      setNotice(error instanceof Error ? `自动分析已暂停：${error.message}` : '自动分析已暂停')
+      reportAnalysisPause(error)
     } finally {
       setBusyEventId(null)
     }
@@ -880,6 +965,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           sceneEnabled={sceneEnabled}
           globeOverview={globeOverview && !selectedCity}
           onMapError={setNotice}
+          onMapReady={() => setMapReady(true)}
           places={places}
           bases={bases}
           story={story}
@@ -899,6 +985,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           focus={mapFocus}
           landmarkPreviewAt={landmarkPreviewAt}
         />}
+
+        {gateOpen && <LoadingGate steps={gateSteps} />}
+        {analysisInBackground && <BackgroundProgress steps={analysisSteps} />}
 
         {ready && events.length > 0 && (
           <div className="map-heading">
@@ -942,7 +1031,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
                   <span>{locating ? `正在分析照片 ${locating.done}/${locating.total}` : busyEventId ? `正在分析事件，还有 ${pendingAnalysis} 件` : pendingPhotoCards || pendingAnalysis ? `${memory.autoPhotoCards === false ? '已暂停' : '待分析'}${pendingPhotoCards ? ` ${pendingPhotoCards} 张照片` : ''}${pendingAnalysis ? ` ${pendingAnalysis} 件事` : ''}` : `${analyzablePhotos.length} 张照片信息卡 · 事件已自动分析`}</span>
                   {locating || busyEventId
                     ? <button onClick={() => { stopLocating.current = true; setMemory((current) => ({ ...current, autoPhotoCards: false })) }}>暂停</button>
-                    : (pendingPhotoCards > 0 || pendingAnalysis > 0) && memory.autoPhotoCards === false ? <button onClick={() => { stopLocating.current = false; setMemory((current) => ({ ...current, autoPhotoCards: true })) }}>继续分析</button> : null}
+                    : (pendingPhotoCards > 0 || pendingAnalysis > 0) && memory.autoPhotoCards === false ? <button onClick={resumeAnalysis}>继续分析</button> : null}
                 </div>
               )}
               {library.state?.understanding?.busy && <div className="locating-chip working" role="status" aria-label="回忆更新状态">
@@ -980,14 +1069,14 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           </div>
         )}
 
-        {ready && !events.length && (
+        {ready && !events.length && !gateOpen && (
           <div className="map-empty">
             <h1>从照片开始，画出你的人生地图</h1>
             <p>导入手机里的照片、视频或截图。Personal World 会先把它们整理成事件，再按事件发生的地方放上地图。</p>
             <button className="button button-primary" onClick={() => setImportOpen(true)}><Upload size={17} />导入第一批影像</button>
           </div>
         )}
-        {ready && events.length > 0 && !places.length && (
+        {ready && events.length > 0 && !places.length && !gateOpen && (
           <div className="map-empty compact">
             <h2>还没有可以放上地图的事件</h2>
             <p>{aiConfig.geocode || aiConfig.amapJsKey ? '这些照片没有定位信息。' : '填写高德 Key 后，带定位的照片会自动识别城市。'}{aiConfig.available ? '事件正在自动分析，认出的城市会放上地图；' : '接入 StepFun 后事件会自动分析；'}也可以打开事件手动填写城市。</p>

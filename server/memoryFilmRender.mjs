@@ -31,10 +31,12 @@ export async function filmCapability() {
   return { ...await available, format: 'mp4', width: 720, height: 960 }
 }
 
+// The subtitle fonts tried in order (scripts/preflight.mjs checks the same list)
+export const filmFontChoices = () => [process.env.MEMORY_FILM_FONT, 'C:/Windows/Fonts/msyh.ttc', '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', '/System/Library/Fonts/PingFang.ttc'].filter(Boolean)
+
 async function prepareFont(directory) {
   const target = path.join(directory, 'font.ttf')
-  const choices = [process.env.MEMORY_FILM_FONT, 'C:/Windows/Fonts/msyh.ttc', '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', '/System/Library/Fonts/PingFang.ttc'].filter(Boolean)
-  for (const font of choices) {
+  for (const font of filmFontChoices()) {
     try {
       await access(font); await copyFile(font, target)
       await copyFile('C:/Windows/Fonts/msyhbd.ttc',path.join(directory,'font-bold.ttf')).catch(()=>copyFile(font,path.join(directory,'font-bold.ttf')))

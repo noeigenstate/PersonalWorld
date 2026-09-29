@@ -74,6 +74,16 @@ export function createAmapLifeMap(container: HTMLElement, callbacks: LifeMapCall
     showBuildingBlock: false,
     animateEnable: !reduceMotion,
   })
+  // AMap silently serves the 2D map when it does not accept the browser for WebGL (see
+  // letAmapUseWebgl in amap.ts). There the camera, GLCustomLayer and Buildings do not work and the
+  // cartoon world cannot be drawn: leave cleanly, so LifeMapView falls back to the cartoon board
+  // with a message instead of showing a blank map.
+  if (map.getViewMode_?.() === '2D') {
+    map.destroy()
+    for (const el of [mapEl, colorWash, canvas, atmosphere, photoLayer, labelLayer]) el.remove()
+    delete container.dataset.sceneCredit
+    throw new Error('高德地图没有启用 3D 模式（浏览器不支持 WebGL，或被高德判定为不支持）')
+  }
   const buildings = new AMap.Buildings({
     zooms: [16.8, 20],
     wallColor: '#d9b9a5',

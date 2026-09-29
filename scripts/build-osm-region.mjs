@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 
 const here = (path) => fileURLToPath(new URL(path, import.meta.url))
 const sources = here('../world-data/sources/')
+if (existsSync(here('../.env'))) process.loadEnvFile(here('../.env'))
 const regions = JSON.parse(await readFile(here('../world-data/regions.json'), 'utf8'))
 const names = process.argv.slice(2)
 if (!names.length || names.some((name) => !regions[name])) {
@@ -44,7 +45,8 @@ const args = [
 ]
 console.log(`构建 ${names.map((n) => regions[n].name).join('、')}：${bounds.join(', ')} → ${output}`)
 const started = Date.now()
-const code = await new Promise((resolve) => spawn('java', args, { stdio: 'inherit' }).on('close', resolve))
+// Planetiler needs Java 21+; JAVA_PATH in .env points at one that is not on the PATH
+const code = await new Promise((resolve) => spawn(process.env.JAVA_PATH || 'java', args, { stdio: 'inherit' }).on('close', resolve))
 if (code !== 0) process.exit(code)
 const size = (await stat(output)).size
 console.log(`完成：${(size / 1048576).toFixed(0)} MB，用时 ${Math.round((Date.now() - started) / 60000)} 分钟`)

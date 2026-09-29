@@ -31,11 +31,11 @@ const mock = http.createServer(async (req, res) => {
   const payload = JSON.parse(raw.toString())
   requests[requests.length - 1].payload = payload
   const system = payload.messages[0].content
-  const plateCase = JSON.stringify(payload.messages?.[1]?.content || '').includes('DSCF3348')
+  const plateCase = JSON.stringify(payload.messages?.[1]?.content || '').includes('DSCF0001')
   const output = system.includes('照片信息卡助手') && plateCase
     ? { title: '雨天行车', caption: '〔可能在云南〕', scene: '车内视角', visibleText: '云A 12345', clues: [{ kind: '地点', evidence: '前车车牌云A 12345', inference: '车辆登记于云南昆明，拍摄地点可能在云南', confidence: 0.9 }, { kind: '地点', evidence: '远处雪山和草场', inference: '高原地区', confidence: 0.7 }], placeQuery: { text: '云南', city: '', from: 'text', confidence: 0.7 }, eventGuess: { type: '旅行', reason: '自驾' }, tags: ['云南', '雨天', '自驾'], questions: [] }
     : system.includes('照片信息卡助手')
-    ? { title: '新居装修', caption: '〔可能在杭州〕', scene: '天花板上的灯', visibleText: '恒彩家装 0571-5670 0000', clues: [{ kind: '地点', evidence: '区号 0571', inference: '装修公司在杭州', confidence: 0.6 }, { kind: '事件', evidence: '', inference: '无依据的线索应被丢弃', confidence: 0.9 }], eventGuess: { type: '搬家装修', reason: '保护膜' }, tags: ['装修'], questions: ['这是你家吗？', '哪一年？', '第三个问题应被截掉'] }
+    ? { title: '新居装修', caption: '〔可能在杭州〕', scene: '天花板上的灯', visibleText: '某某家装 0571-1234 0000', clues: [{ kind: '地点', evidence: '区号 0571', inference: '装修公司在杭州', confidence: 0.6 }, { kind: '事件', evidence: '', inference: '无依据的线索应被丢弃', confidence: 0.9 }], eventGuess: { type: '搬家装修', reason: '保护膜' }, tags: ['装修'], questions: ['这是你家吗？', '哪一年？', '第三个问题应被截掉'] }
     : system.includes('人生管家')
     // Actions on things that do not exist (a city, a photo, a film, a scene) must be dropped by the server
     ? { answer: '那是爸妈第一次来〔上海〕看你。', eventIds: ['e2', 'not-a-real-id'], assetIds: ['p1', 'nope'], actions: [{ type: 'show_photos', assetIds: ['p1', 'nope', 'p1'] }, { type: 'focus_city', city: '火星市' }, { type: 'set_place_role', city: '上海市', role: 'work' }, { type: 'open_spacetime' }, { type: 'teleport' }, { type: 'play_film', filmId: 'f9' }, { type: 'make_film', assetIds: ['nope', 'p1'] }] }
@@ -204,7 +204,7 @@ try {
   // Photo card with consent: numbers as written, clues without evidence dropped, lists capped
   const photo = { image: { dataUrl: 'data:image/jpeg;base64,/9j/2Q==' }, facts: { fileName: '微信图片_20260924133610.jpg', time: '2026-09-24T05:36:10Z', timeSource: 'filename', size: '1080 × 1920' } }
   const consentCard = await (await post('/api/photo-card', photo)).json()
-  assert.equal(consentCard.visibleText, '恒彩家装 0571-5670 0000', '同意隐私声明后号码原样显示')
+  assert.equal(consentCard.visibleText, '某某家装 0571-1234 0000', '同意隐私声明后号码原样显示')
   assert.equal(consentCard.clues.length, 1)
   assert.equal(consentCard.questions.length, 2)
   const cardCall = last('/v1/chat/completions').payload
@@ -215,7 +215,7 @@ try {
   assert.equal((await post('/api/photo-card', { image: { dataUrl: 'data:text/plain;base64,AA==' } })).status, 400)
 
   // A licence plate never places a photo: confidence capped, no tag or map search built on it
-  const plateCard = await (await post('/api/photo-card', { image: photo.image, facts: { ...photo.facts, fileName: 'DSCF3348.JPG' } })).json()
+  const plateCard = await (await post('/api/photo-card', { image: photo.image, facts: { ...photo.facts, fileName: 'DSCF0001.JPG' } })).json()
   const plateClue = plateCard.clues.find((c) => /车牌/.test(c.evidence))
   assert.equal(plateClue.confidence, 0.3)
   assert.match(plateClue.inference, /车牌只说明车辆登记地/)
@@ -267,11 +267,11 @@ try {
   assert.equal((await legacy.json()).user.privacyAccepted, false)
   assert.equal((await fetch(`${apiBase}/api/vault/state`, { headers })).status, 403, '未同意隐私声明不能使用照片库')
   const maskedCard = await (await post('/api/photo-card', photo)).json()
-  assert.equal(maskedCard.visibleText, '恒彩家装 0571-********', '未同意时号码被遮挡')
+  assert.equal(maskedCard.visibleText, '某某家装 0571-********', '未同意时号码被遮挡')
   assert.match(last('/v1/chat/completions').payload.messages[1].content[0].text, /隐私声明：用户未同意/)
   const accepted = await (await post('/api/auth/privacy', {})).json()
   assert.equal(accepted.user.privacyAccepted, true)
-  assert.equal((await (await post('/api/photo-card', photo)).json()).visibleText, '恒彩家装 0571-5670 0000')
+  assert.equal((await (await post('/api/photo-card', photo)).json()).visibleText, '某某家装 0571-1234 0000')
   console.log('API test passed: accounts + privacy consent, guard, analysis, photo card, geocode (GCJ-02), butler, ASR, TTS, AMap proxy, account vault, logout.')
 } finally {
   api.kill()

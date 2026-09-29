@@ -27,3 +27,7 @@ world-data/sources/
 world-data/*.mbtiles
 world-data/*.download
 world-data/osm/
+
+# Local materials and tool environments
+/人生故事素材-0929/
+.venv/

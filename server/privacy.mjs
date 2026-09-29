@@ -10,7 +10,7 @@ export function maskNumbers(text) {
     .replace(LANDLINE, (_, area) => `${area}-********`)
 }
 
-// Also catches numbers the model half-masked, e.g. "0571-5670 ****"
+// Also catches numbers the model half-masked, e.g. "0571-1234 ****"
 const PARTIAL = /(?<!\d)(0\d{2,3})[-\s]?\d{3,4}[-\s]?\*{2,}/g
 
 export function maskDeep(value) {

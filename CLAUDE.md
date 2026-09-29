@@ -12,6 +12,9 @@
 - 能测试的 skill 做对比测试（用 / 不用 skill 执行同一任务），结果放在该 skill 的 `evals/`。评分脚本要先核对失败样例，避免误判。
 - 顶栏不放导航按钮。人生管家没有聊天面板：地图上的 `VoiceButler` 支持按住说话，以及话筒旁的「打字」入口（用户远程访问无法使用麦克风时）。两种输入共用管家请求、字幕、朗读和地图动作；点击地点时管家先用字幕开口。`#tell=` 链接只预填文字，用户发送后才执行。
 - 管家是一个会操作地图的 agent：`/api/butler` 收到照片信息卡索引和界面状态，返回 `actions`（按语义找照片、定位到照片、讲故事配幻灯片、打开事件、记据点角色、拨时间线、打开人物与故事 / 时空场景 / 回忆短片），动作在 `server/butler.mjs` 校验、在 `App.tsx` 执行。人物与故事、时空场景、回忆短片不做按钮，由管家在对话中打开，结果展示在地图上（`Showcase` 舞台、地图随照片移动）。
+- 启动前必须先过环境检查（`scripts/preflight.mjs`，`predev` 自动运行，`npm run check` 只报告）：必需的依赖没满足服务不启动。新增依赖或配置项时，同步更新这个脚本、`.env.example` 和 README 的「功能与依赖」表；不需要用户配置的项不要写进 `.env.example`，不要误导。
+- 地图没准备好不给用户看：地图数据下载、地图加载、照片库读取期间由 `LoadingGate` 盖住地图并显示进度（含出错原因和重试）；照片信息卡和事件分析在后台进行，用 `BackgroundProgress` 显示进度，不挡地图。新增会让地图内容不完整的前置步骤，要加进 `App.tsx` 的 `gateSteps`。
+- 高德 JS API 对 Linux 浏览器返回 2D 地图（只看 `navigator.userAgent`），2D 下卡通世界画不出来：`src/map/amap.ts` 的 `letAmapUseWebgl` 在 Linux 桌面上让高德按 WebGL 浏览器处理，`amapScene.ts` 检测到 2D 时退回卡通底板。不要让用户去改浏览器设置。
 - 分析是自动的：照片信息卡和事件分析在导入后自行进行，用户只核对与确认，不放"用 StepFun 分析"之类的手动按钮。
 - 边看边讲由 `skills/memory-storytelling` 驱动：自动选题、独立重看实图、写作、独立复核补丁、证据校验；`StoryStage` 支持跨图旁白、并排对照、留白和回看。话筒旁「听故事」进入，语音和文字也能触发。讲述按账户保存，人物、观察或用户补充变化后重听需重编；生成旁白不能回写成事实。新增存储规则遵循下方隐私版本要求。
 - 4D 三维建模按 `skills/spacetime-modeling` 执行：单张照片只是 2.5D 浮雕，查看器相机固定在拍照位置、只许几度摆动、禁缩放、垫对齐的原照片；改重建方式要升 `RELIEF_VERSION`。分段与证据层是运行时 skill `spacetime-scene`。
@@ -26,6 +29,7 @@
 ## 验证
 
 ```powershell
+npm run check        # 启动前环境检查（只报告）
 npm run build
 npm run test:api
 npm run test:unit    # 时间刻度、重复照片分组等纯逻辑

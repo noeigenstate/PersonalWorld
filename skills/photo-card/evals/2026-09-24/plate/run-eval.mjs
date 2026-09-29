@@ -69,7 +69,7 @@ const cfg = stepfunConfig()
 const strip = (text) => text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/, '').trim()
 const skills = { before: strip(readFileSync(here('./SKILL.before.md'), 'utf8')), after: loadSkill('photo-card') }
 const images = { 1200: 'plate-1200.jpg', 2560: 'plate-2560.jpg' }
-const facts = { fileName: 'DSCF3348.JPG', time: '2021/10/07 15:29', timeSource: 'exif', size: '6000 × 4000', device: 'FUJIFILM X-A5 · XC15-45mmF3.5-5.6 OIS PZ' }
+const facts = { fileName: 'DSCF0001.JPG', time: '2021/10/07 15:29', timeSource: 'exif', size: '6000 × 4000', device: 'FUJIFILM X-A5 · XC15-45mmF3.5-5.6 OIS PZ' }
 
 const RUNS = Number(process.env.RUNS || 3)
 const results = {}

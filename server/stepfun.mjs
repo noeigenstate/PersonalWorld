@@ -11,7 +11,6 @@ export function stepfunConfig(env = process.env) {
     asrModel: env.STEPFUN_ASR_MODEL?.trim() || 'stepaudio-2.5-asr',
     ttsModel: env.STEPFUN_TTS_MODEL?.trim() || 'stepaudio-2.5-tts',
     ttsVoice: env.STEPFUN_TTS_VOICE?.trim() || 'cixingnansheng',
-    agentUrl: env.STEPFUN_AGENT_API_URL?.trim(),
   }
 }
 

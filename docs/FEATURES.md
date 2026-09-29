@@ -13,6 +13,12 @@
 
 用户数据的迁移：整个 `server/data/` 拷到新机器同一位置即可（`users.json` 与 `accounts/<账户ID>/` 必须带，`memory-graph/`、`memory-films/` 建议带，`map-scenes/`、`cartoon-tiles/` 是缓存可不带）。用户用原来的用户名和密码登录，照片和记忆会从 `accounts/` 自动恢复。
 
+## 启动与加载
+
+- **启动前检查**：`npm run dev` 先运行 `scripts/preflight.mjs`，逐项检查 Node、密钥、StepFun 模型、高德、地图档案、Python 与人脸模型、FFmpeg、ComfyUI 与 Depth Anything 3 模型；能自动处理的（下载地图档案、安装人脸模型、启动 ComfyUI）自动处理，必需项没满足就不启动。`npm run check` 只报告不改动。
+- **地图数据**：约 558 MB，4 连接分块下载，可断点续传，下载完校验 SHA-256；`GET /api/world-data/status` 返回状态、已下载字节、速度，出错时 `POST /api/world-data/retry` 从断点继续。
+- **加载遮罩**：地图数据、地图本身、照片库没有准备好时，界面用进度卡盖住地图（含错误原因和"重试下载"），全部就绪后才打开地图。照片信息卡和事件分析在后台进行，右上角的后台进度卡显示进度，不挡地图；暂停或失败时给出原因和"继续分析"。
+
 ## 当前可用流程
 
 1. **导入**：JPG、PNG、WebP、GIF 或浏览器能播放的视频，保存在浏览器 IndexedDB。读取拍摄时间与 GPS，按 SHA-256 跳过完全相同的文件。

@@ -22,6 +22,8 @@ interface Props extends LifeMapData {
   // The user zoomed from the globe into the street map (false) or back out (true)
   onGlobeChange?: (globe: boolean) => void
   onMapError: (message: string) => void
+  // The street map is up (AMap loaded, or the cartoon board it fell back to)
+  onMapReady?: () => void
   // Changes every time the user asks to see a photo on the map
   focus?: { photo: MapPhoto; at: number } | null
   landmarkPreviewAt?: number
@@ -53,7 +55,7 @@ const altitudeForZoom = (zoom: number, lat: number, heightPx: number) =>
 // The street map (AMap, or the cartoon board without a key) and the globe stay mounted together;
 // the globe lies on top and fades out when the view is handed to the street map, so zooming in
 // and out is one continuous movement.
-export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, insetTop = 0, sceneEnabled, globeOverview, onSelectCity, onOpenEvent, onOpenPhoto, onFocusPhoto, onGlobeChange, onMapError, focus, landmarkPreviewAt = 0, ...data }: Props) {
+export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, insetTop = 0, sceneEnabled, globeOverview, onSelectCity, onOpenEvent, onOpenPhoto, onFocusPhoto, onGlobeChange, onMapError, onMapReady, focus, landmarkPreviewAt = 0, ...data }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const baseHost = useRef<HTMLDivElement>(null)
   const globeHost = useRef<HTMLDivElement>(null)
@@ -70,8 +72,8 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, inset
   }
   const latest = useRef({ data, insets: { right: insetRight, bottom: insetBottom, top: insetTop }, sceneEnabled, landmarkPreviewAt, focus })
   latest.current = { data, insets: { right: insetRight, bottom: insetBottom, top: insetTop }, sceneEnabled, landmarkPreviewAt, focus }
-  const callbacks = useRef({ onSelectCity, onOpenEvent, onOpenPhoto, onFocusPhoto, onGlobeChange, onMapError })
-  callbacks.current = { onSelectCity, onOpenEvent, onOpenPhoto, onFocusPhoto, onGlobeChange, onMapError }
+  const callbacks = useRef({ onSelectCity, onOpenEvent, onOpenPhoto, onFocusPhoto, onGlobeChange, onMapError, onMapReady })
+  callbacks.current = { onSelectCity, onOpenEvent, onOpenPhoto, onFocusPhoto, onGlobeChange, onMapError, onMapReady }
 
   const handlers = (withAmap: boolean) => ({
     onSelectCity: (city: string | null) => callbacks.current.onSelectCity(city),
@@ -137,6 +139,7 @@ export function LifeMapView({ amapKey, amapStyle, insetRight, insetBottom, inset
       mount(map, api)
       if (latest.current.focus) api.focusPhoto?.(latest.current.focus.photo)
       else if (latest.current.landmarkPreviewAt) api.focusLandmark?.()
+      callbacks.current.onMapReady?.()
     }
     if (amapKey) {
       loadAmap(amapKey)

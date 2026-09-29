@@ -18,7 +18,7 @@ const card = {
   title: '新居装修验收',
   caption: '房间灯具已装好，窗户还贴着保护膜，〔可能是在杭州验收新房〕。',
   scene: '天花板中央装着一盏圆形风扇灯，窗户玻璃贴着印有文字的保护膜。',
-  visibleText: '恒彩家装 0571-****',
+  visibleText: '某某家装 0571-****',
   clues: [
     { kind: '事件', evidence: '窗户贴着装修公司的保护膜，房间里没有家具', inference: '装修刚完工，还没入住', confidence: 0.85 },
     { kind: '地点', evidence: '保护膜上的电话区号 0571', inference: '装修公司在杭州，照片可能也在杭州；广告电话只说明商家所在地', confidence: 0.6 },

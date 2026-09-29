@@ -14,7 +14,7 @@ import { MAX_PHOTOS as CULL_MAX, cullMessages, readCull } from './photoCull.mjs'
 import { MAX_PHOTOS as SCENE_MAX, RELIEF_VERSION, readScenePlan, reconstructRelief, reliefCapability, sceneMessages } from './spacetimeScene.mjs'
 import { mapSceneForPoint } from './mapScene.mjs'
 import { cartoonTile, reloadArchives } from './cartoonTiles.mjs'
-import { syncWorldData } from './worldData.mjs'
+import { syncWorldData, worldDataStatus } from './worldData.mjs'
 import { createFilmService } from './memoryFilms.mjs'
 import { filmCapability } from './memoryFilmRender.mjs'
 import { createMemoryReview } from './memoryReview.mjs'
@@ -390,13 +390,19 @@ const server = http.createServer(async (req, res) => {
       const ready = Boolean(stepfun.apiKey && stepfun.model)
       return send(res, 200, {
         available: ready,
-        mode: ready ? 'model' : stepfun.agentUrl ? 'agent-needs-adapter' : 'unconfigured',
-        message: ready ? `StepFun ${stepfun.model} 已配置，连接尚未验证` : stepfun.agentUrl ? '已填写 Agent 地址，仍需核对该 Agent 的 API 请求格式' : '未配置 StepFun API Key；本地整理仍可使用',
+        mode: ready ? 'model' : 'unconfigured',
+        message: ready ? `StepFun ${stepfun.model} 已配置，连接尚未验证` : '未配置 StepFun API Key；本地整理仍可使用',
         geocode: Boolean(amap.serviceKey),
         localReview: process.env.MEMORY_REVIEW_LOCAL === '1',
         amapJsKey: amap.jsKey && amap.securityCode ? amap.jsKey : undefined,
         amapStyle: /^amap:\/\/styles\/[A-Za-z0-9]+$/.test(process.env.AMAP_MAP_STYLE || '') ? process.env.AMAP_MAP_STYLE : undefined,
       })
+    }
+    if (req.method === 'GET' && path === '/api/world-data/status') return send(res, 200, await worldDataStatus())
+    if (req.method === 'POST' && path === '/api/world-data/retry') {
+      if (!signedIn()) return send(res, 401, { error: '请先登录' })
+      startWorldDataSync()
+      return send(res, 202, await worldDataStatus())
     }
     if (req.method === 'GET' && path === '/api/health') return send(res, 200, { ok: true })
 
@@ -424,4 +430,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(port, '127.0.0.1', () => console.log(`Personal World API running on http://127.0.0.1:${server.address().port}`))
 
 // Map data from the project's Seafile, in the background (world-data/manifest.json, WORLD_DATA_URL)
-if (!process.env.SKIP_WORLD_DATA) syncWorldData({ log: (line) => console.log(`[地图数据] ${line}`) }).then((done) => { if (done.length) reloadArchives() }).catch((error) => console.warn('[地图数据]', error.message))
+function startWorldDataSync() {
+  syncWorldData({ log: (line) => console.log(`[地图数据] ${line}`) }).then((done) => { if (done.length) reloadArchives() }).catch((error) => console.warn('[地图数据]', error.message))
+}
+if (!process.env.SKIP_WORLD_DATA) startWorldDataSync()

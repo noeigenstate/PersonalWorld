@@ -69,6 +69,25 @@ export async function fetchAiConfig(): Promise<AiConfig> {
   return jsonResponse<AiConfig>(await fetch('/api/config'))
 }
 
+// The cartoon world's map data on the service computer (server/worldData.mjs)
+export interface WorldDataStatus {
+  state: 'checking' | 'downloading' | 'verifying' | 'ready' | 'unavailable' | 'error'
+  file: string
+  received: number
+  total: number
+  speed: number
+  error: string
+  message: string
+}
+
+export async function fetchWorldDataStatus(): Promise<WorldDataStatus> {
+  return jsonResponse<WorldDataStatus>(await fetch('/api/world-data/status'))
+}
+
+export async function retryWorldData(): Promise<WorldDataStatus> {
+  return jsonResponse<WorldDataStatus>(await fetch('/api/world-data/retry', { method: 'POST' }))
+}
+
 export async function analyzeEvent(event: MemoryEvent, assets: MemoryAsset[]): Promise<AnalysisResult> {
   const images = event.assetIds
     .map((id) => assets.find((asset) => asset.id === id))
