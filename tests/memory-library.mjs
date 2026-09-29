@@ -26,7 +26,7 @@ try{
    const path=new URL(route.request().url()).pathname,body=route.request().method()==='POST'?route.request().postDataJSON():{}
    try{
      if(path==='/api/auth/me')return route.fulfill({json:{user:{id:'memory-library-fixture',username:'人物流程测试',privacyAccepted:true}}})
-     if(path==='/api/config')return route.fulfill({json:{available:false,mode:'unconfigured',geocode:false}})
+     if(path==='/api/config')return route.fulfill({json:{available:true,mode:'model',message:'fixture',geocode:false}})
      if(path.startsWith('/api/memory-graph/faces/'))return route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" fill="#ddd3b3"/><circle cx="64" cy="50" r="25" fill="#8a9f85"/><path d="M24 120Q64 40 104 120" fill="#8a9f85"/></svg>'})
      if(path==='/api/memory-graph')return route.fulfill({json:state()})
      if(path==='/api/memory-graph/sync'){store.sync(body);return route.fulfill({json:state()})}
@@ -46,10 +46,11 @@ try{
    await saveMemory({assets,events:[{ id: 'story-e1', assetIds: assets.map((a) => a.id), occurredAt: assets[0].capturedAt, timeSource: 'exif', title: '测试故事', summary: '', type: '日常', place: '', city: '杭州市', citySource: 'user', lat: 30.25, lng: 120.15, people: [], visibleText: '', tags: [], questions: [], status: 'confirmed' }],placeRoles:{},autoPhotoCards:false});await saveFilmSettings({enabled:false,attempted:[]})
  },assets)
  await page.reload()
- // People and stories live on a story line: open the city first
- await page.locator('.globe-place, .globe-cluster, .map-label.place:visible').first().click()
- if(await page.getByRole('dialog',{name:'选择地点'}).count())await page.getByRole('dialog',{name:'选择地点'}).getByRole('button').first().click()
- await page.getByRole('button',{name:'人物与故事',exact:true}).click()
+ // People and stories have no button: the butler opens them when asked (its answer stubbed here;
+ // typing needs no microphone or speech recognition)
+ await page.route('**/api/butler',route=>route.fulfill({json:{answer:'我把人物和故事打开。',eventIds:[],assetIds:[],actions:[{type:'open_stories'}]}}))
+ await page.evaluate(()=>{window.location.hash=`tell=${encodeURIComponent('看看照片里的人物')}`})
+ const askBox=page.getByRole('textbox',{name:'想回忆什么'});await askBox.waitFor();await askBox.press('Enter')
  await page.locator('.person-card').first().click();await page.getByLabel('名字或昵称').fill('团团');await page.getByLabel('与你的关系').fill('女儿')
  await page.getByRole('button',{name:'确认这组是同一人'}).click()
  await page.waitForFunction(()=>document.querySelector('.person-card strong')?.textContent==='团团')

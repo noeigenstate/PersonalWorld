@@ -22,9 +22,11 @@
   </p>
 </div>
 
-![从地球连续放大到街区：整张地图都是按真实地理"卡通化"出来的](docs/media/hero.gif)
+<p align="center">
+  <img src="docs/media/hero.gif" alt="从地球连续放大到街区：整张地图都是按真实地理&quot;卡通化&quot;出来的" />
+</p>
 
-<sub>演示用 AI 生成的虚构照片录制，没有任何真实的私人照片。地图、时间线、缩放与三维重建都是真实运行；语音识别、管家的回答和时空场景的分段为固定脚本（保证录制可重复）。</sub>
+<p align="center"><sub>演示用 AI 生成的虚构照片录制，没有任何真实的私人照片。地图、时间线、缩放与三维重建都是真实运行；语音识别、管家的回答和时空场景的分段为固定脚本（保证录制可重复）。</sub></p>
 
 ## 项目说明
 
@@ -113,6 +115,8 @@ flowchart LR
 - **并发与流水线。** 信息卡两张并行、事件逐件分析、失败自动暂停并可从断点继续；界面在分析期间保持可用，进度显示在后台进度卡里。
 - **用评估而不是感觉调 Skill。** 每个 Skill 的规则由真实模型的对比测试确定：photo-card **44/45 vs 23/45**、photo-context **48/48 vs 40/48**、photo-cull **36/36 vs 34/36**（用 / 不用 skill），见各 Skill 的 `evals/`。评分脚本先核对失败样例，避免误判。
 - **本机模型的参数取舍。** 三维重建选 `resolution=1008`、`decimation=2`、`discontinuity_threshold=0.12`、开启天空遮罩：再高的分辨率显存和时间线性增加而细节提升有限，GLB 约 5–10 MB，详见 [浮雕管线](skills/spacetime-modeling/references/relief-pipeline.md)。
+- **管家回答提速 3 倍。** 一次管家请求的输出有 600–1700 个 token，而真正的回答只有几十个字，绝大部分时间是模型的"思考"，网络往返只有约 0.1 秒。交互式的管家请求用 `reasoning_effort=low`：12 个问题的实测，中位耗时从 15.3 秒降到 5.0 秒，回答和动作（如"海边的照片"触发找照片）一致；后台任务保持默认强度。
+- **生产模式。** `npm start` 用构建好的成品，首屏更快（数据见"快速开始"）；地球与街区拖动时帧率 76–96 fps（NVIDIA GB10 上实测）。
 - **地图数据又快又稳。** 558 MB 的地图档案用 4 连接分块下载、断点续传、SHA-256 校验，页面显示实时速度和剩余时间；瓦片一次构建后存盘，浏览器再缓存一份。
 
 ## 功能
@@ -224,10 +228,13 @@ cd PersonalWorld
 npm install
 cp .env.example .env      # Windows: copy .env.example .env；填入 StepFun 与高德密钥
 npm run check             # 只检查，不改动：逐项报告环境是否满足
-npm run dev               # 先自动检查并补齐，全部满足才启动；打开 http://localhost:5183/
+npm start                 # 日常使用（推荐）：先自动检查并补齐，构建后启动，首屏更快；打开 http://localhost:5183/
+npm run dev               # 开发：同样先检查，带热更新，首屏会慢一些
 ```
 
-`npm run dev` 启动前会做的事（`scripts/preflight.mjs`）：
+`npm start` 和 `npm run dev` 的地址、接口和数据完全一样，区别只在网页怎么提供：前者是构建好的成品，后者是开发用的逐个模块加载。在同一台机器上实测，首屏地球出现的时间从 1.3–2.3 秒降到 0.3–0.6 秒，请求从 164 个降到 64 个，传输从 26 MB 降到 9 MB。局域网访问用 `npm run start:lan`。
+
+`npm start` 和 `npm run dev` 启动前都会做的事（`scripts/preflight.mjs`）：
 
 | 检查 | 自动处理 |
 | --- | --- |
@@ -240,7 +247,7 @@ npm run dev               # 先自动检查并补齐，全部满足才启动；�
 | ComfyUI 是否运行、两个 Depth Anything 3 模型是否在位 | 设置了 `COMFYUI_DIR` 时**自动启动 ComfyUI** |
 | Chrome、Java、Planetiler、ffprobe（开发工具） | 只提示，不影响启动 |
 
-有任何一项必需的依赖没满足，服务**不会启动**，并列出问题和修复办法。首次打开网页先注册账户并同意隐私声明，然后导入照片。
+有任何一项必需的依赖没满足，服务**不会启动**，并列出问题和修复办法。修改代码后，`npm start` 要重启才会重新构建。首次打开网页先注册账户并同意隐私声明，然后导入照片。
 
 <details>
 <summary><strong>各系统的依赖安装</strong> · Node、Python、FFmpeg、ComfyUI、Java</summary>
@@ -408,7 +415,10 @@ npm run test:unit      # 时间刻度、重复照片分组等纯逻辑
 npm run test:skills    # 每个 skill 的专门测试；LIVE=1 连接真实服务
 npm run test:smoke     # 需先 npm run dev；虚构相册走完注册→导入→分析→地图→故事线→语音
 npm run test:world     # 需先 npm run dev；地球→全国→城市→街道的卡通世界
+npm run test:spacetime # 需先 npm run dev；时空场景：分段、证据，本机 GPU 上真实三维重建
 node tests/film-treatments.mjs   # 真实渲染 5 种风格的回忆短片并完整解码
+node --env-file=.env tests/memory-film.mjs     # 需先 npm run dev；管家要求做短片 → 渲染 → ffprobe 校验
+node --env-file=.env tests/memory-library.mjs  # 需先 npm run dev；管家打开人物与故事 → 确认人物 → 章节转短片
 ```
 
 全部命令见[功能说明与数据细节](docs/FEATURES.md#验证)。浏览器测试需要本机 Chrome，使用独立会话，不改你日常浏览器里的数据。本页的 GIF 由 `node scripts/record-readme-media.mjs` 录制。

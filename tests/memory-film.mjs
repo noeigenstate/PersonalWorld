@@ -10,13 +10,13 @@ import { chromium } from 'playwright'
 import { fallbackFilm, readFilmSources, validateFilmPlan } from '../server/memoryFilmPlan.mjs'
 import { runMedia } from '../server/memoryFilmRender.mjs'
 
-// Films live on a story line (not in the top bar): open the city, then the films entry
-async function openFilms(page) {
-  if (!(await page.locator('.story-apps .film-entry').count())) {
-    await page.locator('.globe-place, .globe-cluster, .map-label.place:visible').first().click()
-    if (await page.getByRole('dialog', { name: '选择地点' }).count()) await page.getByRole('dialog', { name: '选择地点' }).getByRole('button').first().click()
-  }
-  await page.getByRole('button', { name: '回忆短片', exact: true }).click()
+// Films have no button: the life butler opens them when asked. The butler's answer is stubbed
+// (registered by `stubButler` below); typing needs no microphone or speech recognition.
+async function openFilms(page, ask = '给我做一支回忆短片') {
+  await page.evaluate((text) => { window.location.hash = `tell=${encodeURIComponent(text)}` }, ask)
+  const textInput = page.getByRole('textbox', { name: '想回忆什么' })
+  await textInput.waitFor()
+  await textInput.press('Enter')
 }
 
 const dir = mkdtempSync(join(tmpdir(), 'pw-memory-film-'))
@@ -62,6 +62,10 @@ try {
     const response = await route.fetch({ url: `${base}${url.pathname}${url.search}`, headers: { ...route.request().headers(), cookie } })
     await route.fulfill({ response })
   })
+  // Registered after the pass-through, so it wins: asked for a film, the butler cuts one; asked to play, it opens the existing one
+  await page.route('**/api/tts', (route) => route.fulfill({ status: 503, json: { error: '测试中不朗读' } }))
+  let butlerAction = { type: 'make_film' }
+  await page.route('**/api/butler', (route) => route.fulfill({ json: { answer: '好的。', eventIds: [], assetIds: [], actions: [butlerAction] } }))
   await page.goto(process.env.BASE_URL || 'http://localhost:5183/')
   await page.evaluate(async ({ userId, sources }) => {
     const assets = sources.map((source, index) => {
@@ -81,6 +85,12 @@ try {
     await openAccountStorage(userId); await saveMemory({ assets, events: [{ id: 'story-e1', assetIds: assets.map((a) => a.id), occurredAt: assets[0].capturedAt, timeSource: 'exif', title: '测试故事', summary: '', type: '日常', place: '', city: '杭州市', citySource: 'user', lat: 30.25, lng: 120.15, people: [], visibleText: '', tags: [], questions: [], status: 'confirmed' }], placeRoles: {}, autoPhotoCards: false })
   }, { userId: user.id, sources })
   await page.reload()
+  // The page hands the photos' facts to the server's memory graph a moment after loading, and a
+  // film is cut from those: ask for one only once the server has them
+  for (let waited = 0; waited < 30000; waited += 500) {
+    if ((await (await fetch(`${base}/api/memory-graph`, { headers: { cookie } })).text()).includes('film-fixture-7')) break
+    await page.waitForTimeout(500)
+  }
   await openFilms(page)
   // Deliberately don't press Generate or supply a prompt. The default automation
   // must create the job, choose sources, upload and render on its own.
@@ -112,7 +122,8 @@ try {
   await page.reload(); await page.waitForTimeout(12000)
   const after = await (await fetch(`${base}/api/memory-films`, { headers: { cookie } })).json()
   assert.equal(after.jobs.length, 1, 'reload must not regenerate same collection')
-  await openFilms(page)
+  butlerAction = { type: 'play_film' }
+  await openFilms(page, '播放回忆短片')
   await page.setViewportSize({ width: 430, height: 900 }); await page.screenshot({ path: join(dir, 'film-mobile.png') })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   assert.deepEqual(errors, [])

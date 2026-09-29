@@ -209,11 +209,14 @@ const routes = {
     }
     if (body.intent === 'story' || body.storyId || /边看.{0,8}边(?:听|讲)|演绎|讲.{0,30}(?:故事|回忆)|听.{0,12}(?:故事|回忆)/.test(question)) return tell()
     const memory = JSON.stringify({ today: new Date().toISOString().slice(0, 10), focus, state, places, moves, events, photos, storyGraph: graph.context(user) })
+    // Someone is waiting for this answer, and most of the wait is the model's hidden reasoning (a
+    // 30-word answer costs 600–1700 output tokens). Measured on 12 questions: median 15.3 s by default,
+    // 5.0 s with reasoning_effort=low, same answers and actions. Background work keeps its default.
     const answer = parseJsonAnswer(await chat(stepfun, [
       { role: 'system', content: `${loadSkill('life-butler')}\n\n记忆：${memory}` },
       ...history,
       { role: 'user', content: question },
-    ], { json: true }))
+    ], { json: true, reasoningEffort: 'low' }))
     if (Array.isArray(answer.actions) && answer.actions.some(action => action?.type === 'story')) return tell()
     const known = {
       events: new Set(events.map((event) => event.id)),

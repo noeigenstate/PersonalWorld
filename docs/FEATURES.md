@@ -15,7 +15,8 @@
 
 ## 启动与加载
 
-- **启动前检查**：`npm run dev` 先运行 `scripts/preflight.mjs`，逐项检查 Node、密钥、StepFun 模型、高德、地图档案、Python 与人脸模型、FFmpeg、ComfyUI 与 Depth Anything 3 模型；能自动处理的（下载地图档案、安装人脸模型、启动 ComfyUI）自动处理，必需项没满足就不启动。`npm run check` 只报告不改动。
+- **启动方式**：`npm start`（日常使用，构建后启动，首屏更快）和 `npm run dev`（开发，热更新）；两者地址、接口和数据相同。
+- **启动前检查**：两者都先运行 `scripts/preflight.mjs`，逐项检查 Node、密钥、StepFun 模型、高德、地图档案、Python 与人脸模型、FFmpeg、ComfyUI 与 Depth Anything 3 模型；能自动处理的（下载地图档案、安装人脸模型、启动 ComfyUI）自动处理，必需项没满足就不启动。`npm run check` 只报告不改动。
 - **地图数据**：约 558 MB，4 连接分块下载，可断点续传，下载完校验 SHA-256；`GET /api/world-data/status` 返回状态、已下载字节、速度，出错时 `POST /api/world-data/retry` 从断点继续。
 - **加载遮罩**：地图数据、地图本身、照片库没有准备好时，界面用进度卡盖住地图（含错误原因和"重试下载"），全部就绪后才打开地图。照片信息卡和事件分析在后台进行，右上角的后台进度卡显示进度，不挡地图；暂停或失败时给出原因和"继续分析"。
 

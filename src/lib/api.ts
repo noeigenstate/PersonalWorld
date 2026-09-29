@@ -81,7 +81,10 @@ export interface WorldDataStatus {
 }
 
 export async function fetchWorldDataStatus(): Promise<WorldDataStatus> {
-  return jsonResponse<WorldDataStatus>(await fetch('/api/world-data/status'))
+  const response = await fetch('/api/world-data/status')
+  // A service without this endpoint (an older one): nothing to wait for, the map uses its online data
+  if (response.status === 404) return { state: 'unavailable', file: '', received: 0, total: 0, speed: 0, error: '', message: '服务没有提供地图数据状态，地图使用在线数据' }
+  return jsonResponse<WorldDataStatus>(response)
 }
 
 export async function retryWorldData(): Promise<WorldDataStatus> {

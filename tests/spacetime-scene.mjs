@@ -106,8 +106,10 @@ try {
   await page.reload()
 
   // No button: on the city's story line, the butler opens the scene when asked
-  // Two labels can overlap on the globe (place and photo stack): the click must reach this one
-  await page.locator('.globe-place, .globe-cluster, .map-label.place:visible').first().click({ force: true })
+  // Two labels can overlap on the globe (place and photo stack): the click must reach this one.
+  // Only the globe's own labels: the street map under it has place labels too, and a forced click
+  // on those lands on the globe canvas instead
+  await page.locator('.globe-place, .globe-cluster').first().click({ force: true })
   if (await page.getByRole('dialog', { name: '选择地点' }).count()) await page.getByRole('dialog', { name: '选择地点' }).getByRole('button').first().click()
   assert.equal(await page.getByRole('button', { name: '时空场景', exact: true }).count(), 0, '时空场景没有单独的按钮')
   await page.locator('.voice-butler .hold:not([disabled])').waitFor({ timeout: 20000 })
