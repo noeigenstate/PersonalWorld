@@ -120,11 +120,12 @@ try {
   assert.equal(calls, 1, '打开时空场景时向模型请求一次分段')
   assert.deepEqual(await dialog.locator('.spacetime-epochs button b').allTextContents(), ['2020-10-03', '2023-04-16'])
   assert.deepEqual(await dialog.locator('.spacetime-layers li em').allTextContents(), ['照片可见', '推断', '无依据', '无依据', '无依据', '照片可见'], '每一层都标出证据等级')
-  assert.equal(await dialog.locator('.spacetime-photos button').count(), 2)
+  assert.equal(await dialog.locator('.spacetime-strip button').count(), 2, '这个时段的两张照片在舞台下面的胶片带里')
+  assert.equal(await dialog.locator('.spacetime-strip button.on').count(), 1, '舞台上放着一张')
   await page.screenshot({ path: join(shots, 'pw-spacetime-1-epochs.png') })
 
   if (capability.available) {
-    await dialog.getByRole('button', { name: '重建这一刻的三维场景' }).click()
+    await dialog.getByRole('button', { name: '重建这张照片的三维场景' }).click()
     await dialog.locator('.spacetime-viewer[data-status="ready"]').waitFor({ timeout: 180000 })
     assert.equal(await dialog.locator('.film-error').count(), 0, await dialog.locator('.film-error').allTextContents())
     await page.waitForTimeout(800)
@@ -145,9 +146,17 @@ try {
     assert.equal(model.status, 200)
     assert.equal(model.headers.get('content-type'), 'model/gltf-binary')
     assert.ok((await model.arrayBuffer()).byteLength > 50000)
+    // Any other photo of the time slice can be put on the stage too: no model yet, so it offers its own
+    // reconstruction (and the photo detail did not open by itself)
+    await dialog.locator('.spacetime-strip button').nth(1).click()
+    await dialog.getByRole('button', { name: '重建这张照片的三维场景' }).waitFor()
+    assert.equal(await dialog.locator('.spacetime-strip button').nth(1).getAttribute('aria-pressed'), 'true')
+    assert.equal(await dialog.locator('.spacetime-strip button i').count(), 1, '已重建的那张在胶片带里有标记')
+    await dialog.locator('.spacetime-strip button').nth(0).click()
+    await dialog.locator('.spacetime-viewer[data-status="ready"]').waitFor({ timeout: 20000 })
     // The other epoch has no model yet: its own key photo waits to be reconstructed
     await dialog.locator('.spacetime-epochs button').nth(1).click()
-    await dialog.getByRole('button', { name: '重建这一刻的三维场景' }).waitFor()
+    await dialog.getByRole('button', { name: '重建这张照片的三维场景' }).waitFor()
     await dialog.locator('.spacetime-epochs button').nth(0).click()
     await dialog.locator('.spacetime-viewer[data-status="ready"]').waitFor({ timeout: 20000 })
   } else {

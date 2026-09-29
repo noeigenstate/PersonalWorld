@@ -17,7 +17,7 @@ description: 为 Personal World 的 4D 时空场景做三维建模：把一张�
 ## 管线（本机，无第三方）
 
 1. **准入**：`spacetime-scene` 给每个时间片选出 `keyPhoto`（视野开阔、有环境）。人物特写、食物、截图不做。
-2. **重建**：`server/spacetimeScene.mjs` 的 `reconstructRelief` 把照片交给本机 ComfyUI：`LoadDA3Model`（`depth_anything_3_mono_large`）→ `DA3Inference`（mono，分辨率 1008）→ `DA3GeometryToMesh`（每隔一个像素取一个顶点，深度跳变上限 0.12，抠掉天空，贴原图）→ `SaveGLB`。一张约 10 秒。
+2. **重建**：`server/spacetimeScene.mjs` 的 `reconstructRelief` 把照片交给本机 ComfyUI：`LoadDA3Model`（`depth_anything_3_mono_large`）→ `DA3Inference`（mono，分辨率 1008）→ `DA3GeometryToMesh`（每隔一个像素取一个顶点，深度跳变上限 0.12，抠掉天空，贴原图）→ `SaveGLB`。一张约 10 秒。默认重建时间片的关键照片；这个时段里的**任何一张照片**都可以在舞台下的胶片带里点选，单独重建（不自动批量重建，避免占满 GPU）。
 3. **存储**：GLB 与照片放在同一账户目录 `spacetime/<照片ID>.glb`，旁边的 `.json` 记 `version`；删照片时一并删除。**改了重建方式必须升 `RELIEF_VERSION`**，旧版本的模型会被当作不存在，点击时重建。
 4. **查看**：`SpacetimeScene.tsx` 的 `ReliefViewer`，规则见下。
 

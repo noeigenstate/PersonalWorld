@@ -20,13 +20,16 @@ export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, ent
   const [capability, setCapability] = useState<ReliefCapability | null>(null)
   const [scenes, setScenes] = useState<string[]>([])
   const [current, setCurrent] = useState(0)
+  // The photo on the stage; any photo of the time slice can be looked at (default: its key photo)
+  const [picked, setPicked] = useState('')
   const [busy, setBusy] = useState(false)
   const [building, setBuilding] = useState('')
   const [error, setError] = useState('')
   const photos = useMemo(() => scenePhotos(assets, events, city), [assets, events, city])
   const place = useMemo(() => scenePlaceName(assets, photos, city), [assets, photos, city])
   const planKey = photos.map((p) => `${p.id}:${p.date}`).join('|')
-  useEffect(() => { generation.current++; setPlan(null); setCurrent(0); setError(''); setBusy(false) }, [planKey])
+  useEffect(() => { generation.current++; setPlan(null); setCurrent(0); setPicked(''); setError(''); setBusy(false) }, [planKey])
+  useEffect(() => { setPicked('') }, [current])
   // One plan request per set of photos; an answer that arrives after the photos changed is dropped
   const generation = useRef(0)
   useEffect(() => {
@@ -41,14 +44,15 @@ export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, ent
   }, [open, plan, photos, place])
 
   const epoch = plan?.epochs[current] || null
-  const key = epoch?.keyPhoto ? assets.find((a) => a.id === epoch.keyPhoto) : undefined
-  const modelUrl = key && scenes.includes(key.id) ? `/api/spacetime-scene/models/${key.id}` : ''
+  const focusId = epoch ? (picked && epoch.photoIds.includes(picked) ? picked : epoch.keyPhoto || epoch.photoIds[0] || '') : ''
+  const focus = focusId ? assets.find((a) => a.id === focusId) : undefined
+  const modelUrl = focus && scenes.includes(focus.id) ? `/api/spacetime-scene/models/${focus.id}` : ''
   async function reconstruct() {
-    if (!key) return
-    setBuilding(key.id)
+    if (!focus) return
+    setBuilding(focus.id)
     setError('')
     try {
-      const result = await requestRelief(key.id, key.preview)
+      const result = await requestRelief(focus.id, focus.preview)
       setScenes((list) => (list.includes(result.id) ? list : [...list, result.id]))
     } catch (e) {
       setError((e as Error).message)
@@ -69,22 +73,28 @@ export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, ent
         {!busy && !plan && !photos.length && <p className="spacetime-status">这处地点还没有可用的照片。</p>}
         {error && <p className="film-error" role="alert">{error}{!plan && photos.length > 0 && <button className="button" onClick={() => setError('')}>重试</button>}</p>}
         {plan && <div className="spacetime-layout">
-          <div className="spacetime-stage" data-model={modelUrl ? 'ready' : 'none'}>
-            {modelUrl ? <ReliefViewer url={modelUrl} photo={key?.preview || ''} /> : key ? (
-              <div className="spacetime-photo">
-                <img src={key.preview} alt="" />
-                <div className="spacetime-build">
-                  {capability?.available
-                    ? <button className="button button-primary" disabled={Boolean(building)} onClick={reconstruct}>{building ? <><LoaderCircle size={16} className="film-spin" /> 本机正在重建，约半分钟…</> : '重建这一刻的三维场景'}</button>
-                    : <small>{capability?.reason || '本机没有三维重建能力'}；先看原图</small>}
+          <div className="spacetime-main">
+            <div className="spacetime-stage" data-model={modelUrl ? 'ready' : 'none'}>
+              {modelUrl ? <ReliefViewer key={focus?.id} url={modelUrl} photo={focus?.preview || ''} /> : focus ? (
+                <div className="spacetime-photo">
+                  <img src={focus.preview} alt="" />
+                  <div className="spacetime-build">
+                    {capability?.available
+                      ? <button className="button button-primary" disabled={Boolean(building)} onClick={reconstruct}>{building === focus.id ? <><LoaderCircle size={16} className="film-spin" /> 本机正在重建，约十几秒…</> : '重建这张照片的三维场景'}</button>
+                      : <small>{capability?.reason || '本机没有三维重建能力'}；先看原图</small>}
+                  </div>
                 </div>
-              </div>
-            ) : <div className="spacetime-empty">{epoch ? '这个时段没有适合重建的照片，只能看原图' : '这处地点的照片都没有可靠日期，还组不成时段'}</div>}
+              ) : <div className="spacetime-empty">{epoch ? '这个时段没有可看的照片' : '这处地点的照片都没有可靠日期，还组不成时段'}</div>}
+              {focus && <button className="spacetime-open" onClick={() => onPhoto(focus.id)} title="打开这张照片的详情与信息卡">照片详情</button>}
+            </div>
+            {epoch && epoch.photoIds.length > 0 && <div className="spacetime-strip" role="group" aria-label="这个时段的照片：点一张放到舞台上，可单独重建成三维">
+              {epoch.photoIds.map((id) => { const a = assets.find((x) => x.id === id); return a ? <button key={id} className={`${id === focusId ? 'on' : ''}${id === epoch.keyPhoto ? ' key' : ''}`} aria-pressed={id === focusId} title={id === epoch.keyPhoto ? '这个时段的关键照片' : '放到舞台上'} onClick={() => setPicked(id)}><img src={a.preview} alt="" />{scenes.includes(id) && <i title="已有三维场景" />}</button> : null })}
+            </div>}
           </div>
           <aside className="spacetime-side">
             <nav className="spacetime-epochs" aria-label="时间片">
               {plan.epochs.map((e, i) => <button key={e.id} className={i === current ? 'active' : ''} aria-pressed={i === current} onClick={() => setCurrent(i)}>
-                <b>{e.from === e.to ? e.from : `${e.from} ~ ${e.to}`}</b><span>{e.title || '未命名时段'}</span>{e.keyPhoto && scenes.includes(e.keyPhoto) && <i title="已有三维场景" />}
+                <b>{e.from === e.to ? e.from : `${e.from} ~ ${e.to}`}</b><span>{e.title || '未命名时段'}</span>{e.photoIds.some((id) => scenes.includes(id)) && <i title="有照片已重建成三维场景" />}
               </button>)}
             </nav>
             {epoch && <div className="spacetime-epoch">
@@ -97,9 +107,6 @@ export function SpacetimeScene({ assets, events, city, onPhoto, openRequest, ent
                 {epoch.layers.buildings.map((b) => <li key={b.name}><span>建筑</span><b>{b.name}：{b.state}</b><em data-evidence={b.evidence} title={b.basis}>{EVIDENCE_LABEL[b.evidence]}</em></li>)}
               </ul>
               {epoch.changes && <p className="spacetime-changes">变化：{epoch.changes}</p>}
-              <div className="spacetime-photos">
-                {epoch.photoIds.map((id) => { const a = assets.find((x) => x.id === id); return a ? <button key={id} className={id === epoch.keyPhoto ? 'key' : ''} title={id === epoch.keyPhoto ? '这个时段的关键照片' : '查看照片'} onClick={() => onPhoto(id)}><img src={a.preview} alt="" /></button> : null })}
-              </div>
             </div>}
             {plan.undated.length > 0 && <small className="spacetime-note">{plan.undated.length} 张照片没有可靠日期，未进入任何时段。</small>}
             {plan.summary && <p className="spacetime-summary">{plan.summary}</p>}
