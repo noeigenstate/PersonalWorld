@@ -1,125 +1,217 @@
-# Personal World · 人生地图
+<div align="center">
+  <img src="docs/media/logo.svg" alt="Personal World" width="88" />
+  <h1>Personal World · 人生地图</h1>
+  <p><strong>让照片，讲出生活的故事。</strong></p>
+  <p>把散落的照片、视频和截图整理成事件，在一颗卡通地球上重新走一遍——用声音问，让它带你回看。</p>
+  <p>
+    <a href="#功能">功能</a> ·
+    <a href="#快速开始">快速开始</a> ·
+    <a href="#配置">配置</a> ·
+    <a href="#文档">文档</a> ·
+    <a href="docs/需求说明书.html">需求说明书</a>
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/Node-24-339933?logo=nodedotjs&logoColor=white" alt="Node 24" />
+    <img src="https://img.shields.io/badge/React-19-61dafb?logo=react&logoColor=white" alt="React 19" />
+    <img src="https://img.shields.io/badge/Three.js-WebGL-000000?logo=threedotjs&logoColor=white" alt="Three.js" />
+    <img src="https://img.shields.io/badge/AI-StepFun-2f6bff" alt="StepFun" />
+    <img src="https://img.shields.io/badge/数据-留在本机-2f9e5c" alt="数据留在本机" />
+  </p>
+</div>
 
-Personal World 是一个个人世界模型（Personal World Model）：先把照片、视频和截图整理成事件，再从事件中分离出时间线和空间线。产品分为人生地图和人生管家（大模型）两部分：在地图上点击地点会出现故事线，并可用语音或文字问人生管家当时发生了什么。详见 [需求说明书](docs/需求说明书.html)。
+![从地球连续放大到街区：整张地图都是按真实地理"卡通化"出来的](docs/media/hero.gif)
 
-## 本地部署
+<sub>演示用 AI 生成的虚构照片录制，没有任何真实的私人照片。地图、时间线、缩放与三维重建都是真实运行；语音识别、管家的回答和时空场景的分段为固定脚本（保证录制可重复）。</sub>
 
-### 需要准备什么
+## 它做什么
 
-| 项目 | 说明 | 必需 |
-|---|---|---|
-| **Node.js 24**（≥ 22.5） | 服务端用 `node:sqlite` 读取地图档案，旧版本没有这个模块 | 是 |
-| **`.env`** | 复制 `.env.example` 为 `.env`，填 StepFun 与高德的密钥（见下表）。所有密钥只由本机 API 服务读取，不进浏览器、不入库 | 是 |
-| **地图数据** | 卡通世界的地理档案 `world-data/*.mbtiles`（浙江+江苏 558 MB）不在 Git 里。第一次 `npm run dev` 时服务端按 `world-data/manifest.json` 里的 Seafile 链接自动下载并校验 SHA-256（约 5 分钟），下载完成前地图用在线 OpenStreetMap 数据。也可以先手动 `npm run world:pull` | 自动 |
-| **Chrome** | 只有跑浏览器测试（`test:smoke` 等）时需要 | 否 |
-| **Python 3.12 + FFmpeg** | 人物识别、回忆短片合成。`winget install Python.Python.3.12 Gyan.FFmpeg`，`python -m pip install -r server/requirements-local.txt`，模型文件用 `python server/identity/setup_models.py` 下载。Windows 上 `python` 可能仍是微软商店的占位别名、winget 装的 FFmpeg 也不在已打开终端的 PATH 里，所以 `.env` 里的 `FACE_PYTHON`、`MEMORY_FILM_PYTHON`、`FFMPEG_PATH` 建议写完整路径；服务启动时读取 `.env`，改完要重启 `npm run dev` | 用这两项功能时 |
-| **ComfyUI + Depth Anything 3** | 4D 时空场景把照片重建成可环视的三维模型，在本机 GPU 上完成。需要本机运行 ComfyUI（默认 `http://127.0.0.1:8188`，可用 `COMFY_URL` 改）并在其 `models/geometry_estimation/` 放入 `depth_anything_3_mono_large.safetensors`（[Comfy-Org/Depth-Anything-3](https://huggingface.co/Comfy-Org/Depth-Anything-3)，1.3 GB）。没有时时空场景只显示照片和各层证据 | 用 4D 场景时 |
-| **Java 23 + Planetiler** | 只有自己构建新地区的地图档案时需要（`npm run build:osm <地区>`，源数据见 `scripts/build-osm-region.mjs` 开头） | 否 |
+| 记录 | 理解 | 回看 |
+| :--- | :--- | :--- |
+| 导入照片，读取时间与 GPS，自动整理成事件 | 生成信息卡、认出人物、串起故事；事实与推断分开，每条推断都标来源 | 地图与时间线、语音管家、边看边讲、回忆短片、4D 时空场景 |
 
-### 启动
+**事件优先**：不从时间或空间出发，先确定"发生了什么事"，再从事件分离出时间线和空间线。地点的分量来自发生的事，而不是照片的数量。
+
+## 功能
+
+### 一颗连续缩放的卡通世界
+
+地球始终是球体，滚轮或双指一路放大到街区，中间没有切换和跳变；街区地图同样按球面弯曲。地面不是卫星图，而是按 OpenStreetMap 的真实海岸、河流、道路和建筑轮廓生成的卡通世界：凸起的陆地与岩石断崖、松树和圆树、红蓝屋顶、斑马线与红绿灯。地图数据在本机构建并持久化，草地、水面、屋顶等贴图由本机模型绘制。
+
+### 故事线与时间线
+
+![点击地点进入故事线，拖动时间线，地图上的照片随时间收敛](docs/media/story.gif)
+
+点击地图上的地点，出现这个地方的故事线：照片、日期和事件标题合在同一张卡片里，常去地点的多次回忆分行展示。停留超过半年且有 3 件以上事的城市成为人生据点，按迁徙顺序连成空间线。底部时间线可拖动、点击和键盘操作。
+
+### 会操作地图的人生管家
+
+![按住话筒提问：字幕、带标记的推断、照片上台](docs/media/butler.gif)
+
+没有聊天面板，地图上只有一个话筒（也可以打字）。按住说话时字幕实时出现；回答以字幕显示并朗读，**推断的内容带虚线下划线**。管家会直接操作地图：按语义找照片、定位到拍摄的地方、讲一段经历并配幻灯片、记下据点角色、拨动时间线，以及打开人物与故事、时空场景和回忆短片。「听故事」会自动选题、独立重看照片、写作，再经独立复核和证据校验，边放照片边讲。
+
+### 4D 时空场景：同一个地方，不同的时候
+
+![同一地点分成两个时段，逐层标注证据，关键照片在本机 GPU 上重建成可环视的三维浮雕](docs/media/spacetime.gif)
+
+同一地点的照片按有依据的时间片分段；季节、时段、天气、建筑、声音、交通逐层标出 **照片可见 / 推断 / 无依据**——没有证据的层不编造，也不在两个时段之间插值。时段里的任何一张照片都可以在本机 GPU 上用 Depth Anything 3 重建成三维浮雕（约 10 秒一张，GIF 里剪掉了等待），在拍照的位置轻轻晃动就能看到视差；模型和照片一起存在账户目录。**一张照片没法 360° 环绕**——背面没有信息；要环绕查看，需要在同一个地方绕着拍的视频或多张视角重叠的照片，这条路径还没有接到界面，实测结论和准入条件见 [4D 建模 skill](skills/spacetime-modeling/SKILL.md) 与 [4D 实现契约](docs/FOUR_D_HOME_RECONSTRUCTION_2026-09-28.md)。
+
+### 还有这些
+
+- **照片信息卡**：程序读到的事实（时间及来源、定位、尺寸）与模型看到的画面、可读文字、带依据的线索、地标和待确认问题分开显示。
+- **定位，越细越好**：先用照片自带的 GPS 和元数据，再用画面里的地标、路牌、店名，最后与其他照片对比补全；每个地点都标明来源和精确程度，推断的位置用虚线。
+- **人物与故事**：人脸分组，由你确认称呼和关系，绑定到稳定的人物 ID；名字或关系变化后，相关经历自动重新理解。
+- **回忆短片**：自动选片、字幕和镜头编排，用本机 FFmpeg 合成 MP4，不需要写创意。
+- **整理重复照片**：相似的照片叠在一起，推荐留下最好的几张，你确认后才删除。
+- **隐私**：照片和记忆按账户存在你自己电脑的硬盘上；号码等敏感文字在你同意隐私声明后才原样显示，否则遮挡。
+
+<details>
+<summary><strong>专属地标模型</strong> · 拱墅运河体育公园、城北万象城、浙江环球中心等 7 处</summary>
+
+<table>
+  <tr>
+    <td><img src="docs/media/landmark-umbrella.webp" alt="杭州伞" width="100%" /></td>
+    <td><img src="docs/media/landmark-jade.webp" alt="玉琮馆" width="100%" /></td>
+  </tr>
+  <tr><td align="center">拱墅运河体育公园 · 杭州伞</td><td align="center">玉琮馆</td></tr>
+  <tr>
+    <td><img src="docs/media/landmark-mixc.webp" alt="城北万象城" width="100%" /></td>
+    <td><img src="docs/media/landmark-global.webp" alt="浙江环球中心" width="100%" /></td>
+  </tr>
+  <tr><td align="center">杭州城北万象城与润珹置地中心</td><td align="center">浙江环球中心</td></tr>
+</table>
+
+![专属地标模型检视](docs/media/landmark-models.webp)
+
+这些是按真实建筑轮廓和公开资料手工制作的程序化模型，其余地点使用通用建筑。清单和边界见[专属地标资产清单](docs/LANDMARK_ASSET_INVENTORY_2026-09-28.md)。
+
+</details>
+
+<details>
+<summary><strong>更多画面</strong> · 地球总览、街区、故事线、管家与时空场景</summary>
+
+<table>
+  <tr>
+    <td><img src="docs/media/globe.webp" alt="地球总览" width="100%" /></td>
+    <td><img src="docs/media/street.webp" alt="街区的卡通世界" width="100%" /></td>
+  </tr>
+  <tr><td align="center">地球总览：照片按位置成组</td><td align="center">街区：真实建筑轮廓与树木</td></tr>
+  <tr>
+    <td><img src="docs/media/story.webp" alt="故事线" width="100%" /></td>
+    <td><img src="docs/media/butler.webp" alt="人生管家" width="100%" /></td>
+  </tr>
+  <tr><td align="center">上海的故事线</td><td align="center">人生管家：字幕、推断标记、照片上台</td></tr>
+  <tr>
+    <td><img src="docs/media/spacetime-epochs.webp" alt="时空场景的时间片与证据" width="100%" /></td>
+    <td><img src="docs/media/relief.webp" alt="三维浮雕" width="100%" /></td>
+  </tr>
+  <tr><td align="center">时空场景：时间片与逐层证据</td><td align="center">同一张照片的三维浮雕</td></tr>
+</table>
+
+</details>
+
+## 快速开始
+
+需要 **Node.js 24**（≥ 22.5，服务端用 `node:sqlite` 读取地图档案）。
 
 ```powershell
+git clone https://github.com/noeigenstate/PersonalWorld.git
+cd PersonalWorld
 npm install
-copy .env.example .env   # 填入密钥
-npm run dev
+copy .env.example .env    # 填入 StepFun 和高德的密钥，见下表
+npm run dev               # 打开 http://localhost:5183/
 ```
 
-打开 **http://localhost:5183/**。前端只监听本机；API 服务运行在 `127.0.0.1:8787`。
+第一次启动时，服务端会按 `world-data/manifest.json` 里的链接在后台下载地图档案（浙江 + 江苏，558 MB，校验 SHA-256），下载完成前地图使用在线数据。打开网页先注册账户并同意隐私声明，然后导入照片。
 
-### 局域网访问
+<details>
+<summary><strong>可选组件</strong> · 语音以外的本机能力</summary>
+
+| 组件 | 用途 | 说明 |
+| --- | --- | --- |
+| Python 3.12 + FFmpeg | 人物识别、回忆短片合成 | `winget install Python.Python.3.12 Gyan.FFmpeg`，再 `python -m pip install -r server/requirements-local.txt`、`python server/identity/setup_models.py`；Windows 上要在 `.env` 写完整路径，见 `.env.example` |
+| ComfyUI + Depth Anything 3 | 4D 时空场景的三维重建 | 运行 ComfyUI（默认 `http://127.0.0.1:8188`），在 `models/geometry_estimation/` 放 [`depth_anything_3_mono_large.safetensors`](https://huggingface.co/Comfy-Org/Depth-Anything-3)（1.3 GB，Apache-2.0）；没有时只显示照片和各层证据 |
+| Java 23 + Planetiler | 自己构建新地区的地图档案 | `npm run build:osm <地区>`，源数据见 `scripts/build-osm-region.mjs` |
+| Chrome | 浏览器测试、录制演示 | `npm run test:smoke` 等 |
+
+</details>
+
+<details>
+<summary><strong>局域网访问</strong> · 手机或其他电脑打开</summary>
 
 ```powershell
 npm run dev:lan
 ```
 
-用 HTTPS（自签名证书）监听局域网，其他设备打开 **https://<这台电脑的局域网 IP>:5183/**，例如 `https://192.168.1.14:5183/`。第一次打开时浏览器会提示证书不受信任，选择"继续访问"即可。
+用自签名证书的 HTTPS 监听局域网，其他设备打开 `https://<这台电脑的局域网 IP>:5183/`，第一次选择"继续访问"。必须用 `https://`：在 `http://192.168.x.x` 下浏览器会禁用麦克风和 SHA-256，说话和导入照片都会失败。API 服务仍只监听本机。
 
-必须用 `https://`：在 `http://192.168.x.x` 下浏览器会禁用麦克风、`crypto.randomUUID` 和 SHA-256，按住说话和导入照片都会失败。API 服务仍只监听本机，局域网设备通过前端的代理访问它。
+</details>
 
-局域网模式下运行端到端测试：`BASE_URL=https://localhost:5183/ npm run test:smoke`。
+## 配置
 
-### `.env` 配置
+密钥只放本机的 `.env`，由服务端读取，不进浏览器、不入库。
 
 | 字段 | 用途 | 必填 |
-|---|---|---|
-| `STEPFUN_API_KEY`、`STEPFUN_MODEL` | 自动照片信息卡、事件分析、人生管家、时空场景分段（模型需支持图片，如 `step-3.7-flash`） | 用 AI 时必填 |
-| `STEPFUN_BASE_URL` | 默认 `https://api.stepfun.com/step_plan/v1`，走 Step Plan 套餐；改成 `https://api.stepfun.com/v1` 会扣账户余额 | 否 |
-| `STEPFUN_STORY_MODEL` | 可单独指定回忆讲述的写作模型，本机使用 `step-5-preview`；不填则沿用 `STEPFUN_MODEL`，选片、看图和复核仍使用主模型 | 否 |
-| `STEPFUN_ASR_MODEL`、`STEPFUN_TTS_MODEL`、`STEPFUN_TTS_VOICE` | 语音识别 / 合成，默认 `stepaudio-2.5-asr`、`stepaudio-2.5-tts`、`cixingnansheng` | 否 |
-| `AMAP_JS_KEY`、`AMAP_JS_SECURITY_CODE` | 高德地图相机与缩放动画，以及在浏览器里把照片 GPS 识别成城市；安全密钥经本机 `/_AMapService` 代理，不进浏览器 | 用真实地图时必填 |
-| `AMAP_MAP_STYLE` | 可选的已发布高德自定义地图样式，格式为 `amap://styles/样式ID` | 否 |
-| `AMAP_WEB_SERVICE_KEY` | 可选：改由服务端做逆地理编码 | 否 |
-| `WORLD_DATA_URL` | 地图档案的备用下载模板（含 `{name}`）；manifest 里已有链接的文件不需要 | 否 |
+| --- | --- | --- |
+| `STEPFUN_API_KEY`、`STEPFUN_MODEL` | 照片信息卡、事件分析、人生管家、讲述、时空场景分段（模型需支持图片，如 `step-3.7-flash`） | 用 AI 时 |
+| `STEPFUN_BASE_URL` | 默认 `https://api.stepfun.com/step_plan/v1`（走 Step Plan 套餐）；改成 `/v1` 会扣账户余额 | 否 |
+| `AMAP_JS_KEY`、`AMAP_JS_SECURITY_CODE` | 高德 JS API：地图相机与缩放，以及把照片 GPS 识别成城市；安全密钥经本机代理，不进浏览器 | 用真实地图时 |
 | `COMFY_URL` | 本机 ComfyUI 地址，默认 `http://127.0.0.1:8188` | 否 |
-| `FACE_PYTHON`、`MEMORY_FILM_PYTHON`、`FFMPEG_PATH`、`MEMORY_FILM_EXPORT_DIR` | 人物识别与回忆短片用的 Python 解释器、FFmpeg 可执行文件和 MP4 导出目录；不填时用 PATH 里的 `python` / `ffmpeg` | 否 |
+| `WORLD_DATA_URL` | 地图档案的备用下载模板；manifest 里已有链接的文件不需要 | 否 |
 
-修改后重启 `npm run dev`。
+其余可选项（语音模型、讲述写作模型、Python 与 FFmpeg 路径、导出目录）见 [`.env.example`](.env.example)。修改后重启 `npm run dev`。
 
-### 地图数据与素材
+**换电脑**：把整个 `server/data/` 拷到新机器同一位置即可，用原来的用户名密码登录，照片和记忆会自动恢复；`map-scenes/`、`cartoon-tiles/` 是缓存，可以不带。细节见[功能说明与数据细节](docs/FEATURES.md)。
 
-- `world-data/manifest.json`（入库）列出每个地理档案的文件名、大小、SHA-256 和 Seafile 下载链接；服务启动时后台下载缺失或大小不符的文件，校验通过才替换。
-- 街区场景的地理数据 © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)（ODbL），瓦片方案 © [OpenMapTiles](https://openmaptiles.org/)。地图上不再显示这行署名（用户要求），署名保留在这里；对外发布时请按 ODbL 要求在产品说明中保留。
-- 新增地区：准备 `world-data/sources/` 的源数据后运行 `npm run build:osm <地区…>`（地区在 `world-data/regions.json`），上传生成的 `.mbtiles` 到 Seafile，`npm run world:manifest` 更新清单，再把分享链接（`?dl=1`）填进对应文件的 `url`。
-- 卡通地面的贴图已在 `public/world-assets/textures/`（10 张灰度 WebP，共 0.5 MB），随仓库分发；要重画需本机 ComfyUI 与 Qwen-Image，见 `scripts/assets/generate-textures.mjs`。
+## 项目结构
 
-## 账户与数据
+```text
+src/map/        地球（globeScene）、卡通世界（cartoonWorld）、高德相机（amapScene）、专属地标
+src/components/ 界面：话筒管家、故事舞台、时空场景、人物与故事……
+server/         API：账户与照片库（accountVault）、管家、讲述、时空场景、地图瓦片、回忆短片
+skills/         16 个项目技能：9 个由服务端读取的运行时技能，7 个开发技能，各有 test.mjs
+world-data/     地图档案清单（档案本身在 Seafile，不入库）
+scripts/        构建地图档案、生成贴图与示例照片、录制本页的 GIF
+docs/           需求说明书、功能说明、各阶段设计与验收记录
+```
 
-- 打开网页先注册：只需用户名（2–20 个字符）和密码（至少 6 位），并勾选同意隐私声明。之前注册的账户登录后会先看到隐私声明。
-- 同意隐私声明后，信息卡和事件分析原样显示照片里的电话、证件号等文字；未同意时遮挡。
-- **账户**保存在运行 API 服务的电脑上（`server/data/users.json`，不入库）。密码用 scrypt 加盐哈希，登录状态是 30 天有效的 HttpOnly Cookie；连续输错 5 次锁定 1 分钟。
-- **照片和记忆**按账户保存在运行 API 服务的电脑 `server/data/accounts/`，浏览器 IndexedDB 是工作缓存；清除站点数据后登录可从本机照片库恢复。分析照片时，图片临时经本机 API 服务转发给 StepFun。
-- 事件分析、人生管家、语音和地名识别会消耗 StepFun / 高德额度，只有登录用户能调用。
-- 加入账户前已导入的数据，会自动归到这台浏览器上第一个登录的账户。
+## 文档
 
-## 当前可用流程
-
-1. **导入**：JPG、PNG、WebP、GIF 或浏览器能播放的视频，保存在浏览器 IndexedDB。读取拍摄时间与 GPS，按 SHA-256 跳过完全相同的文件。
-2. **整理成事件**：同一天、6 小时内、50 km 内的照片为一件事；离开常住地的连续多天（最长 30 天）合并为一次旅行。
-3. **定位（越细越好，按顺序）**：
-   - **照片自带的信息**：EXIF 里的 GPS 用高德反查到门牌号、小区或景区、最近的地点（如"COFFEE CUBE · 银城中路200号 · 浦东新区 · 上海市，距离约 47 米"）；没有 GPS 但元数据（IPTC/XMP）写了地名时，把地名转成坐标。
-   - **画面内容**（导入后自动进行，地图上显示进度，可暂停并继续）：全部图片逐张生成信息卡；没有定位信息时，再将认出的地标、路牌或店名交给高德地点搜索（如东方明珠 → 东方明珠广播电视塔）。只能证明一个地区的文字按行政区定位，精度标为"只到省份"。同一事件里其他照片可继承这个位置。车牌只说明车辆登记地、首字常难辨认，程序不让它决定地点。
-   - **其他照片**：以上都没有时，与带定位的照片对比补全（见第 9 条）。
-   - 每个地点都标明来源和精确程度；推断得出的地点在事件上以虚线显示，确认后才算数。
-4. **照片地图**：地球总览按位置显示照片组；进入城市后，照片、日期和事件标题合为同一张卡片。常去地点的多次回忆在卡片里分行展示，每行独立打开事件，较多记录可在卡片内滚动。推断出的位置用虚线框；信息卡里的「在地图上看」拉近到街区。
-5. **人生地图**：总览是可拖动旋转、滚轮/双指/按钮缩放的卡通地球和静态星空；靠近有精确定位的照片时继续放大，或在照片组中点「放大到此处场景」，进入局部地图。地球始终是球体：贴图由 [Natural Earth](https://www.naturalearthdata.com/) 50 m 公开数据生成（陆地、冰川、湖泊、主要河流、国界；`node scripts/make-earth-texture.mjs` 重新生成）；放大到一定程度后，浏览器会用同一份数据（`public/earth-data/`，约 4.5 MB，按需加载）在视野中心现场绘制一块 4096 px 的局部高清贴片盖在球面上，边缘渐隐进底图，所以放到视野只剩几百公里时地球还是清晰的球；再近一步（视野约 500 km）才交接给街区地图。地球背后的星空有流星、飞碟和空间站经过。局部默认使用高德 `macaron` 3D 地形底图，可通过 `AMAP_MAP_STYLE` 换成已发布的自定义样式。每组有精确定位的真实照片，在街区缩放下都使用同一套 OSM 场景生成器，绘制带窗格和屋顶的楼群、道路、树木、草坪、水面及阴影，无需先分析照片。普通照片不会再生成通用圆盘；同组换照片或信息卡更新复用原街区。地理数据较少时保留未替换的原生建筑，加载失败可重试；只有城市等粗略位置的照片暂不生成街区。上海东方明珠保留专属塔模型，其周边使用同一渲染器。见[区域场景恢复记录与实测截图](docs/MAP_REGIONS_RECOVERY_2026-09-26.md)。没有高德 Key 时局部使用卡通底板。停留超过半年且有 3 件以上事的城市成为人生据点，按迁徙顺序连成空间线；其余为途经地点。点击地点，故事线按事件的时间和已知位置串联。底部时间线是一条可拖动、点击、键盘操作的透明进度轨道，回看时地图照片按时间收敛。
-6. **人生管家**：没有聊天面板，地图上有话筒及旁边的「打字」入口；远程访问或无法录音时，输入后回车发送，走同一条故事演绎链路。链接 `#tell=编码后的文字` 可以预填指令，不会自动发送。按住说话时，说到哪里字幕就显示到哪里（每 1.5 秒把已说的话交给 StepFun 语音识别一次）；松开后管家依据事件和照片信息卡回答，回答以字幕显示并朗读（StepFun 语音合成），推断内容带虚线下划线。点击地图地点时管家先开口。管家会直接操作地图：按语义找照片（"找找和妈妈在江边拍的照片"）、把地图定位到某张照片拍摄的地方、讲一段经历并配幻灯片（地图随照片移动）、打开事件、记下据点角色（老家 / 求学 / 工作 / 居住，管家用语音问）、拨动时间线，以及打开人物与故事、时空场景和回忆短片——这三项不做按钮。
-7. **边看照片，听故事**：话筒旁点「听故事」，可自动挑选新故事或重听已有讲述；也可打字指定主题。服务端读取最新人物关系、信息卡观察和用户补充，经过选题、写作、独立复核，生成跨图旁白、并排对照、留白与回看。照片按实际语音进度切换；附近地点保持地图稳定，远处才移动。支持暂停、续播、选段和重播。结束后的记忆补充可选填写，会参与后续故事与短片理解；资料变动后重听会重新编排。详见 [讲述实施与验收](docs/STORYTELLING_2026-09-29.md)。关于「第一次 / 最后一次」，程序提供的是照片记录范围，只有用户明确询问且有事件依据时才使用；不据此推断人生里程碑或离开原因。
-8. **事件详情**：点击故事线节点或时间线圆点打开。事件在导入后自动分析（照片信息卡之后逐件进行，可在地图上暂停），详情里只需核对、手动完善或确认；第一次 / 最后一次以标签显示。
-
-9. **照片信息卡**：在事件里点开一张照片，右侧是信息卡。上半部分是程序读到的事实（时间及其来源、定位、尺寸、文件名；微信等图片没有 EXIF 时从文件名读保存时间），下半部分是 StepFun 看到的画面、可读文字、带依据和把握程度的线索、认出的地标和待确认问题。
-10. **从其他照片补全**：没有定位的照片可以和带定位（或已确认地点、认出地标）的照片对比。程序按画面颜色布局、时间和标签挑出最多 4 张参考照片，由模型判断是否同一场景、同一地点或同一事件，补全城市和地点并注明依据来自哪张照片；点「采用」后写入事件。待整理列表里可以批量补全，批量结果在地图上以虚线显示，确认后变实线。
-
-同一公园或商场的不同拍摄位置，现在优先按公共地点边界共用完整场景。湖/河层级、河道提取和场馆类型已补充，详见[完整地点场景调整](docs/VENUE_SCENES_2026-09-26.md)。地图默认不显示跨历史事件的橙色连线；选中城市后可以选择某次短时段回忆的连线。已有照片自动回忆短片；原始视频理解另见[长期计划](docs/VIDEO_MEMORY_ROADMAP.md)。城市故事线里的**时空场景**把同一地点的照片按时间片分段、逐层标注证据（照片可见 / 推断 / 无依据），并可在本机 GPU 上把每个时段的关键照片重建成可环视的三维浮雕；可自由漫游的多视角重建仍是后续方向，见[4D 实现契约](docs/FOUR_D_HOME_RECONSTRUCTION_2026-09-28.md)。
-
-导入后默认自动将每张图片缩放到最长边 2560 像素（失败时用预览图），经本机服务发送给 StepFun 生成信息卡；随后每件事自动分析，发送最多 6 张预览图；都可在地图上暂停。人生管家只发送事件文字、照片信息卡文字和界面状态，不发送图片。账户照片库保存在服务电脑，浏览器 IndexedDB 为工作缓存，清除站点数据后可以恢复。
-
-## Skills
-
-全部 **15 个项目技能**统一放在根目录 [skills/](skills/README.md)：地图风格、特殊建筑精修、地图叠加、人物一致性等 6 个开发技能，以及单图理解、故事理解、回忆讲述、回忆短片、4D 时空场景等 9 个运行时技能。正文、测试、参考资料与可分发评估一起入库，历史迁移记录见[技能交付清单](docs/SKILLS_INVENTORY_2026-09-28.md)。
+| 想了解 | 从这里开始 |
+| --- | --- |
+| 产品定位与交互 | [需求说明书](docs/需求说明书.html) |
+| 完整功能流程、账户与数据、已知边界 | [功能说明与数据细节](docs/FEATURES.md) |
+| 技能（运行时与开发） | [skills/README](skills/README.md) |
+| 边看边讲 | [讲述实施与验收](docs/STORYTELLING_2026-09-29.md) |
+| 持续理解与人物 | [持续理解](docs/CONTINUOUS_UNDERSTANDING_2026-09-28.md) · [演进式记忆架构](docs/EVOLVING_MEMORY_ARCHITECTURE_2026-09-28.md) |
+| 4D 时空场景 | [实现契约](docs/FOUR_D_HOME_RECONSTRUCTION_2026-09-28.md) |
+| 地图风格与地标 | [场景风格](docs/MAP_SCENE_STYLE_2026-09-25.md) · [地标资产清单](docs/LANDMARK_ASSET_INVENTORY_2026-09-28.md) |
+| 参赛材料 | [演示脚本与交付计划](docs/SUBMISSION_DEMO_2026-09-30.md) · [参赛历程](docs/PARTICIPATION_STORY_2026-09-28.md) |
 
 ## 验证
 
 ```powershell
 npm run build
-npm run test:api     # 模拟 StepFun 与高德，检查所有接口
-npm run test:smoke   # 需先 npm run dev；生成 35 张带 EXIF 的虚构照片，走完注册→导入→自动分析→地图→故事线→语音（字幕、据点角色、幻灯片、找照片）
-npm run test:amap    # 需先 npm run dev 和高德 Key；在真实高德底图上识别城市、画地图和故事线
-npm run test:terrain # 需先 npm run dev 和高德 Key；真实地形瓦片与高程检查
-node tests/scene-regions.mjs # 需开发服务和高德配置；隔离测试账户，真实场景接口，跨地区切换／缩放／失败重试
-npm run test:card    # 照片信息卡
-npm run test:context # 多张照片协同补全
-npm run test:skills  # 每个 skill 的专门测试；LIVE=1 连接真实 StepFun / 高德
-npm run test:world   # 需先 npm run dev；地球→全国→城市→街道的卡通世界
-npm run test:spacetime # 需先 npm run dev；4D 时空场景，本机有 ComfyUI + DA3 时真实重建
+npm run test:api       # 模拟 StepFun 与高德，检查所有接口
+npm run test:unit      # 时间刻度、重复照片分组等纯逻辑
+npm run test:skills    # 每个 skill 的专门测试；LIVE=1 连接真实服务
+npm run test:smoke     # 需先 npm run dev；虚构相册走完注册→导入→分析→地图→故事线→语音
+npm run test:world     # 需先 npm run dev；地球→全国→城市→街道的卡通世界
+npm run test:spacetime # 需先 npm run dev；时空场景，本机有 ComfyUI 时真实重建
 ```
 
-冒烟测试需要本机安装 Chrome，使用独立浏览器会话，不修改你日常浏览器中的数据。
+全部命令见[功能说明与数据细节](docs/FEATURES.md#验证)。浏览器测试需要本机 Chrome，使用独立会话，不改你日常浏览器里的数据。本页的 GIF 由 `node scripts/record-readme-media.mjs` 录制。
 
-## 当前边界
+## 已知边界
 
-- 密集事件在同一地图卡片内分行展示，地点越多时越需要放大或滚动卡片。
-- 已接入资料变化后的事件重理解、跨事件主题发现与独立证据复核；模型解释仍可能不准确，不能代替用户确认或把跨月照片自动解释为成长里程碑。
-- 概览和城市尺度仍依赖高德官方底图及统一调色。要分别设置所有缩放层的水面、绿地、道路和楼体颜色，需要发布高德自定义地图样式；照片街区的 3D 细节只在近景出现。
-- 去重仅识别完全相同的文件。
-- 微信、QQ 发送的非原图不含拍摄时间、定位和设备信息，程序无法恢复；请发送"原图"或从手机相册导出原图。支持 iPhone 的 HEIC 原图。
-- 原始视频的内容理解、真实动态 4D 重建尚未实现；现有照片短片可导出 MP4。
+- 原始视频的内容理解和可 360° 环绕的 4D 重建尚未实现；现在的时空场景是单张照片的浮雕（只能在拍照位置轻晃），回忆短片由照片合成。
+- 模型的解释可能不准确，不能代替你的确认；跨月照片不会被自动解释成成长里程碑。
+- 特殊建筑的精修来自专属模型和人工验收，不保证任意地点自动达到这个精度；地理资料少的地方保留原生建筑。
+- 微信、QQ 发来的非原图不含拍摄时间和定位，程序无法恢复；请用原图导入。
+
+## 许可
+
+[MIT](LICENSE)。地图数据、模型与第三方服务各有自己的许可，见下。
+
+## 致谢与数据来源
+
+地图数据 © [OpenStreetMap](https://www.openstreetmap.org/copyright) 贡献者（ODbL），瓦片按 [OpenMapTiles](https://openmaptiles.org/) 模式由 [Planetiler](https://github.com/onthegomap/planetiler) 在本机构建；地球轮廓来自 [Natural Earth](https://www.naturalearthdata.com/)（公有领域）；地图相机使用高德开放平台 JS API；AI 能力来自 StepFun；贴图与演示照片由本机的 Qwen-Image 生成，三维重建使用 [Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3)。

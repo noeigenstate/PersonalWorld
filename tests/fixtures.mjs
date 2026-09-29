@@ -36,22 +36,39 @@ function dms(value) {
   return piexif.GPSHelper.degToDmsRational(Math.abs(value))
 }
 
-export async function makeLifeFixtures(page, dir) {
+// `options.pictures`: { 湘潭市: [dataUrl…] } paints those pictures in turn (cover-fitted, cropped a little
+// differently each time) instead of the colour blocks; `options.extraShots`: more [city, when, dLat, dLng]
+// (used by scripts/record-readme-media.mjs)
+export async function makeLifeFixtures(page, dir, options = {}) {
   mkdirSync(dir, { recursive: true })
   const files = []
-  for (const [index, [city, when, dLat, dLng]] of shots.entries()) {
+  const used = {}
+  for (const [index, [city, when, dLat, dLng]] of [...shots, ...(options.extraShots || [])].entries()) {
     const [a, b] = palette[city]
     const label = `${city ? city.replace('市', '') : '截图'} ${when.slice(0, 10)}`
-    const dataUrl = await page.evaluate(({ a, b, label }) => {
+    const pictures = options.pictures?.[city]
+    const turn = used[city] = (used[city] ?? -1) + 1
+    const picture = pictures?.length ? { url: pictures[turn % pictures.length], turn } : null
+    const dataUrl = await page.evaluate(async ({ a, b, label, picture }) => {
       const canvas = document.createElement('canvas')
       canvas.width = 640; canvas.height = 480
       const g = canvas.getContext('2d')
+      if (picture) {
+        const img = new Image(); img.src = picture.url; await img.decode()
+        // Each photo a slightly different crop, so a picture used twice still differs
+        const zoom = 1 + 0.1 * (picture.turn % 4)
+        const scale = Math.max(640 / img.width, 480 / img.height) * zoom
+        const w = img.width * scale, h = img.height * scale
+        const dx = (640 - w) * (0.5 + 0.35 * Math.sin(picture.turn * 2.3)), dy = (480 - h) * (0.5 + 0.35 * Math.cos(picture.turn * 1.7))
+        g.drawImage(img, dx, dy, w, h)
+        return canvas.toDataURL('image/jpeg', 0.86)
+      }
       const grad = g.createLinearGradient(0, 0, 640, 480)
       grad.addColorStop(0, a); grad.addColorStop(1, b)
       g.fillStyle = grad; g.fillRect(0, 0, 640, 480)
       g.fillStyle = '#1d1d1f'; g.font = 'bold 44px sans-serif'; g.fillText(label, 40, 250)
       return canvas.toDataURL('image/jpeg', 0.8)
-    }, { a, b, label })
+    }, { a, b, label, picture })
     const exif = { '0th': {}, Exif: { [piexif.ExifIFD.DateTimeOriginal]: when.replace(/-/g, ':') + ':00' }, GPS: {} }
     if (city) {
       const lat = cities[city].lat + dLat
