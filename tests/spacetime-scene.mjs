@@ -1,5 +1,6 @@
-// 4D spacetime scene on a story line: an isolated account, a mocked StepFun that splits the
-// place's photos into two epochs, and (when this computer's ComfyUI has the Depth Anything 3
+// 4D spacetime scene on a story line: an isolated account, the life butler asked by voice how the
+// place changed (it opens the scene; there is no button), a mocked StepFun that splits the place's
+// photos into two epochs, and (when this computer's ComfyUI has the Depth Anything 3
 // model) the real reconstruction of the key photo, shown in the viewer. Needs `npm run dev`.
 import assert from 'node:assert/strict'
 import http from 'node:http'
@@ -18,8 +19,12 @@ const capability = await reliefCapability()
 let calls = 0
 const mock = http.createServer(async (req, res) => {
   const chunks = []; for await (const chunk of req) chunks.push(chunk)
-  const payload = JSON.parse(Buffer.concat(chunks).toString())
-  assert.match(payload.messages[0].content, /4D 时空场景的分段与证据/)
+  const payload = JSON.parse(Buffer.concat(chunks).toString() || '{}')
+  // Other StepFun work (automatic analysis, speech) is not what this test is about
+  if (!String(payload.messages?.[0]?.content || '').includes('4D 时空场景的分段与证据')) {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    return res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{}' } }] }))
+  }
   assert.match(payload.messages[1].content, /共 4 张照片/)
   assert.ok(!JSON.stringify(payload).includes('data:image'), '分段只用信息卡文字，不发图片')
   calls++
@@ -48,7 +53,7 @@ try {
   const cookie = registration.headers.get('set-cookie').split(';')[0]
   assert.equal((await fetch(`${base}/api/spacetime-scene/models/photo-0001`)).status, 401, '模型文件需要登录')
 
-  browser = await chromium.launch({ channel: 'chrome' })
+  browser = await chromium.launch({ channel: 'chrome', args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] })
   const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } })
   const errors = []
   page.on('pageerror', (e) => errors.push(e.message))
@@ -59,6 +64,25 @@ try {
     const response = await route.fetch({ url: `${base}${url.pathname}${url.search}`, headers: { ...route.request().headers(), cookie } })
     await route.fulfill({ response })
   })
+  // The butler (registered after the pass-through, so it wins): asked about change over time, it
+  // opens the spacetime scene; anything else gets a plain answer
+  let heard = ''
+  await page.route('**/api/asr', (route) => route.fulfill({ json: { text: heard } }))
+  await page.route('**/api/tts', (route) => route.fulfill({ status: 503, json: { error: '测试中不朗读' } }))
+  await page.route('**/api/butler', (route) => {
+    const question = String(route.request().postDataJSON()?.question || '')
+    const opens = /变化|时空/.test(question)
+    return route.fulfill({ json: { answer: opens ? '我按时间把这里的照片排一排。' : '杭州这里有两段回忆。', eventIds: [], assetIds: [], actions: opens ? [{ type: 'open_spacetime' }] : [] } })
+  })
+  const holdToTalk = async (text) => {
+    heard = text
+    const box = await page.locator('.voice-butler .hold').boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.locator('.hold.recording').waitFor()
+    await page.waitForTimeout(1200)
+    await page.mouse.up()
+  }
   await page.goto(process.env.BASE_URL || 'http://localhost:5183/')
   await page.evaluate(async ({ userId, photo }) => {
     const dates = ['2020-10-03', '2020-10-03', '2023-04-16', '2023-04-16']
@@ -80,11 +104,13 @@ try {
   }, { userId: user.id, photo })
   await page.reload()
 
-  // The entry lives on the city's story line, next to people/films
+  // No button: on the city's story line, the butler opens the scene when asked
   // Two labels can overlap on the globe (place and photo stack): the click must reach this one
   await page.locator('.globe-place, .globe-cluster, .map-label.place:visible').first().click({ force: true })
   if (await page.getByRole('dialog', { name: '选择地点' }).count()) await page.getByRole('dialog', { name: '选择地点' }).getByRole('button').first().click()
-  await page.getByRole('button', { name: '时空场景', exact: true }).click()
+  assert.equal(await page.getByRole('button', { name: '时空场景', exact: true }).count(), 0, '时空场景没有单独的按钮')
+  await page.locator('.voice-butler .hold:not([disabled])').waitFor({ timeout: 20000 })
+  await holdToTalk('这里这些年有什么变化？')
   const dialog = page.locator('.spacetime-modal')
   await dialog.waitFor()
   await page.waitForTimeout(3000)
