@@ -246,11 +246,12 @@ export function openIdentityStore(root) {
       const id=body.id&&validId(body.id)?body.id:`fact:user:${randomUUID()}`
       if(body.remove){db.prepare('DELETE FROM manual_facts WHERE id=?').run(id);bump();return snapshot()}
       const person=people().find(p=>p.id===body.subjectId&&!p.mergedInto)
-      if(!person)throw new Error('人物不存在')
       const assetIds=[...new Set(list(body.assetIds,500))]
+      if(body.subjectId&&!person)throw new Error('人物不存在')
+      if(!person&&!assetIds.length)throw new Error('补充需要关联人物或照片')
       if(assetIds.some(id=>!getAsset(id)))throw new Error('照片已不在当前相册，请刷新后重试')
       const value=text(body.value,500).trim();if(!value)throw new Error('请输入要记住的事实')
-      const fact={id,subjectId:person.id,type:'note',value,assetIds,revision:randomUUID()}
+      const fact={id,...(person?{subjectId:person.id}:{}),type:'note',value,assetIds,revision:randomUUID()}
       db.prepare('INSERT OR REPLACE INTO manual_facts VALUES (?,?)').run(id,JSON.stringify(fact));bump();return snapshot()
     })},
     enrich(sources){
@@ -259,7 +260,7 @@ export function openIdentityStore(root) {
       return sources.map(source=>{
         const asset=getAsset(source.id),fs=state.faces.filter(f=>f.assetId===source.id&&f.status!=='ignored')
         const ids=state.graph.memberships[source.id]||[],members=ids.map(id=>persons.get(id)).filter(Boolean)
-        const notes=allNotes.filter(f=>ids.includes(f.subjectId)&&(!f.assetIds.length||f.assetIds.includes(source.id)))
+        const notes=allNotes.filter(f=>(!f.subjectId||ids.includes(f.subjectId))&&(!f.assetIds.length||f.assetIds.includes(source.id)))
         const relationships=state.graph.relationships.filter(r=>ids.includes(r.subjectId)&&ids.includes(r.objectId))
         const events=state.graph.events.filter(e=>e.status==='confirmed'&&e.assetIds.includes(source.id))
         const eventFacts=events.flatMap(e=>state.graph.facts.filter(f=>e.factIds.includes(f.id)&&f.type==='event'))

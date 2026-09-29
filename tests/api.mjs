@@ -38,7 +38,7 @@ const mock = http.createServer(async (req, res) => {
     ? { title: '新居装修', caption: '〔可能在杭州〕', scene: '天花板上的灯', visibleText: '恒彩家装 0571-5670 0000', clues: [{ kind: '地点', evidence: '区号 0571', inference: '装修公司在杭州', confidence: 0.6 }, { kind: '事件', evidence: '', inference: '无依据的线索应被丢弃', confidence: 0.9 }], eventGuess: { type: '搬家装修', reason: '保护膜' }, tags: ['装修'], questions: ['这是你家吗？', '哪一年？', '第三个问题应被截掉'] }
     : system.includes('人生管家')
     // Actions on things that do not exist (a city, a photo, a film, a scene) must be dropped by the server
-    ? { answer: '那是爸妈第一次来〔上海〕看你。', eventIds: ['e2', 'not-a-real-id'], assetIds: ['p1', 'nope'], actions: [{ type: 'story', steps: [{ assetId: 'p1', text: '2019 年国庆，爸妈第一次来上海看你。' }, { assetId: 'nope', text: '不存在的照片' }, { assetId: 'p1', text: '同一张照片不再用' }] }, { type: 'focus_city', city: '火星市' }, { type: 'set_place_role', city: '上海市', role: 'work' }, { type: 'open_spacetime' }, { type: 'teleport' }, { type: 'play_film', filmId: 'f9' }, { type: 'make_film', assetIds: ['nope', 'p1'] }] }
+    ? { answer: '那是爸妈第一次来〔上海〕看你。', eventIds: ['e2', 'not-a-real-id'], assetIds: ['p1', 'nope'], actions: [{ type: 'show_photos', assetIds: ['p1', 'nope', 'p1'] }, { type: 'focus_city', city: '火星市' }, { type: 'set_place_role', city: '上海市', role: 'work' }, { type: 'open_spacetime' }, { type: 'teleport' }, { type: 'play_film', filmId: 'f9' }, { type: 'make_film', assetIds: ['nope', 'p1'] }] }
     : { title: '海边旅行', summary: '画面显示海边风景。', type: '旅行', place: '', city: '三亚市', people: [], visibleText: '海边', tags: ['海边'], questions: ['同行的人是谁？'], confidence: 0.7 }
   json({ choices: [{ message: { content: JSON.stringify(output) }, finish_reason: 'stop' }] })
 })
@@ -165,11 +165,11 @@ try {
   assert.deepEqual(reply.eventIds, ['e2'])
   assert.deepEqual(reply.assetIds, ['p1'], '不存在的照片 id 被过滤')
   assert.deepEqual(reply.actions, [
-    { type: 'story', steps: [{ assetId: 'p1', text: '2019 年国庆，爸妈第一次来上海看你。' }] },
+    { type: 'show_photos', assetIds: ['p1'] },
     { type: 'set_place_role', city: '上海市', role: 'work' },
     { type: 'play_film' },
     { type: 'make_film', assetIds: ['p1'] },
-  ], '故事只保留存在且不重复的照片；未知城市、未知动作和没有时空场景时的 open_spacetime 被丢弃；未知短片退回到最相关的一部；剪短片只用存在的照片')
+  ], '找照片只保留存在且不重复的照片；未知城市、未知动作和没有时空场景时的 open_spacetime 被丢弃；未知短片退回到最相关的一部；剪短片只用存在的照片')
   const butlerCall = last('/v1/chat/completions').payload
   assert.match(butlerCall.messages[0].content, /人生管家/)
   assert.match(butlerCall.messages[0].content, /"focus":\{"city":"上海市"/)

@@ -4,6 +4,7 @@ import type { CullReview } from './cull'
 import { getFile } from './storage'
 import { heicAsJpeg, isHeic } from './import'
 import { formatDate } from './memory'
+import type { NarratedStory } from './storytelling'
 
 // The stored preview (1200 px) is too small to read plates and signs; the card gets a sharper
 // copy made from the original file, falling back to the preview
@@ -121,7 +122,7 @@ export interface ButlerMemoryEvent {
 export interface ButlerMove { from: string; fromRole: string; to: string; toRole: string; at: string }
 // A photo's information card without the picture: what the butler searches by meaning
 export interface ButlerMemoryPhoto {
-  id: string; eventId: string; date: string; city: string; place: string
+  id: string; eventId: string; date: string; dateSource?: string; city: string; place: string
   title: string; caption: string; scene: string; tags: string[]; people: string[]
 }
 // What the page shows, so "this photo" and "here" mean something, and which capabilities exist
@@ -142,7 +143,7 @@ export type ButlerAction =
   | { type: 'show_photos'; assetIds: string[] }
   | { type: 'slideshow'; assetIds: string[] }
   // A guided story: one photo and one spoken sentence per step, the map moving along
-  | { type: 'story'; steps: { assetId: string; text: string }[] }
+  | { type: 'story'; steps?: { assetId: string; text: string }[]; story?: NarratedStory }
   | { type: 'open_event'; eventId: string }
   | { type: 'set_place_role'; city: string; role: PlaceRole }
   | { type: 'timeline'; date: string }
@@ -159,8 +160,9 @@ export async function askButler(
   memory: { events: ButlerMemoryEvent[]; places: (Pick<Place, 'city' | 'role' | 'roleConfirmed' | 'firstAt' | 'lastAt'> & { eventCount: number })[]; moves: ButlerMove[]; photos: ButlerMemoryPhoto[] },
   focus: ButlerFocus | undefined,
   state: ButlerState,
+  storytelling?: { intent?: 'story'; storyId?: string },
 ): Promise<ButlerReply> {
-  const reply = await jsonResponse<Partial<ButlerReply>>(await post('/api/butler', { question, history, memory, focus, state }))
+  const reply = await jsonResponse<Partial<ButlerReply>>(await post('/api/butler', { question, history, memory, focus, state, ...storytelling }))
   return { answer: reply.answer || '', eventIds: reply.eventIds || [], assetIds: reply.assetIds || [], actions: reply.actions || [] }
 }
 
@@ -169,8 +171,8 @@ export async function transcribe(wav: Blob): Promise<string> {
   return (await jsonResponse<{ text: string }>(response)).text
 }
 
-export async function speak(text: string): Promise<Blob> {
-  const response = await post('/api/tts', { text })
+export async function speak(text: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await fetch('/api/tts', { method: 'POST', headers, body: JSON.stringify({ text }), signal })
   if (!response.ok) await jsonResponse(response)
   return response.blob()
 }

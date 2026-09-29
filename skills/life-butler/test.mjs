@@ -35,7 +35,8 @@ test('SKILL.md 格式完整，写明了推断标记、第一次、动作和输�
   assert.match(body, /lasts/, '最后一次只来自 lasts')
   assert.match(body, /moves/, '迁徙说明第一次之后去了哪里')
   assert.match(body, /〔毕业〕/, '离开的原因是推断，要标出')
-  assert.match(body, /只用语音/, '说明用户只用语音、回答会被朗读')
+  assert.match(body, /语音或文字/, '远程用户可以打字，回答仍会被朗读')
+  assert.match(body, /边看边讲.*story/, '逐张解说通过 story 同步照片与旁白')
 })
 
 test('照片索引超过上限时，与问题最相关的照片留下', () => {

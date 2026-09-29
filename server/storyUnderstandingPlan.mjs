@@ -18,7 +18,7 @@ export function eventInputs(state,minimum=2){
     const personIds=[...new Set(photos.flatMap(p=>p.personIds))].sort()
     const known=facts.filter(f=>f.source==='user'&&(
       f.type==='event'&&f.assetIds?.some(id=>ids.includes(id))||
-      f.type==='note'&&personIds.includes(f.subjectId)&&(!f.assetIds?.length||f.assetIds.some(id=>ids.includes(id)))||
+      f.type==='note'&&(!f.subjectId||personIds.includes(f.subjectId))&&(!f.assetIds?.length||f.assetIds.some(id=>ids.includes(id)))||
       f.type==='relationship'&&personIds.includes(f.subjectId)&&personIds.includes(f.objectId)))
     const input={eventId:event.id,photos,people:people.filter(p=>personIds.includes(p.id)).map(({id,name,relationship})=>({id,name,relationship})),
       relationships:(state.graph.relationships||[]).filter(r=>personIds.includes(r.subjectId)&&personIds.includes(r.objectId)),

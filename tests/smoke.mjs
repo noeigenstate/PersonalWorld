@@ -52,7 +52,10 @@ async function register(name, password) {
 }
 
 const butlerCalls = []
+const storyTtsCalls = [], storyNotes = []
+let latestStory = null, ttsFails = false
 let asrBytes = 0
+let asrCalls = 0
 // What StepFun "hears" for the next hold-to-talk
 let asrText = ''
 await page.route('**/api/config', (route) => route.fulfill({ json: { available: true, mode: 'model', message: '模拟 StepFun', geocode: true } }))
@@ -60,13 +63,33 @@ await page.route('**/api/geocode', (route) => route.fulfill({ json: { results: r
 // Events analyze themselves after import; every event gets this answer (GPS cities are kept)
 await page.route('**/api/analyze', (route) => route.fulfill({ json: { title: '加班的夜晚', summary: '在办公室加班。', type: '工作', place: '', city: '上海市', people: [], visibleText: '', tags: [], questions: ['这是在公司吗？'], confidence: 0.6 } }))
 await page.route('**/api/photo-card', (route) => route.fulfill({ json: { title: '测试照片', caption: '', scene: '测试画面', visibleText: '', clues: [], landmark: null, placeQuery: null, eventGuess: { type: '', reason: '' }, tags: [], questions: [] } }))
-await page.route('**/api/asr', (route) => { asrBytes = route.request().postDataBuffer()?.length || 0; return route.fulfill({ json: { text: asrText } }) })
-await page.route('**/api/tts', (route) => route.fulfill({ contentType: 'audio/wav', body: silentWav }))
+await page.route('**/api/asr', (route) => { asrCalls++; asrBytes = route.request().postDataBuffer()?.length || 0; return route.fulfill({ json: { text: asrText } }) })
+await page.route('**/api/tts', (route) => {
+  const text = route.request().postDataJSON().text
+  storyTtsCalls.push(text)
+  if (ttsFails) return route.fulfill({ status: 503, json: { error: '测试语音暂不可用' } })
+  return route.fulfill({ contentType: 'audio/wav', body: silentWav })
+})
+await page.route('**/api/storytelling/list', route => route.fulfill({ json: { stories: latestStory ? [latestStory] : [] } }))
+await page.route('**/api/storytelling/note', route => { storyNotes.push(route.request().postDataJSON()); return route.fulfill({ json: { ok: true } }) })
 // The butler answers with actions that drive the map: a role, a narrated slideshow, a photo search
 await page.route('**/api/butler', (route) => {
   const body = route.request().postDataJSON()
   butlerCalls.push(body)
   const question = body.question
+  if (body.intent === 'story') {
+    const selected = body.memory.photos.filter(p => p.city === '上海市').slice(0, 3)
+    const ids = selected.map(p => p.id)
+    latestStory = { id: `test-story-${butlerCalls.length}`, title: '灯亮的时候', premise: '同一座城市，不同日子的画面互相呼应。', format: 'revisit', tone: 'quiet', assetIds: ids, createdAt: '2026-09-28', sourceRevision: 'test', reflection: null,
+      evidence: selected.map(p => ({ ...p, timeSource: 'exif', observed: p.scene })),
+      beats: [
+        { id: 'a', assetIds: ids.slice(0, 2), evidenceIds: ids.slice(0, 2), layout: 'sequence', text: '先看看两个不同日子的灯光，照片之间留着一段时间。', leadInMs: 0, holdMs: 1200 },
+        { id: 'b', assetIds: ids.slice(0, 2), evidenceIds: ids.slice(0, 2), layout: 'compare', text: '把这两个日子放在一起，看看镜头里留下了什么。', leadInMs: 0, holdMs: 6000 },
+        { id: 'c', assetIds: [ids[2]], evidenceIds: [ids[2]], layout: 'single', text: '', leadInMs: 0, holdMs: 3000 },
+        { id: 'd', assetIds: [ids[0]], evidenceIds: [ids[0]], layout: 'single', text: '回到开头这一张，先不急着翻过去。', leadInMs: 500, holdMs: 800 },
+      ] }
+    return route.fulfill({ json: { answer: '', eventIds: [], assetIds: ids, actions: [{ type: 'story', story: latestStory }] } })
+  }
   if (question === '工作') return route.fulfill({ json: { answer: '记下了，上海是你工作的地方。', eventIds: [], assetIds: [], actions: [{ type: 'set_place_role', city: body.state.pendingRoleCity, role: 'work' }] } })
   if (question.includes('杭州')) {
     const ids = body.memory.photos.filter((p) => p.city === '杭州市').map((p) => p.id)
@@ -257,6 +280,82 @@ try {
   assert.match(storyCall.memory.events.find((e) => e.start === '2014-08-30').lasts[0], /^离开湘潭去武汉前，照片记录中最后一次在湘潭$/, '后来又回过湘潭：只是离开前的最后一次')
   await page.getByRole('button', { name: '收起照片' }).click()
   await page.getByRole('button', { name: '收起字幕' }).click()
+
+  // Remote use: a prefilled text command waits for Send, then runs the same guided story
+  // without recording audio or calling speech recognition.
+  const callsBeforeText = butlerCalls.length, asrBeforeText = asrCalls
+  const textPrompt = '我第一次来上海是什么时候？边看照片边讲，每张配一句解说。'
+  await page.evaluate((text) => { window.location.hash = `tell=${encodeURIComponent(text)}` }, textPrompt)
+  const textInput = page.getByRole('textbox', { name: '想回忆什么' })
+  await textInput.waitFor()
+  assert.equal(await textInput.inputValue(), textPrompt)
+  assert.equal(butlerCalls.length, callsBeforeText, '预填链接不能自动调用管家')
+  await textInput.press('Enter')
+  await page.locator('.showcase.slideshow[data-count="2"]').waitFor()
+  await page.locator('.subtitle.bot').filter({ hasText: '最后一次在武汉' }).waitFor({ timeout: 15_000 })
+  assert.equal(butlerCalls.length, callsBeforeText + 1)
+  assert.equal(butlerCalls.at(-1).question, textPrompt)
+  assert.equal(asrCalls, asrBeforeText, '文字演绎不依赖麦克风或 ASR')
+  assert.equal(new URL(page.url()).hash, '', '发送后清除预填链接')
+  assert.equal(await page.locator('.showcase-strip button.on').getAttribute('aria-label'), '第 2 张')
+  await page.screenshot({ path: join(shots, 'pw-text-story.png') })
+  await page.getByRole('button', { name: '收起照片' }).click()
+  await page.getByRole('button', { name: '收起字幕' }).click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  const formBounds = await page.getByRole('form', { name: '文字询问人生管家' }).boundingBox()
+  assert.ok(formBounds && formBounds.x >= 0 && formBounds.x + formBounds.width <= 390, '手机上的文字入口不溢出')
+  await page.screenshot({ path: join(shots, 'pw-text-mobile.png') })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.getByRole('button', { name: '收起文字输入' }).click()
+  await page.getByRole('button', { name: '打字和管家说话' }).click()
+  await textInput.waitFor()
+  await textInput.press('Escape')
+
+  // New narrative player: a paragraph spans photos, comparisons retain dates, silence is real,
+  // pause/seek/close cancel work, and a user's optional memory stays linked to its photos.
+  await page.getByRole('button', { name: '听回忆故事', exact: true }).click()
+  await page.getByRole('button', { name: '自动挑选，讲一段新故事' }).click()
+  await page.locator('.story-stage[data-beat="0"]').waitFor()
+  await page.getByRole('button', { name: '暂停故事' }).click()
+  const pausedBeat = await page.locator('.story-stage').getAttribute('data-beat')
+  await page.waitForTimeout(1500)
+  assert.equal(await page.locator('.story-stage').getAttribute('data-beat'), pausedBeat, '暂停后不会继续翻页')
+  await page.getByRole('button', { name: '继续故事' }).click()
+  await page.getByRole('button', { name: '第 2 段故事', exact: true }).click()
+  await page.locator('.story-stage[data-beat="1"][data-layout="compare"]').waitFor()
+  await page.getByRole('button', { name: '暂停故事' }).click()
+  assert.equal(await page.locator('.story-pictures img').count(), 2)
+  assert.equal(await page.locator('.story-pictures time').count(), 2, '对照照片各有自己的真实日期')
+  await page.screenshot({ path: join(shots, 'pw-narrative-compare.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  const storyBounds = await page.locator('.story-stage').boundingBox()
+  const inputBounds = await page.locator('.butler-input-controls').boundingBox()
+  assert.ok(storyBounds.x >= 0 && storyBounds.x + storyBounds.width <= 390)
+  assert.ok(storyBounds.y + storyBounds.height <= inputBounds.y, '故事不盖住手机输入入口')
+  await page.screenshot({ path: join(shots, 'pw-narrative-mobile.png') })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.getByRole('button', { name: '第 3 段故事，留白', exact: true }).click()
+  await page.locator('.story-stage[data-beat="2"][data-phase="hold"]').waitFor()
+  assert.equal(await page.locator('.story-narration p').count(), 0, '留白段不显示上一段旁白')
+  assert.ok(!storyTtsCalls.includes(''), '留白不请求空语音')
+  await page.getByRole('button', { name: '第 4 段故事', exact: true }).click()
+  await page.locator('.story-stage[data-phase="ended"]').waitFor()
+  await page.locator('.story-afterword summary').click()
+  await page.getByRole('textbox', { name: '补充这段回忆' }).fill('那天我们特意等到灯亮。')
+  await page.getByRole('button', { name: '记住这件事' }).click()
+  await page.getByRole('status').filter({ hasText: '已记住' }).waitFor()
+  assert.equal(storyNotes.at(-1).storyId, latestStory.id)
+  assert.deepEqual(storyNotes.at(-1).assetIds, latestStory.beats[3].assetIds)
+  await page.getByRole('button', { name: '收起故事', exact: true }).click()
+  await page.waitForTimeout(800)
+  assert.equal(await page.locator('.story-stage').count(), 0, '收起后旧回调不能重新打开故事')
+  ttsFails = true
+  await page.getByRole('button', { name: '听回忆故事', exact: true }).click()
+  await page.getByRole('button', { name: '自动挑选，讲一段新故事' }).click()
+  await page.locator('.story-audio-note').waitFor()
+  assert.equal(await page.locator('.story-stage').getAttribute('data-beat'), '0', '语音失败时保留字幕阅读时间，不瞬间跳完')
+  await page.getByRole('button', { name: '收起故事', exact: true }).click()
+  ttsFails = false
 
   // Story node opens the event
   await page.locator('.map-label.event').filter({ hasText: '2018.07' }).locator('.map-event-cover').click()

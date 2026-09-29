@@ -20,6 +20,7 @@ import { filmCapability } from './memoryFilmRender.mjs'
 import { createMemoryReview } from './memoryReview.mjs'
 import { createMemoryGraph } from './memoryGraph.mjs'
 import { compactPhoto, compactState, pickPhotos, readActions } from './butler.mjs'
+import { createStorytellingService } from './storytelling.mjs'
 
 loadEnv({ path: fileURLToPath(new URL('../.env', import.meta.url)) })
 
@@ -33,6 +34,7 @@ const graph = createMemoryGraph(join(dirname(usersFile),'memory-graph'),{config:
 const vault = createAccountVault(join(dirname(usersFile), 'accounts'))
 const films = createFilmService(stepfun, { root: process.env.MEMORY_FILMS_DIR || join(dirname(usersFile), 'memory-films'), enrichSources:(user,sources)=>graph.enrich(user,sources), chapterFor:(user,id)=>graph.chapter(user,id) })
 const review = createMemoryReview(join(dirname(usersFile), 'memory-review'))
+const storytelling = createStorytellingService(join(dirname(usersFile), 'storytelling'), stepfun, { photoPreview: (user, id) => vault.getPreview(user, id) })
 
 function send(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -200,12 +202,19 @@ const routes = {
       .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string')
       .map((m) => ({ role: m.role, content: m.content.slice(0, 600) }))
     const moves = (Array.isArray(body.memory?.moves) ? body.memory.moves : []).slice(0, 30).map(compactMove).filter((m) => m.from && m.to)
+    const storyInput = () => ({ question, photos, events, focus, storyGraph: graph.context(user) })
+    const tell = async () => {
+      const story = await storytelling.compose(user, storyInput(), { storyId: body.storyId, freshInput: storyInput })
+      return [200, { answer: '', eventIds: [], assetIds: story.assetIds, actions: [{ type: 'story', story }] }]
+    }
+    if (body.intent === 'story' || body.storyId || /边看.{0,8}边(?:听|讲)|演绎|讲.{0,30}(?:故事|回忆)|听.{0,12}(?:故事|回忆)/.test(question)) return tell()
     const memory = JSON.stringify({ today: new Date().toISOString().slice(0, 10), focus, state, places, moves, events, photos, storyGraph: graph.context(user) })
     const answer = parseJsonAnswer(await chat(stepfun, [
       { role: 'system', content: `${loadSkill('life-butler')}\n\n记忆：${memory}` },
       ...history,
       { role: 'user', content: question },
     ], { json: true }))
+    if (Array.isArray(answer.actions) && answer.actions.some(action => action?.type === 'story')) return tell()
     const known = {
       events: new Set(events.map((event) => event.id)),
       photos: new Set(photos.map((photo) => photo.id)),
@@ -220,6 +229,14 @@ const routes = {
       assetIds: strings(answer.assetIds, 12).filter((id) => known.photos.has(id)),
       actions: readActions(answer.actions, known),
     }]
+  },
+
+  async 'POST /api/storytelling/list'(_body, user) {
+    return [200, { stories: await storytelling.list(user) }]
+  },
+
+  async 'POST /api/storytelling/note'(body, user) {
+    return [200, await storytelling.note(user, body, fact => graph.fact(user, fact))]
   },
 
   async 'POST /api/tts'(body) {
@@ -289,7 +306,7 @@ const server = http.createServer(async (req, res) => {
       const asset = /^\/api\/vault\/assets\/([A-Za-z0-9-]{8,64})(?:\/(preview|original))?$/.exec(path)
       if (asset) {
         const [, id, part] = asset
-        if (req.method === 'DELETE' && !part) { await vault.removeAsset(user, id); return send(res, 200, { ok: true }) }
+        if (req.method === 'DELETE' && !part) { await vault.removeAsset(user, id); await storytelling.removeAssets(user, [id]); return send(res, 200, { ok: true }) }
         if (req.method === 'PUT' && part === 'preview') { await vault.putPreview(user, id, await readBody(req, 8 * 1024 * 1024)); return send(res, 200, { ok: true }) }
         if (req.method === 'PUT' && part === 'original') {
           const meta = { name: decodeURIComponent(String(req.headers['x-file-name'] || '')), type: req.headers['content-type'], lastModified: req.headers['x-last-modified'] }

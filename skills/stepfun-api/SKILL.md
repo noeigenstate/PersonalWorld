@@ -33,6 +33,11 @@ Verified against the live API on 2026-09-24. Docs index: https://platform.stepfu
 - With `json_object`, still say "输出 JSON" in the prompt and parse defensively: strip ``` fences, fall back to the first `{` … last `}`.
 - Check `choices[0].finish_reason === 'length'` and report truncation instead of parsing half a JSON.
 - Typical latency: 3–4 s for a short JSON answer.
+- Optional `reasoning_effort: 'low' | 'medium' | 'high'` controls reasoning on supported models.
+  The narration pipeline uses `medium` with a 120 s per-call timeout after `high` showed poor latency in live trials; it can still take longer than a short answer.
+  Verified against the [reasoning API](https://platform.stepfun.com/docs/zh/step-plan/integrations/reasoning-api.md)
+  and [Chat Completions](https://platform.stepfun.com/docs/zh/api-reference/chat/chat-completion-create.md) on 2026-09-29.
+  In this project `STEPFUN_STORY_MODEL` optionally selects a separate narration writer; selection, factual review and photo analysis use `STEPFUN_MODEL`.
 
 ## Speech to text on Step Plan — `POST /step_plan/v1/audio/asr/sse`
 

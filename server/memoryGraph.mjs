@@ -81,7 +81,7 @@ export function createMemoryGraph(root,{engine=createFaceEngine(),config,underst
     chapter:(user,id)=>understanding(user).decorate(store(user).snapshot()).graph.chapters.find(c=>c.id===id),
     context(user){
       const state=understanding(user).decorate(store(user).snapshot())
-      return {people:state.people.filter(p=>p.confirmed).map(({id,name,relationship})=>({id,name,relationship})),
+      return {revision:state.graph.revision,memberships:state.graph.memberships,people:state.people.filter(p=>p.confirmed).map(({id,name,relationship})=>({id,name,relationship})),
         relationships:state.graph.relationships,chapters:state.graph.chapters.slice(0,30),events:state.graph.events.slice(-100),facts:state.graph.facts.slice(-300)}
     },
     async face(user,id){

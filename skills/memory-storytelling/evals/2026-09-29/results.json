@@ -1,0 +1,292 @@
+{
+  "model": "step-5-preview",
+  "reasoningEffort": "medium",
+  "input": {
+    "question": "自动挑选一个有趣温暖的切口，边看照片边讲一段回忆。",
+    "focus": null,
+    "photos": [
+      {
+        "id": "fiction-001",
+        "date": "2026-01-05",
+        "timeSource": "exif",
+        "city": "",
+        "place": "",
+        "observed": "小女孩右手握黄色积木，面前桌上有三层蓝色积木。成年女性坐旁边扶着底层。",
+        "narrative": "",
+        "tags": [],
+        "personIds": [
+          "kid",
+          "mother"
+        ],
+        "eventId": ""
+      },
+      {
+        "id": "fiction-002",
+        "date": "2026-01-05",
+        "timeSource": "exif",
+        "city": "",
+        "place": "",
+        "observed": "同一张桌上的积木散开。小女孩和成年女性面向镜头笑，女孩右手仍握黄色积木。不能从画面判断是谁推倒的。",
+        "narrative": "",
+        "tags": [],
+        "personIds": [
+          "kid",
+          "mother"
+        ],
+        "eventId": ""
+      },
+      {
+        "id": "fiction-003",
+        "date": "2026-03-12",
+        "timeSource": "exif",
+        "city": "",
+        "place": "",
+        "observed": "小女孩坐地毯上，把红色积木放在一排蓝色积木旁；后面有一只黄色积木。",
+        "narrative": "",
+        "tags": [],
+        "personIds": [
+          "kid"
+        ],
+        "eventId": ""
+      },
+      {
+        "id": "fiction-004",
+        "date": "2026-03-12",
+        "timeSource": "exif",
+        "city": "",
+        "place": "",
+        "observed": "成年女性和小女孩并排坐在地毯上，两人各握一块积木，面前是一排蓝色积木。",
+        "narrative": "",
+        "tags": [],
+        "personIds": [
+          "kid",
+          "mother"
+        ],
+        "eventId": ""
+      }
+    ],
+    "people": [
+      {
+        "id": "kid",
+        "name": "小满",
+        "relationship": "女儿"
+      },
+      {
+        "id": "mother",
+        "name": "妈妈",
+        "relationship": "我"
+      }
+    ],
+    "relationships": [
+      {
+        "subjectId": "kid",
+        "objectId": "mother",
+        "value": "小满是妈妈的女儿",
+        "label": "女儿",
+        "source": "user",
+        "status": "confirmed"
+      }
+    ],
+    "confirmed": [],
+    "events": [],
+    "chapters": [],
+    "recent": []
+  },
+  "startedAt": "2026-09-28T16:37:07.533Z",
+  "withoutSkill": {
+    "title": "黄色积木的陪伴",
+    "beats": [
+      {
+        "assetIds": [
+          "fiction-001"
+        ],
+        "text": "一月刚开头，你在小桌前学搭积木。三层蓝色的塔摇摇晃晃，我伸手扶着最底层，你右手紧紧攥着那块黄色积木，好像那是你的秘密武器，随时准备加上去。"
+      },
+      {
+        "assetIds": [
+          "fiction-002"
+        ],
+        "text": "后来积木哗啦一下散了。其实我到现在都没看清是谁碰倒的，可你看着镜头笑，我也跟着笑，那一刻觉得，散在地上的积木比搭好的时候还要热闹。"
+      },
+      {
+        "assetIds": [
+          "fiction-003"
+        ],
+        "text": "三月，你已经能自己坐在地毯上玩了。把红色积木轻轻放在蓝色积木旁边，后面还搁着那块熟悉的黄色积木。我不再需要伸手去扶，只是坐在不远处看着。"
+      },
+      {
+        "assetIds": [
+          "fiction-004"
+        ],
+        "text": "再后来，我们并排坐在地毯上，各握一块积木，面前是一排长长的蓝色。你的高度终于和我一样平视这堆积木了。原来所谓长大，就是从“我扶着你”到“我们一起”。"
+      }
+    ]
+  },
+  "withSkill": {
+    "key": "yellow-block",
+    "title": "手里的黄积木",
+    "premise": "黄色积木像是小满游戏时的陪伴，从妈妈扶着的三层塔旁，到她独自摆放的红蓝积木后面，有时在她手边，有时在画面里。",
+    "format": "motif",
+    "tone": "tender",
+    "assetIds": [
+      "fiction-001",
+      "fiction-002",
+      "fiction-003"
+    ],
+    "beats": [
+      {
+        "id": "beat-1",
+        "assetIds": [
+          "fiction-001"
+        ],
+        "evidenceIds": [
+          "fiction-001"
+        ],
+        "text": "先看小满的右手。那块黄积木被她握在手里，像攥着什么宝贝。妈妈扶着三层蓝积木，她只管守住自己的颜色。",
+        "layout": "single",
+        "leadInMs": 800,
+        "holdMs": 1500
+      },
+      {
+        "id": "beat-2",
+        "assetIds": [
+          "fiction-001",
+          "fiction-002"
+        ],
+        "evidenceIds": [
+          "fiction-001",
+          "fiction-002"
+        ],
+        "text": "再并排看下一张，塔倒了，积木散了一桌。可手里仍握着那块黄色，两个人看着镜头笑，倒塌也像游戏的一环。",
+        "layout": "compare",
+        "leadInMs": 800,
+        "holdMs": 1600
+      },
+      {
+        "id": "beat-3",
+        "assetIds": [
+          "fiction-002"
+        ],
+        "evidenceIds": [
+          "fiction-002"
+        ],
+        "text": "",
+        "layout": "single",
+        "leadInMs": 1000,
+        "holdMs": 3000
+      },
+      {
+        "id": "beat-4",
+        "assetIds": [
+          "fiction-003"
+        ],
+        "evidenceIds": [
+          "fiction-003"
+        ],
+        "text": "她坐在地毯上，把红积木轻轻放在蓝排旁边。身后还躺着一块黄积木，没拿在手里，却也还在画面里陪着她。",
+        "layout": "single",
+        "leadInMs": 800,
+        "holdMs": 1500
+      },
+      {
+        "id": "beat-5",
+        "assetIds": [
+          "fiction-001",
+          "fiction-003"
+        ],
+        "evidenceIds": [
+          "fiction-001",
+          "fiction-003"
+        ],
+        "text": "从桌前到地毯，从右手到身后，黄色积木像是她游戏时的陪伴。有时拿在手里，有时只是出现在旁边。",
+        "layout": "sequence",
+        "leadInMs": 900,
+        "holdMs": 1800
+      },
+      {
+        "id": "beat-6",
+        "assetIds": [
+          "fiction-003"
+        ],
+        "evidenceIds": [
+          "fiction-003"
+        ],
+        "text": "停在这抹黄色上。它不声不响，串起了这三个瞬间。",
+        "layout": "single",
+        "leadInMs": 800,
+        "holdMs": 2000
+      }
+    ],
+    "reflection": null,
+    "evidence": [
+      {
+        "id": "fiction-001",
+        "date": "2026-01-05",
+        "timeSource": "exif",
+        "city": "",
+        "place": "",
+        "observed": "小女孩右手握黄色积木，面前桌上有三层蓝色积木。成年女性坐旁边扶着底层。",
+        "personIds": [
+          "kid",
+          "mother"
+        ],
+        "eventId": ""
+      },
+      {
+        "id": "fiction-002",
+        "date": "2026-01-05",
+        "timeSource": "exif",
+        "city": "",
+        "place": "",
+        "observed": "同一张桌上的积木散开。小女孩和成年女性面向镜头笑，女孩右手仍握黄色积木。不能从画面判断是谁推倒的。",
+        "personIds": [
+          "kid",
+          "mother"
+        ],
+        "eventId": ""
+      },
+      {
+        "id": "fiction-003",
+        "date": "2026-03-12",
+        "timeSource": "exif",
+        "city": "",
+        "place": "",
+        "observed": "小女孩坐地毯上，把红色积木放在一排蓝色积木旁；后面有一只黄色积木。",
+        "personIds": [
+          "kid"
+        ],
+        "eventId": ""
+      }
+    ],
+    "people": [
+      {
+        "id": "kid",
+        "name": "小满",
+        "relationship": "女儿"
+      },
+      {
+        "id": "mother",
+        "name": "妈妈",
+        "relationship": "我"
+      }
+    ],
+    "review": {
+      "notes": [
+        "已核对三张照片：fiction-001、002为同日同桌，fiction-003仅小满在场；删除无依据的松紧比较与绝对化“固定”表述，并将“同一块积木”的未证实同一性改为颜色 motif。"
+      ]
+    },
+    "candidates": [
+      {
+        "key": "yellow-block",
+        "format": "motif",
+        "angle": "黄色积木像是小满游戏时的固定陪伴：一月和妈妈在桌前的两张照片里，她都把它握在右手；三月她独自坐在地毯上时，黄色积木也出现在一旁那排蓝色积木后面。",
+        "assetIds": [
+          "fiction-001",
+          "fiction-002",
+          "fiction-003"
+        ]
+      }
+    ]
+  },
+  "finishedAt": "2026-09-28T16:38:48.085Z"
+}

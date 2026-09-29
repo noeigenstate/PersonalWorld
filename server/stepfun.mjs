@@ -7,6 +7,7 @@ export function stepfunConfig(env = process.env) {
     baseUrl: (env.STEPFUN_BASE_URL?.trim() || STEP_PLAN_URL).replace(/\/$/, ''),
     apiKey: env.STEPFUN_API_KEY?.trim(),
     model: env.STEPFUN_MODEL?.trim(),
+    storyModel: env.STEPFUN_STORY_MODEL?.trim(),
     asrModel: env.STEPFUN_ASR_MODEL?.trim() || 'stepaudio-2.5-asr',
     ttsModel: env.STEPFUN_TTS_MODEL?.trim() || 'stepaudio-2.5-tts',
     ttsVoice: env.STEPFUN_TTS_VOICE?.trim() || 'cixingnansheng',
@@ -37,13 +38,13 @@ async function failure(response) {
   return new Error(`StepFun 调用失败：${String(detail).slice(0, 300)}`)
 }
 
-export async function chat(config, messages, { json = false } = {}) {
+export async function chat(config, messages, { json = false, reasoningEffort, timeoutMs = 90_000 } = {}) {
   requireKey(config)
-  return withTimeout(90_000, async (signal) => {
+  return withTimeout(timeoutMs, async (signal) => {
     const response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: config.model, messages, ...(json ? { response_format: { type: 'json_object' } } : {}) }),
+      body: JSON.stringify({ model: config.model, messages, ...(json ? { response_format: { type: 'json_object' } } : {}), ...(['low', 'medium', 'high'].includes(reasoningEffort) ? { reasoning_effort: reasoningEffort } : {}) }),
       signal,
     })
     if (!response.ok) throw await failure(response)

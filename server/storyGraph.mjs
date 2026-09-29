@@ -77,7 +77,7 @@ export function buildStoryGraph(assets, sourceEvents, people, faces, manualFacts
     const participants=[...new Set([...personIds,...selected.flatMap(id=>memberships.get(id)||[])])]
     const related=events.filter(e=>e.assetIds.some(id=>selected.includes(id)))
     const factIds=[...new Set(related.flatMap(e=>e.factIds).filter(id=>{const f=facts.find(f=>f.id===id);return !f?.assetId||selected.includes(f.assetId)}))]
-    const userFacts=manualFacts.filter(f=>participants.includes(f.subjectId)&&(!f.assetIds?.length||f.assetIds.some(id=>selected.includes(id))))
+    const userFacts=manualFacts.filter(f=>(!f.subjectId||participants.includes(f.subjectId))&&(!f.assetIds?.length||f.assetIds.some(id=>selected.includes(id))))
     factIds.push(...userFacts.map(f=>f.id))
     factIds.push(...relationships.filter(r=>participants.includes(r.subjectId)&&participants.includes(r.objectId)).map(r=>r.id))
     const chosenFacts=facts.filter(f=>factIds.includes(f.id))

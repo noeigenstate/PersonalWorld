@@ -19,6 +19,8 @@ import { scenePhotos } from './lib/spacetime'
 import type { AiConfig, MemoryAsset, MemoryEvent, MemoryState, PhotoLook, PlaceRole } from './types'
 import { VoiceButler, type Subtitle, type VoiceState } from './components/VoiceButler'
 import { Showcase, type ShowcaseState } from './components/Showcase'
+import { StoryStage } from './components/StoryStage'
+import { recentStories, shouldMoveStoryMap, type NarratedStory, type StorySummary } from './lib/storytelling'
 import { EventDetail, statusLabel } from './components/EventDetail'
 import { ImportDialog } from './components/ImportDialog'
 import { LifeMapView } from './components/LifeMapView'
@@ -99,9 +101,13 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const [subtitle, setSubtitle] = useState<Subtitle | null>(null)
   const [focus, setFocus] = useState<ButlerFocus | null>(null)
   const [asking, setAsking] = useState(false)
+  const [askingStory, setAskingStory] = useState(false)
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
   const [speaking, setSpeaking] = useState(false)
   const [showcase, setShowcase] = useState<ShowcaseState | null>(null)
+  const [narratedStory, setNarratedStory] = useState<NarratedStory | null>(null)
+  const [storyChoices, setStoryChoices] = useState<StorySummary[]>([])
+  const lastStoryPoint = useRef<[number, number] | undefined>(undefined)
   const [pendingRoleCity, setPendingRoleCity] = useState<string | null>(null)
   const [libraryOpen, setLibraryOpen] = useState<{ tab?: 'people' | 'stories'; at: number } | null>(null)
   const [spacetimeOpen, setSpacetimeOpen] = useState<{ at: number } | null>(null)
@@ -114,7 +120,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const recording = useRef<Recording | null>(null)
   const liveTimer = useRef(0)
   const hideTimer = useRef(0)
-  // The person has spoken to the butler in this session, so it may speak too
+  // The person has addressed the butler by voice or text, so it may speak too
   const voiceUsed = useRef(false)
   const audio = useRef<HTMLAudioElement | null>(null)
   const speechDone = useRef<(() => void) | null>(null)
@@ -125,6 +131,9 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   const aiRef = useRef(aiConfig); aiRef.current = aiConfig
   const showcaseRef = useRef(showcase); showcaseRef.current = showcase
   const geocoded = useRef(new Set<string>())
+
+  const refreshStories = useCallback(() => { void recentStories().then(result => setStoryChoices(result.stories)).catch(() => {}) }, [])
+  useEffect(() => { if (ready) refreshStories() }, [ready, refreshStories])
 
   useEffect(() => {
     loadMemory().then((data) => {
@@ -259,7 +268,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
       const event = memory.events.find((e) => e.assetIds.includes(a.id))
       const names = (memberships[a.id] || []).map((pid) => { const p = people.find((x) => x.id === pid); return p?.name || p?.relationship || '' }).filter(Boolean)
       return [{
-        id: a.id, eventId: event?.id || '', date: localDay(a.capturedAt),
+        id: a.id, eventId: event?.id || '', date: localDay(a.capturedAt), dateSource: a.dateSource,
         city: a.location?.city || event?.city || '', place: a.location?.aoi || a.location?.poi?.name || a.location?.label || event?.place || '',
         title: a.card?.title || '', caption: a.card?.caption || '', scene: a.card?.scene || '', tags: a.card?.tags || [], people: names,
       }]
@@ -427,6 +436,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   // Choosing a place on the map makes the butler speak first (as a subtitle; aloud once the
   // person has used their voice). There is no separate entry.
   const selectCity = useCallback((city: string | null, announce = true) => {
+    if (announce) setNarratedStory(null)
     setSelectedCity(city)
     setGlobeOverview(!city)
     setRouteId('')
@@ -611,6 +621,13 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     return true
   }
 
+  function focusStoryPhoto(id: string) {
+    const photo = mapPhotos.find(p => p.id === id)
+    if (!photo || !shouldMoveStoryMap(lastStoryPoint.current, photo.gcj)) return
+    lastStoryPoint.current = photo.gcj
+    focusPhoto(id)
+  }
+
   // The story line an event belongs on: its city if that is a life base, else the base lived in then
   function contextCityFor(event: MemoryEvent) {
     if (!event.city) return null
@@ -660,6 +677,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   function runActions(actions: ButlerAction[]) {
     const done = new Set<ButlerAction['type']>()
     let story: { assetId: string; text: string }[] | undefined
+    let narrative: NarratedStory | undefined
     for (const action of actions) {
       done.add(action.type)
       switch (action.type) {
@@ -668,7 +686,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         case 'focus_photo': focusPhoto(action.assetId); break
         case 'show_photos': openShowcase(action.assetIds, 'gallery'); break
         case 'slideshow': openShowcase(action.assetIds, 'slideshow'); break
-        case 'story': story = action.steps; break
+        case 'story': story = action.steps; narrative = action.story; break
         case 'open_event': setOpenPhotoId(null); setActiveEventId(action.eventId); break
         case 'set_place_role': confirmRole(action.city, action.role, false); break
         case 'timeline': { const at = Date.parse(action.date); if (!Number.isNaN(at)) scrubTo(at); break }
@@ -679,7 +697,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         case 'close': tourToken.current++; setShowcase(null); setActiveEventId(null); setOpenPhotoId(null); break
       }
     }
-    return { done, story }
+    return { done, story, narrative }
   }
 
   // A slideshow moves on by itself; the map follows the photo on stage
@@ -701,7 +719,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     city: selectedCity || '',
     openEventId: activeEventId || '',
     focusedPhotoId: mapFocus?.photo.id || '',
-    showing: showcase?.ids || [],
+    showing: narratedStory?.assetIds || showcase?.ids || [],
     pendingRoleCity: pendingRoleCity || '',
     features: {
       people: (library.state?.people || []).filter((p) => p.confirmed).length,
@@ -713,9 +731,14 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     },
   })
 
-  async function ask(question: string) {
+  async function ask(question: string, storytelling?: { intent?: 'story'; storyId?: string }) {
     if (!aiRef.current.available) { setNotice('人生管家需要 StepFun：请在 .env 中配置后重启服务'); return }
+    const ticket = ++tourToken.current
+    stopSpeaking()
+    setNarratedStory(null)
+    setShowcase(current => current ? { ...current, playing: false } : current)
     setAsking(true)
+    setAskingStory(Boolean(storytelling?.intent || storytelling?.storyId || /故事|回忆|演绎|边看/.test(question)))
     try {
       const memoryForButler = {
         events: events.map((e) => ({
@@ -728,10 +751,11 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         moves: movesForButler(places),
         photos: photoIndex,
       }
-      const reply = await askButler(question, history.current.slice(-8), memoryForButler, focus || undefined, uiState())
+      const reply = await askButler(question, history.current.slice(-8), memoryForButler, focus || undefined, uiState(), storytelling)
+      if (tourToken.current !== ticket) return
       const turns: ButlerTurn[] = [{ role: 'user', content: question }, { role: 'assistant', content: reply.answer }]
       history.current = [...history.current, ...turns].slice(-16)
-      const { done: acted, story } = runActions(reply.actions)
+      const { done: acted, story, narrative } = runActions(reply.actions)
       const staged = acted.has('show_photos') || acted.has('slideshow') || acted.has('story')
       // Photos it talked about but did not put on stage are shown anyway
       if (reply.assetIds.length && !staged && !acted.has('focus_photo')) openShowcase(reply.assetIds, 'gallery')
@@ -741,14 +765,19 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
         if (!acted.has('focus_city') && !acted.has('overview') && !staged) showContextOf(first)
         setHighlightedEventId(first.id)
       }
-      setAsking(false)
-      await narrate(reply.answer)
-      if (story) await runStory(story)
+      setAsking(false); setAskingStory(false)
+      if (reply.answer) await narrate(reply.answer)
+      if (tourToken.current !== ticket) return
+      if (narrative) {
+        setShowcase(null); setActiveEventId(null); setOpenPhotoId(null); setSubtitle(null)
+        lastStoryPoint.current = undefined
+        setNarratedStory(narrative); refreshStories()
+      } else if (story) await runStory(story)
       if (!showcaseRef.current?.playing) scheduleHide(8000)
     } catch (error) {
-      showSubtitle({ role: 'assistant', text: error instanceof Error ? error.message : '没能回答，请重试', error: true }, 8000)
+      if (tourToken.current === ticket) showSubtitle({ role: 'assistant', text: error instanceof Error ? error.message : '没能回答，请重试', error: true }, 8000)
     } finally {
-      setAsking(false)
+      if (tourToken.current === ticket) { setAsking(false); setAskingStory(false) }
     }
   }
 
@@ -756,6 +785,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
   // 1.5 s and shown as a live subtitle; on release the whole recording becomes the question.
   async function voiceStart() {
     tourToken.current++
+    setNarratedStory(null)
     stopSpeaking()
     window.clearTimeout(hideTimer.current)
     try {
@@ -804,11 +834,30 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
     }
   }
 
+  function submitButlerText(value: string) {
+    const text = value.trim().slice(0, 500)
+    if (!text || asking || voiceState !== 'idle' || !aiRef.current.available) return
+    tourToken.current++
+    stopSpeaking()
+    setShowcase((current) => current ? { ...current, playing: false } : current)
+    voiceUsed.current = true
+    showSubtitle({ role: 'user', text })
+    void ask(text)
+  }
+
   function confirmRole(city: string, role: PlaceRole, announce = true) {
     setMemory((current) => ({ ...current, placeRoles: { ...current.placeRoles, [city]: role } }))
     setPendingRoleCity((pending) => (pending === city ? null : pending))
     const kind = role === 'home' ? '的老家' : role === 'study' ? '求学的地方' : role === 'work' ? '工作的地方' : '生活过的地方'
     if (announce) showSubtitle({ role: 'assistant', text: `记下了，${cityLabel(city)}是你${kind}（${roleLabels[role]}）。` }, 8000)
+  }
+
+  function tellMemory(storyId?: string) {
+    if (asking || voiceState !== 'idle') return
+    voiceUsed.current = true
+    const question = storyId ? '再听这段回忆，使用现在的人物和照片资料。' : '自动挑一段有具体细节的回忆，边看照片边讲故事，和最近讲过的角度有所不同。'
+    showSubtitle({ role: 'user', text: storyId ? '再听这段回忆' : '听一段回忆' })
+    void ask(question, { intent: 'story', storyId })
   }
 
   return (
@@ -837,7 +886,7 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           routeEventIds={routeEventIds}
           selectedCity={selectedCity}
           highlightedEventId={highlightedEventId}
-          insetRight={showcase ? SHOWCASE_WIDTH : 0}
+          insetRight={narratedStory ? 780 : showcase ? SHOWCASE_WIDTH : 0}
           insetBottom={events.length ? TIMEBAR_HEIGHT : 0}
           insetTop={CHROME_TOP}
           onSelectCity={(city) => selectCity(city)}
@@ -957,6 +1006,15 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
           />
         )}
 
+        {narratedStory && ready && <StoryStage key={narratedStory.id} story={narratedStory} assets={memory.assets}
+          onFocus={focusStoryPhoto}
+          onClose={() => setNarratedStory(null)}
+          onOpen={openPhoto}
+          onAnother={() => tellMemory()}
+          onRetell={tellMemory}
+          onRemembered={() => { void library.mutate('/settle', {}).catch(() => {}); refreshStories() }}
+        />}
+
         {events.length > 0 && (
           // Full width even with the photo stage open: the stage ends above the microphone, so nothing overlaps
           <div className="timebar-wrap" style={{ right: 24 }}>
@@ -969,10 +1027,14 @@ export default function App({ account, onSignOut }: { account: Account; onSignOu
             voiceState={voiceState}
             busy={asking}
             disabled={!aiConfig.available}
-            subtitle={subtitle}
+            subtitle={narratedStory ? null : subtitle}
             speaking={speaking}
+            storyBusy={askingStory}
             onVoiceStart={() => void voiceStart()}
             onVoiceEnd={() => void voiceEnd()}
+            onTextSubmit={submitButlerText}
+            stories={storyChoices}
+            onTellStory={tellMemory}
             onStopSpeaking={() => { tourToken.current++; stopSpeaking() }}
             onDismiss={dismissSubtitle}
           />
